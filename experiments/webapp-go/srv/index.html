@@ -159,7 +159,7 @@
             margin-top: 20px;
             background: #e0e0e0;
             border-radius: 10px;
-            height: 24px;
+            height: 20px;
             overflow: hidden;
         }
         
@@ -168,13 +168,28 @@
             background: linear-gradient(90deg, #3498db, #2ecc71);
             border-radius: 10px;
             transition: width 0.3s ease;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: 600;
-            font-size: 0.85em;
-            min-width: 40px;
+        }
+        
+        .progress-bar.indeterminate {
+            width: 30% !important;
+            animation: indeterminate 1.5s ease-in-out infinite;
+            background: linear-gradient(90deg, #3498db, #9b59b6, #3498db);
+            background-size: 200% 100%;
+        }
+        
+        @keyframes indeterminate {
+            0% {
+                margin-left: 0%;
+                background-position: 0% 0%;
+            }
+            50% {
+                margin-left: 70%;
+                background-position: 100% 0%;
+            }
+            100% {
+                margin-left: 0%;
+                background-position: 0% 0%;
+            }
         }
         
         .results {
@@ -359,7 +374,7 @@
         <p class="progress-text">Please wait...</p>
         <p class="progress-step" id="progress-step">Uploading audio file...</p>
         <div class="progress-bar-container">
-            <div class="progress-bar" id="progress-bar" style="width: 0%">0%</div>
+            <div class="progress-bar indeterminate" id="progress-bar" style="width: 0%"></div>
         </div>
     </div>
     
@@ -489,10 +504,15 @@
         
         function setProgress(step, percent) {
             document.getElementById('progress-step').textContent = step;
-            if (percent !== undefined) {
-                const bar = document.getElementById('progress-bar');
+            const bar = document.getElementById('progress-bar');
+            if (percent === null || percent === undefined) {
+                // Indeterminate state
+                bar.classList.add('indeterminate');
+                bar.style.width = '';
+            } else {
+                // Determinate state
+                bar.classList.remove('indeterminate');
                 bar.style.width = percent + '%';
-                bar.textContent = percent + '%';
             }
         }
         

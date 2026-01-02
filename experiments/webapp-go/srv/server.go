@@ -118,10 +118,14 @@ type TranscribeResponse struct {
 
 // ProgressEvent is sent via SSE during processing
 type ProgressEvent struct {
-	Type    string `json:"type"`    // "progress", "complete", "error"
-	Step    string `json:"step"`    // Current step description
-	Percent int    `json:"percent"` // 0-100 for current step
+	Type    string `json:"type"`           // "progress", "complete", "error"
+	Step    string `json:"step"`           // Current step description
+	Percent *int   `json:"percent"`        // 0-100 for current step, null for indeterminate
 	Data    any    `json:"data,omitempty"`
+}
+
+func intPtr(i int) *int {
+	return &i
 }
 
 func sendSSE(w http.ResponseWriter, event ProgressEvent) {
@@ -149,7 +153,7 @@ func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {
 	userID := r.Header.Get("X-Exedev-Userid")
 	slog.Info("processing request", "userID", userID, "usage", fmt.Sprintf("%d/%d", used, DailyLimit))
 
-	sendSSE(w, ProgressEvent{Type: "progress", Step: "Receiving audio file...", Percent: 0})
+	sendSSE(w, ProgressEvent{Type: "progress", Step: "Receiving audio file...", Percent: nil})
 
 	// Parse multipart form (max 500MB)
 	if err := r.ParseMultipartForm(500 << 20); err != nil {
@@ -165,7 +169,7 @@ func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	slog.Info("received audio file", "name", header.Filename, "size", header.Size)
-	sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Received %s (%.1f MB)", header.Filename, float64(header.Size)/(1024*1024)), Percent: 100})
+	sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Received %s (%.1f MB)", header.Filename, float64(header.Size)/(1024*1024)), Percent: nil})
 
 	// Save to temp file
 	tmpDir, err := os.MkdirTemp("", "sermon-*")
@@ -189,7 +193,7 @@ func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {
 	io.Copy(f, file)
 	f.Close()
 
-	sendSSE(w, ProgressEvent{Type: "progress", Step: "Processing audio with FFmpeg...", Percent: 0})
+	sendSSE(w, ProgressEvent{Type: "progress", Step: "Processing audio with FFmpeg...", Percent: nil})
 
 	// Convert to optimized MP3 chunks using ffmpeg
 	chunks, err := splitAudio(tmpDir, inputPath)
@@ -200,27 +204,27 @@ func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("split audio into chunks", "count", len(chunks))
-	sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Processed audio into %d chunks", len(chunks)), Percent: 100})
+	sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Processed audio into %d chunks", len(chunks)), Percent: nil})
 
 	// Transcribe chunks with progress callback
-	sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Transcribing %d chunks...", len(chunks)), Percent: 0})
+	sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Transcribing %d chunks...", len(chunks)), Percent: intPtr(0)})
 	transcript, err := s.transcribeChunksWithProgress(r.Context(), chunks, func(completed, total int) {
 		percent := (completed * 100) / total
-		sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Transcribing chunk %d of %d...", completed, total), Percent: percent})
+		sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Transcribing chunk %d of %d...", completed, total), Percent: intPtr(percent)})
 	})
 	if err != nil {
 		sendSSE(w, ProgressEvent{Type: "error", Step: "Transcription failed: " + err.Error()})
 		return
 	}
 
-	sendSSE(w, ProgressEvent{Type: "progress", Step: "Extracting metadata...", Percent: 0})
+	sendSSE(w, ProgressEvent{Type: "progress", Step: "Extracting metadata...", Percent: nil})
 
 	// Extract metadata
 	metadata, err := s.extractMetadata(r.Context(), transcript)
 	if err != nil {
 		slog.Error("metadata extraction failed", "error", err)
 		// Still return transcript even if metadata fails
-		sendSSE(w, ProgressEvent{Type: "complete", Step: "Complete (metadata extraction failed)", Percent: 100, Data: map[string]any{
+		sendSSE(w, ProgressEvent{Type: "complete", Step: "Complete (metadata extraction failed)", Percent: nil, Data: map[string]any{
 			"transcript": transcript,
 			"title":      "Unknown",
 			"speaker":    "",
@@ -230,8 +234,7 @@ func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sendSSE(w, ProgressEvent{Type: "progress", Step: "Extracting metadata...", Percent: 100})
-	sendSSE(w, ProgressEvent{Type: "complete", Step: "Complete!", Percent: 100, Data: map[string]any{
+	sendSSE(w, ProgressEvent{Type: "complete", Step: "Complete!", Percent: nil, Data: map[string]any{
 		"transcript": transcript,
 		"title":      metadata.Title,
 		"speaker":    metadata.Speaker,
