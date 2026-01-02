@@ -430,7 +430,6 @@ Transcript:
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
-		"temperature": 0.3,
 	}
 
 	jsonBody, _ := json.Marshal(requestBody)
