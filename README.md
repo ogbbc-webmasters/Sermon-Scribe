@@ -2,6 +2,8 @@
 
 Tools for extracting metadata from sermon audio files.
 
+**Live Demo**: https://sermon-scribe.exe.xyz/
+
 ## Experiments
 
 ### `/experiments/webapp-openai`

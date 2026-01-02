@@ -43,7 +43,7 @@ Browser-based webapp with no backend required.
 - **Transcription**: OpenAI `gpt-4o-transcribe`
 - **Metadata extraction**: OpenAI `gpt-5-mini`
 - **Hosting**: Served via Python http.server on port 8000
-- **Live URL**: https://sermon-scribe.exe.xyz:8000/
+- **Live Demo**: https://sermon-scribe.exe.xyz/
 - **Service**: `sudo systemctl status sermon-scribe`
 
 ### python-assemblyai (Experimental)
