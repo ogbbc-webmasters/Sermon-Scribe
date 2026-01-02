@@ -40,7 +40,7 @@ Sermon-Scribe/
 Go backend with embedded HTML frontend.
 
 - **Transcription**: OpenAI `gpt-4o-transcribe`
-- **Metadata extraction**: OpenAI `gpt-4o-mini`
+- **Metadata extraction**: OpenAI `gpt-5-mini`
 - **Audio processing**: Server-side FFmpeg (splits into 10-min chunks)
 - **Rate limit**: 20 sermons/day site-wide
 - **Auth**: Requires exe.dev login (checks `X-Exedev-Userid` header)
@@ -57,6 +57,23 @@ Python script using AssemblyAI for transcription.
 ## Development Notes
 
 - Frontend is embedded in Go binary via `//go:embed`
-- API key stored in `.env` file (never commit)
+- API key stored in `.env` file (never commit, never read)
 - Target audience is 50+ years old - prioritize large fonts and simple UX
 - FFmpeg required on server for audio processing
+
+## Development Workflow
+
+1. Make changes to code
+2. Build: `go build -o sermon-scribe ./cmd/srv`
+3. Restart: `sudo systemctl restart sermon-scribe`
+4. Test at https://sermon-scribe.exe.xyz/
+5. Check logs: `journalctl -u sermon-scribe -f`
+6. Commit often with conventional commits
+7. Push to main when stable
+
+## API Notes
+
+- `gpt-5-mini` does not support custom `temperature` parameter
+- Transcription uses parallel chunk processing (max 3 concurrent)
+- Progress updates streamed via SSE to frontend
+- Use `-1` for indeterminate progress percentage, `0-100` for determinate
