@@ -68,8 +68,15 @@ Python script using AssemblyAI for transcription.
 3. Restart: `sudo systemctl restart sermon-scribe`
 4. Test at https://sermon-scribe.exe.xyz/
 5. Check logs: `journalctl -u sermon-scribe -f`
-6. Commit often with conventional commits
+6. **Commit after every logical change** - don't batch unrelated changes
 7. Push to main when stable
+
+## Commit Guidelines
+
+- **Commit frequently** - after each working change, not at the end of a session
+- Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`
+- Keep commits small and focused
+- Don't wait until asked to commit
 
 ## API Notes
 
