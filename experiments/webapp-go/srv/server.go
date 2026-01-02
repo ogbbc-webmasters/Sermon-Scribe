@@ -110,45 +110,67 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-// TranscribeRequest is the JSON response from transcription
+// TranscribeResponse is the JSON response from transcription
 type TranscribeResponse struct {
 	Transcript string `json:"transcript"`
 	Error      string `json:"error,omitempty"`
 }
 
+// ProgressEvent is sent via SSE during processing
+type ProgressEvent struct {
+	Type    string `json:"type"`    // "progress", "complete", "error"
+	Step    string `json:"step"`    // Current step description
+	Percent int    `json:"percent"` // 0-100
+	Data    any    `json:"data,omitempty"`
+}
+
+func sendSSE(w http.ResponseWriter, event ProgressEvent) {
+	data, _ := json.Marshal(event)
+	fmt.Fprintf(w, "data: %s\n\n", data)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	// Set up SSE
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
 
 	// Check rate limit
 	used, allowed := s.checkAndIncrementUsage()
 	if !allowed {
 		userID := r.Header.Get("X-Exedev-Userid")
 		slog.Warn("rate limit exceeded", "userID", userID, "used", used)
-		json.NewEncoder(w).Encode(TranscribeResponse{Error: fmt.Sprintf("Daily site limit reached (%d/%d). Try again tomorrow.", used, DailyLimit)})
+		sendSSE(w, ProgressEvent{Type: "error", Step: fmt.Sprintf("Daily site limit reached (%d/%d). Try again tomorrow.", used, DailyLimit)})
 		return
 	}
 	userID := r.Header.Get("X-Exedev-Userid")
 	slog.Info("processing request", "userID", userID, "usage", fmt.Sprintf("%d/%d", used, DailyLimit))
 
+	sendSSE(w, ProgressEvent{Type: "progress", Step: "Receiving audio file...", Percent: 5})
+
 	// Parse multipart form (max 500MB)
 	if err := r.ParseMultipartForm(500 << 20); err != nil {
-		json.NewEncoder(w).Encode(TranscribeResponse{Error: "Failed to parse upload: " + err.Error()})
+		sendSSE(w, ProgressEvent{Type: "error", Step: "Failed to parse upload: " + err.Error()})
 		return
 	}
 
 	file, header, err := r.FormFile("audio")
 	if err != nil {
-		json.NewEncoder(w).Encode(TranscribeResponse{Error: "No audio file provided"})
+		sendSSE(w, ProgressEvent{Type: "error", Step: "No audio file provided"})
 		return
 	}
 	defer file.Close()
 
 	slog.Info("received audio file", "name", header.Filename, "size", header.Size)
+	sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Received %s (%.1f MB)", header.Filename, float64(header.Size)/(1024*1024)), Percent: 10})
 
 	// Save to temp file
 	tmpDir, err := os.MkdirTemp("", "sermon-*")
 	if err != nil {
-		json.NewEncoder(w).Encode(TranscribeResponse{Error: "Failed to create temp dir"})
+		sendSSE(w, ProgressEvent{Type: "error", Step: "Failed to create temp dir"})
 		return
 	}
 	defer os.RemoveAll(tmpDir)
@@ -161,30 +183,59 @@ func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {
 
 	f, err := os.Create(inputPath)
 	if err != nil {
-		json.NewEncoder(w).Encode(TranscribeResponse{Error: "Failed to save file"})
+		sendSSE(w, ProgressEvent{Type: "error", Step: "Failed to save file"})
 		return
 	}
 	io.Copy(f, file)
 	f.Close()
 
+	sendSSE(w, ProgressEvent{Type: "progress", Step: "Processing audio with FFmpeg...", Percent: 15})
+
 	// Convert to optimized MP3 chunks using ffmpeg
 	chunks, err := splitAudio(tmpDir, inputPath)
 	if err != nil {
 		slog.Error("ffmpeg split failed", "error", err)
-		json.NewEncoder(w).Encode(TranscribeResponse{Error: "Failed to process audio: " + err.Error()})
+		sendSSE(w, ProgressEvent{Type: "error", Step: "Failed to process audio: " + err.Error()})
 		return
 	}
 
 	slog.Info("split audio into chunks", "count", len(chunks))
+	sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Split into %d chunks for transcription", len(chunks)), Percent: 20})
 
-	// Transcribe chunks in parallel
-	transcript, err := s.transcribeChunks(r.Context(), chunks)
+	// Transcribe chunks with progress callback
+	transcript, err := s.transcribeChunksWithProgress(r.Context(), chunks, func(completed, total int) {
+		percent := 20 + (completed*70)/total
+		sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Transcribing chunk %d of %d...", completed, total), Percent: percent})
+	})
 	if err != nil {
-		json.NewEncoder(w).Encode(TranscribeResponse{Error: "Transcription failed: " + err.Error()})
+		sendSSE(w, ProgressEvent{Type: "error", Step: "Transcription failed: " + err.Error()})
 		return
 	}
 
-	json.NewEncoder(w).Encode(TranscribeResponse{Transcript: transcript})
+	sendSSE(w, ProgressEvent{Type: "progress", Step: "Extracting metadata...", Percent: 92})
+
+	// Extract metadata
+	metadata, err := s.extractMetadata(r.Context(), transcript)
+	if err != nil {
+		slog.Error("metadata extraction failed", "error", err)
+		// Still return transcript even if metadata fails
+		sendSSE(w, ProgressEvent{Type: "complete", Step: "Complete (metadata extraction failed)", Percent: 100, Data: map[string]any{
+			"transcript": transcript,
+			"title":      "Unknown",
+			"speaker":    "",
+			"scriptures": []string{},
+			"topics":     []string{},
+		}})
+		return
+	}
+
+	sendSSE(w, ProgressEvent{Type: "complete", Step: "Complete!", Percent: 100, Data: map[string]any{
+		"transcript": transcript,
+		"title":      metadata.Title,
+		"speaker":    metadata.Speaker,
+		"scriptures": metadata.Scriptures,
+		"topics":     metadata.Topics,
+	}})
 }
 
 func splitAudio(tmpDir, inputPath string) ([]string, error) {
@@ -231,7 +282,7 @@ func splitAudio(tmpDir, inputPath string) ([]string, error) {
 	return chunks, nil
 }
 
-func (s *Server) transcribeChunks(ctx context.Context, chunks []string) (string, error) {
+func (s *Server) transcribeChunksWithProgress(ctx context.Context, chunks []string, onProgress func(completed, total int)) (string, error) {
 	if len(chunks) == 0 {
 		return "", fmt.Errorf("no audio chunks to transcribe")
 	}
@@ -245,6 +296,8 @@ func (s *Server) transcribeChunks(ctx context.Context, chunks []string) (string,
 
 	results := make([]result, len(chunks))
 	var wg sync.WaitGroup
+	var completedMu sync.Mutex
+	completed := 0
 	sem := make(chan struct{}, 3) // Limit concurrency
 
 	for i, chunk := range chunks {
@@ -257,6 +310,13 @@ func (s *Server) transcribeChunks(ctx context.Context, chunks []string) (string,
 			slog.Info("transcribing chunk", "index", idx, "path", path)
 			text, err := s.transcribeSingle(ctx, path)
 			results[idx] = result{index: idx, text: text, err: err}
+
+			completedMu.Lock()
+			completed++
+			if onProgress != nil {
+				onProgress(completed, len(chunks))
+			}
+			completedMu.Unlock()
 		}(i, chunk)
 	}
 
@@ -338,22 +398,9 @@ type MetadataResponse struct {
 	Error      string   `json:"error,omitempty"`
 }
 
-func (s *Server) handleExtractMetadata(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	var req MetadataRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		json.NewEncoder(w).Encode(MetadataResponse{Error: "Invalid request"})
-		return
-	}
-
-	if req.Transcript == "" {
-		json.NewEncoder(w).Encode(MetadataResponse{Error: "No transcript provided"})
-		return
-	}
-
+// extractMetadata calls OpenAI to extract metadata from transcript
+func (s *Server) extractMetadata(ctx context.Context, transcript string) (*MetadataResponse, error) {
 	// Truncate transcript if too long
-	transcript := req.Transcript
 	if len(transcript) > 30000 {
 		transcript = transcript[:30000]
 	}
@@ -380,7 +427,7 @@ Transcript:
 %s`, transcript)
 
 	requestBody := map[string]any{
-		"model": "gpt-4o-mini",
+		"model": "gpt-5-mini",
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
@@ -388,22 +435,20 @@ Transcript:
 	}
 
 	jsonBody, _ := json.Marshal(requestBody)
-	httpReq, _ := http.NewRequestWithContext(r.Context(), "POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(jsonBody))
+	httpReq, _ := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(jsonBody))
 	httpReq.Header.Set("Authorization", "Bearer "+s.APIKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 2 * time.Minute}
 	resp, err := client.Do(httpReq)
 	if err != nil {
-		json.NewEncoder(w).Encode(MetadataResponse{Error: "Failed to call OpenAI: " + err.Error()})
-		return
+		return nil, fmt.Errorf("failed to call OpenAI: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		json.NewEncoder(w).Encode(MetadataResponse{Error: fmt.Sprintf("OpenAI error %d: %s", resp.StatusCode, string(body))})
-		return
+		return nil, fmt.Errorf("OpenAI error %d: %s", resp.StatusCode, string(body))
 	}
 
 	var chatResp struct {
@@ -414,13 +459,11 @@ Transcript:
 		} `json:"choices"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
-		json.NewEncoder(w).Encode(MetadataResponse{Error: "Failed to parse response"})
-		return
+		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if len(chatResp.Choices) == 0 {
-		json.NewEncoder(w).Encode(MetadataResponse{Error: "No response from OpenAI"})
-		return
+		return nil, fmt.Errorf("no response from OpenAI")
 	}
 
 	content := chatResp.Choices[0].Message.Content
@@ -432,7 +475,29 @@ Transcript:
 
 	var metadata MetadataResponse
 	if err := json.Unmarshal([]byte(content), &metadata); err != nil {
-		json.NewEncoder(w).Encode(MetadataResponse{Error: "Failed to parse metadata: " + err.Error()})
+		return nil, fmt.Errorf("failed to parse metadata: %w", err)
+	}
+
+	return &metadata, nil
+}
+
+func (s *Server) handleExtractMetadata(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req MetadataRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		json.NewEncoder(w).Encode(MetadataResponse{Error: "Invalid request"})
+		return
+	}
+
+	if req.Transcript == "" {
+		json.NewEncoder(w).Encode(MetadataResponse{Error: "No transcript provided"})
+		return
+	}
+
+	metadata, err := s.extractMetadata(r.Context(), req.Transcript)
+	if err != nil {
+		json.NewEncoder(w).Encode(MetadataResponse{Error: err.Error()})
 		return
 	}
 
