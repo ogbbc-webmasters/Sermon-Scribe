@@ -505,7 +505,7 @@
         function setProgress(step, percent) {
             document.getElementById('progress-step').textContent = step;
             const bar = document.getElementById('progress-bar');
-            if (percent === null || percent === undefined) {
+            if (percent < 0) {
                 // Indeterminate state
                 bar.classList.add('indeterminate');
                 bar.style.width = '';
