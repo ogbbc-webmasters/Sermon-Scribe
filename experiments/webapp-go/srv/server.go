@@ -402,8 +402,11 @@ type MetadataResponse struct {
 
 // extractMetadata calls OpenAI to extract metadata from transcript
 func (s *Server) extractMetadata(ctx context.Context, transcript string) (*MetadataResponse, error) {
+	slog.Info("extractMetadata called", "transcriptLen", len(transcript))
+	
 	// Truncate transcript if too long
 	if len(transcript) > 30000 {
+		slog.Info("truncating transcript", "from", len(transcript), "to", 30000)
 		transcript = transcript[:30000]
 	}
 
@@ -437,21 +440,38 @@ Transcript:
 	}
 
 	jsonBody, _ := json.Marshal(requestBody)
-	httpReq, _ := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(jsonBody))
+	slog.Info("calling OpenAI chat completions", "model", "gpt-5-mini", "requestLen", len(jsonBody))
+	
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(jsonBody))
+	if err != nil {
+		slog.Error("failed to create request", "error", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
 	httpReq.Header.Set("Authorization", "Bearer "+s.APIKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 2 * time.Minute}
 	resp, err := client.Do(httpReq)
 	if err != nil {
+		slog.Error("OpenAI request failed", "error", err)
 		return nil, fmt.Errorf("failed to call OpenAI: %w", err)
 	}
 	defer resp.Body.Close()
 
+	slog.Info("OpenAI response received", "status", resp.StatusCode)
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		slog.Error("OpenAI error response", "status", resp.StatusCode, "body", string(body))
 		return nil, fmt.Errorf("OpenAI error %d: %s", resp.StatusCode, string(body))
 	}
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		slog.Error("failed to read response body", "error", err)
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+	slog.Info("OpenAI response body", "len", len(respBody))
 
 	var chatResp struct {
 		Choices []struct {
@@ -460,26 +480,34 @@ Transcript:
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+	if err := json.Unmarshal(respBody, &chatResp); err != nil {
+		slog.Error("failed to parse OpenAI response", "error", err, "body", string(respBody[:min(500, len(respBody))]))
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if len(chatResp.Choices) == 0 {
+		slog.Error("no choices in OpenAI response", "body", string(respBody[:min(500, len(respBody))]))
 		return nil, fmt.Errorf("no response from OpenAI")
 	}
 
 	content := chatResp.Choices[0].Message.Content
+	slog.Info("OpenAI content received", "contentLen", len(content), "preview", content[:min(200, len(content))])
+	
 	// Strip markdown code blocks if present
 	content = strings.TrimPrefix(content, "```json")
 	content = strings.TrimPrefix(content, "```")
 	content = strings.TrimSuffix(content, "```")
 	content = strings.TrimSpace(content)
 
+	slog.Info("parsing metadata JSON", "content", content[:min(500, len(content))])
+
 	var metadata MetadataResponse
 	if err := json.Unmarshal([]byte(content), &metadata); err != nil {
+		slog.Error("failed to parse metadata JSON", "error", err, "content", content)
 		return nil, fmt.Errorf("failed to parse metadata: %w", err)
 	}
 
+	slog.Info("metadata extracted", "title", metadata.Title, "speaker", metadata.Speaker, "scriptures", len(metadata.Scriptures), "topics", len(metadata.Topics))
 	return &metadata, nil
 }
 
