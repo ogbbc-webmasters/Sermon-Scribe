@@ -411,7 +411,10 @@ func (s *Server) extractMetadata(ctx context.Context, transcript string) (*Metad
 
 3. **scriptures**: An array of all Bible references mentioned (e.g., "John 3:16", "Psalm 23:1-6", "Romans 8"). Include chapter and verse when available.
 
-4. **topics**: An array of 3-7 main topics or themes discussed in the sermon (e.g., "faith", "forgiveness", "prayer", "salvation").
+4. **topics**: An array of 2-5 topics from the PREDEFINED LIST below that best match the sermon content. Use ONLY topics from this list, using the exact topic names provided. Select topics that are central themes, not just briefly mentioned.
+
+PREDEFINED TOPICS:
+%s
 
 Return ONLY valid JSON in this exact format:
 {
@@ -422,7 +425,7 @@ Return ONLY valid JSON in this exact format:
 }
 
 Transcript:
-%s`, transcript)
+%s`, TopicsForPrompt(), transcript)
 
 	requestBody := map[string]any{
 		"model": "gpt-5-mini",
