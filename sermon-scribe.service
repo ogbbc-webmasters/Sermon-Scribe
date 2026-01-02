@@ -1,0 +1,13 @@
+[Unit]
+Description=Sermon Scribe Web App
+After=network.target
+
+[Service]
+Type=simple
+User=exedev
+WorkingDirectory=/home/exedev/sermon-scribe
+ExecStart=/usr/bin/python3 -m http.server 8000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
