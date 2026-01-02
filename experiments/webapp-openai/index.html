@@ -608,16 +608,53 @@
             return data.text;
         }
         
+        // Normalize audio to ensure OpenAI compatibility
+        async function normalizeAudio(file) {
+            updateProgress('Preparing audio file...');
+            const ffmpeg = await loadFFmpeg();
+            
+            const fileData = new Uint8Array(await file.arrayBuffer());
+            const inputExt = file.name.toLowerCase().endsWith('.wav') ? '.wav' : '.mp3';
+            const inputName = 'input' + inputExt;
+            
+            await ffmpeg.writeFile(inputName, fileData);
+            
+            updateProgress('Converting audio to compatible format...');
+            
+            // Convert to MP3 at 64kbps, 16kHz mono - optimal for speech recognition
+            await ffmpeg.exec([
+                '-i', inputName,
+                '-acodec', 'libmp3lame',
+                '-b:a', '64k',
+                '-ar', '16000',      // 16kHz sample rate (good for speech)
+                '-ac', '1',          // Mono
+                '-y',
+                'output.mp3'
+            ]);
+            
+            const outputData = await ffmpeg.readFile('output.mp3');
+            
+            // Cleanup
+            await ffmpeg.deleteFile(inputName);
+            await ffmpeg.deleteFile('output.mp3');
+            
+            return new File([outputData.buffer], 'audio.mp3', { type: 'audio/mpeg' });
+        }
+        
         async function transcribeAudio(apiKey, file) {
+            // Always normalize audio first to ensure compatibility
+            const normalizedFile = await normalizeAudio(file);
+            
             const MAX_SIZE = 20 * 1024 * 1024; // 20MB threshold
             
-            if (file.size <= MAX_SIZE) {
+            if (normalizedFile.size <= MAX_SIZE) {
                 // Small file: transcribe directly
-                return await transcribeSingleFile(apiKey, file);
+                updateProgress('Transcribing audio...');
+                return await transcribeSingleFile(apiKey, normalizedFile);
             }
             
             // Large file: split and transcribe chunks
-            const chunks = await splitAudioFile(file);
+            const chunks = await splitAudioFile(normalizedFile);
             const transcripts = [];
             
             for (let i = 0; i < chunks.length; i++) {
