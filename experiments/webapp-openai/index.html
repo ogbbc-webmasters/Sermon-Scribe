@@ -310,7 +310,8 @@
         
         <label for="audio-file">Sermon Audio File</label>
         <input type="file" id="audio-file" accept=".mp3,.wav,audio/mpeg,audio/wav">
-        <p class="help-text">Supported formats: MP3, WAV (max ~25MB per request)</p>
+        <p class="help-text">Supported formats: MP3, WAV. Large files (>20MB) will be automatically split into chunks.</p>
+        <div id="file-info" style="display: none; background: #e8f4fd; padding: 10px 15px; border-radius: 6px; margin-bottom: 15px; font-size: 0.95em;"></div>
         
         <button id="process-btn" class="btn-primary" onclick="processSermon()">
             🎙️ Process Sermon
@@ -384,6 +385,7 @@
         </div>
     </div>
     
+    <script src="https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js"></script>
     <script>
         // Store results globally for export
         let sermonData = {
@@ -403,6 +405,25 @@
         function hideError() {
             document.getElementById('error').classList.remove('active');
         }
+        
+        // File size check and info display
+        document.getElementById('audio-file').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const fileInfo = document.getElementById('file-info');
+            if (file) {
+                const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
+                if (file.size > 20 * 1024 * 1024) {
+                    fileInfo.innerHTML = `<strong>📁 ${file.name}</strong> (${sizeMB} MB)<br>⚠️ Large file detected. Will be split into chunks for processing. This may take several minutes.`;
+                    fileInfo.style.background = '#fff3cd';
+                } else {
+                    fileInfo.innerHTML = `<strong>📁 ${file.name}</strong> (${sizeMB} MB)`;
+                    fileInfo.style.background = '#e8f4fd';
+                }
+                fileInfo.style.display = 'block';
+            } else {
+                fileInfo.style.display = 'none';
+            }
+        });
         
         function setProgress(step) {
             document.getElementById('progress-step').textContent = step;
@@ -476,7 +497,95 @@
             }
         }
         
-        async function transcribeAudio(apiKey, file) {
+        // FFmpeg instance for audio chunking
+        let ffmpeg = null;
+        
+        async function loadFFmpeg() {
+            if (ffmpeg) return ffmpeg;
+            
+            const { FFmpeg } = FFmpegWASM;
+            ffmpeg = new FFmpeg();
+            
+            ffmpeg.on('log', ({ message }) => {
+                console.log('[ffmpeg]', message);
+            });
+            
+            ffmpeg.on('progress', ({ progress }) => {
+                const pct = Math.round(progress * 100);
+                updateProgress(`Splitting audio file... ${pct}%`);
+            });
+            
+            await ffmpeg.load({
+                coreURL: 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd/ffmpeg-core.js',
+            });
+            
+            return ffmpeg;
+        }
+        
+        async function splitAudioFile(file) {
+            updateProgress('Loading audio processor...');
+            const ffmpeg = await loadFFmpeg();
+            
+            // Read file as Uint8Array
+            const fileData = new Uint8Array(await file.arrayBuffer());
+            const inputName = 'input' + (file.name.endsWith('.wav') ? '.wav' : '.mp3');
+            
+            updateProgress('Reading audio file...');
+            await ffmpeg.writeFile(inputName, fileData);
+            
+            // Get duration
+            updateProgress('Analyzing audio duration...');
+            await ffmpeg.exec(['-i', inputName, '-f', 'null', '-']);
+            
+            // Split into 10-minute chunks (600 seconds)
+            const chunkDuration = 600;
+            const chunks = [];
+            let chunkIndex = 0;
+            let hasMore = true;
+            
+            while (hasMore) {
+                const startTime = chunkIndex * chunkDuration;
+                const outputName = `chunk_${chunkIndex}.mp3`;
+                
+                updateProgress(`Splitting audio: creating chunk ${chunkIndex + 1}...`);
+                
+                try {
+                    await ffmpeg.exec([
+                        '-i', inputName,
+                        '-ss', String(startTime),
+                        '-t', String(chunkDuration),
+                        '-acodec', 'libmp3lame',
+                        '-b:a', '64k',  // Lower bitrate to ensure under 25MB
+                        '-y',
+                        outputName
+                    ]);
+                    
+                    const data = await ffmpeg.readFile(outputName);
+                    if (data.length > 1000) {  // Valid chunk has some data
+                        chunks.push(new File([data.buffer], outputName, { type: 'audio/mpeg' }));
+                        chunkIndex++;
+                    } else {
+                        hasMore = false;
+                    }
+                } catch (e) {
+                    // No more audio to extract
+                    hasMore = false;
+                }
+                
+                // Safety limit: max 20 chunks (~3.3 hours)
+                if (chunkIndex >= 20) hasMore = false;
+            }
+            
+            // Cleanup
+            await ffmpeg.deleteFile(inputName);
+            for (let i = 0; i < chunks.length; i++) {
+                try { await ffmpeg.deleteFile(`chunk_${i}.mp3`); } catch(e) {}
+            }
+            
+            return chunks;
+        }
+        
+        async function transcribeSingleFile(apiKey, file) {
             const formData = new FormData();
             formData.append('file', file);
             formData.append('model', 'gpt-4o-transcribe');
@@ -497,6 +606,27 @@
             
             const data = await response.json();
             return data.text;
+        }
+        
+        async function transcribeAudio(apiKey, file) {
+            const MAX_SIZE = 20 * 1024 * 1024; // 20MB threshold
+            
+            if (file.size <= MAX_SIZE) {
+                // Small file: transcribe directly
+                return await transcribeSingleFile(apiKey, file);
+            }
+            
+            // Large file: split and transcribe chunks
+            const chunks = await splitAudioFile(file);
+            const transcripts = [];
+            
+            for (let i = 0; i < chunks.length; i++) {
+                updateProgress(`Transcribing chunk ${i + 1} of ${chunks.length}...`);
+                const transcript = await transcribeSingleFile(apiKey, chunks[i]);
+                transcripts.push(transcript);
+            }
+            
+            return transcripts.join('\n\n');
         }
         
         async function extractMetadata(apiKey, transcript) {
