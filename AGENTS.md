@@ -24,25 +24,26 @@ Sermon-Scribe/
     ├── python-assemblyai/       # Python experiment using AssemblyAI
     │   ├── requirements.txt     # Python dependencies
     │   └── src/transcribe/      # Transcription scripts
-    │       ├── __init__.py      # Main transcription script
-    │       ├── scriptures.sh    # Scripture extraction
-    │       ├── title.sh         # Title extraction
-    │       ├── topics.sh        # Topic extraction
-    │       └── topics.txt       # Topic reference data
-    └── webapp-openai/           # Browser webapp using OpenAI APIs
-        ├── index.html           # Single-page webapp (HTML/CSS/JS)
-        └── sermon-scribe.service # systemd service for hosting
+    └── webapp-go/               # Go backend with embedded frontend
+        ├── cmd/srv/main.go      # Entry point
+        ├── srv/server.go        # HTTP handlers, OpenAI API calls
+        ├── srv/index.html       # Embedded frontend (single HTML file)
+        ├── sermon-scribe.service # systemd service
+        ├── .env                 # API key (not in git)
+        └── .gitignore
 ```
 
 ## Experiments
 
-### webapp-openai (Active)
+### webapp-go (Active)
 
-Browser-based webapp with no backend required.
+Go backend with embedded HTML frontend.
 
 - **Transcription**: OpenAI `gpt-4o-transcribe`
-- **Metadata extraction**: OpenAI `gpt-5-mini`
-- **Hosting**: Served via Python http.server on port 8000
+- **Metadata extraction**: OpenAI `gpt-4o-mini`
+- **Audio processing**: Server-side FFmpeg (splits into 10-min chunks)
+- **Rate limit**: 20 sermons/day site-wide
+- **Auth**: Requires exe.dev login (checks `X-Exedev-Userid` header)
 - **Live Demo**: https://sermon-scribe.exe.xyz/
 - **Service**: `sudo systemctl status sermon-scribe`
 
@@ -55,7 +56,7 @@ Python script using AssemblyAI for transcription.
 
 ## Development Notes
 
-- The webapp is pure HTML/JS - no build step required
-- API keys are entered by the user at runtime (never stored)
+- Frontend is embedded in Go binary via `//go:embed`
+- API key stored in `.env` file (never commit)
 - Target audience is 50+ years old - prioritize large fonts and simple UX
-- OpenAI transcription API has ~25MB file size limit
+- FFmpeg required on server for audio processing

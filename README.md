@@ -6,13 +6,16 @@ Tools for extracting metadata from sermon audio files.
 
 ## Experiments
 
-### `/experiments/webapp-openai`
-A browser-based webapp using OpenAI APIs:
+### `/experiments/webapp-go` (Active)
+Go backend with embedded HTML frontend:
 - **gpt-4o-transcribe** for audio transcription
-- **gpt-5-mini** for metadata extraction
-- Single HTML/JS file, no backend required
+- **gpt-4o-mini** for metadata extraction
+- Server-side FFmpeg for fast audio processing
+- Parallel chunk transcription for long sermons
 - Extracts: title, speaker, scripture references, topics
 - Export results as YAML
+- Rate limited: 20 sermons/day site-wide
+- Requires exe.dev authentication
 
 ### `/experiments/python-assemblyai`
 A Python script using AssemblyAI:
@@ -21,11 +24,12 @@ A Python script using AssemblyAI:
 
 ## Getting Started
 
-### OpenAI Webapp
-1. Open `experiments/webapp-openai/index.html` in a browser, or host it on a web server
-2. Enter your OpenAI API key
-3. Upload a sermon audio file (MP3 or WAV)
-4. View and export extracted metadata
+### Go Webapp
+1. `cd experiments/webapp-go`
+2. Create `.env` with `OPENAI_API_KEY=sk-...`
+3. `go build -o sermon-scribe ./cmd/srv`
+4. `./sermon-scribe`
+5. Open http://localhost:8000
 
 ### Python AssemblyAI
 1. `cd experiments/python-assemblyai`
