@@ -120,12 +120,8 @@ type TranscribeResponse struct {
 type ProgressEvent struct {
 	Type    string `json:"type"`           // "progress", "complete", "error"
 	Step    string `json:"step"`           // Current step description
-	Percent *int   `json:"percent"`        // 0-100 for current step, null for indeterminate
+	Percent any    `json:"percent"`        // 0-100 for current step, nil for indeterminate
 	Data    any    `json:"data,omitempty"`
-}
-
-func intPtr(i int) *int {
-	return &i
 }
 
 func sendSSE(w http.ResponseWriter, event ProgressEvent) {
@@ -207,10 +203,10 @@ func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {
 	sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Processed audio into %d chunks", len(chunks)), Percent: nil})
 
 	// Transcribe chunks with progress callback
-	sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Transcribing %d chunks...", len(chunks)), Percent: intPtr(0)})
+	sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Transcribing %d chunks...", len(chunks)), Percent: 0})
 	transcript, err := s.transcribeChunksWithProgress(r.Context(), chunks, func(completed, total int) {
 		percent := (completed * 100) / total
-		sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Transcribing chunk %d of %d...", completed, total), Percent: intPtr(percent)})
+		sendSSE(w, ProgressEvent{Type: "progress", Step: fmt.Sprintf("Transcribing chunk %d of %d...", completed, total), Percent: percent})
 	})
 	if err != nil {
 		sendSSE(w, ProgressEvent{Type: "error", Step: "Transcription failed: " + err.Error()})
