@@ -403,12 +403,6 @@ type MetadataResponse struct {
 // extractMetadata calls OpenAI to extract metadata from transcript
 func (s *Server) extractMetadata(ctx context.Context, transcript string) (*MetadataResponse, error) {
 	slog.Info("extractMetadata called", "transcriptLen", len(transcript))
-	
-	// Truncate transcript if too long
-	if len(transcript) > 30000 {
-		slog.Info("truncating transcript", "from", len(transcript), "to", 30000)
-		transcript = transcript[:30000]
-	}
 
 	prompt := fmt.Sprintf(`You are analyzing a sermon transcript. Extract the following metadata from the transcript and return it as JSON:
 
