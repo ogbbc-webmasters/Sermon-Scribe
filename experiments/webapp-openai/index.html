@@ -512,7 +512,7 @@
             
             ffmpeg.on('progress', ({ progress }) => {
                 const pct = Math.round(progress * 100);
-                updateProgress(`Splitting audio file... ${pct}%`);
+                setProgress(`Splitting audio file... ${pct}%`);
             });
             
             await ffmpeg.load({
@@ -523,18 +523,18 @@
         }
         
         async function splitAudioFile(file) {
-            updateProgress('Loading audio processor...');
+            setProgress('Loading audio processor...');
             const ffmpeg = await loadFFmpeg();
             
             // Read file as Uint8Array
             const fileData = new Uint8Array(await file.arrayBuffer());
             const inputName = 'input' + (file.name.endsWith('.wav') ? '.wav' : '.mp3');
             
-            updateProgress('Reading audio file...');
+            setProgress('Reading audio file...');
             await ffmpeg.writeFile(inputName, fileData);
             
             // Get duration
-            updateProgress('Analyzing audio duration...');
+            setProgress('Analyzing audio duration...');
             await ffmpeg.exec(['-i', inputName, '-f', 'null', '-']);
             
             // Split into 10-minute chunks (600 seconds)
@@ -547,7 +547,7 @@
                 const startTime = chunkIndex * chunkDuration;
                 const outputName = `chunk_${chunkIndex}.mp3`;
                 
-                updateProgress(`Splitting audio: creating chunk ${chunkIndex + 1}...`);
+                setProgress(`Splitting audio: creating chunk ${chunkIndex + 1}...`);
                 
                 try {
                     await ffmpeg.exec([
@@ -610,7 +610,7 @@
         
         // Normalize audio to ensure OpenAI compatibility
         async function normalizeAudio(file) {
-            updateProgress('Preparing audio file...');
+            setProgress('Preparing audio file...');
             const ffmpeg = await loadFFmpeg();
             
             const fileData = new Uint8Array(await file.arrayBuffer());
@@ -619,7 +619,7 @@
             
             await ffmpeg.writeFile(inputName, fileData);
             
-            updateProgress('Converting audio to compatible format...');
+            setProgress('Converting audio to compatible format...');
             
             // Convert to MP3 at 64kbps, 16kHz mono - optimal for speech recognition
             await ffmpeg.exec([
@@ -649,7 +649,7 @@
             
             if (normalizedFile.size <= MAX_SIZE) {
                 // Small file: transcribe directly
-                updateProgress('Transcribing audio...');
+                setProgress('Transcribing audio...');
                 return await transcribeSingleFile(apiKey, normalizedFile);
             }
             
@@ -658,7 +658,7 @@
             const transcripts = [];
             
             for (let i = 0; i < chunks.length; i++) {
-                updateProgress(`Transcribing chunk ${i + 1} of ${chunks.length}...`);
+                setProgress(`Transcribing chunk ${i + 1} of ${chunks.length}...`);
                 const transcript = await transcribeSingleFile(apiKey, chunks[i]);
                 transcripts.push(transcript);
             }
