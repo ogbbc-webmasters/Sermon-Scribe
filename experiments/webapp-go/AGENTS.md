@@ -1,7 +1,5 @@
 # AGENTS.md
 
-⚠️ **IMPORTANT: COMMIT OFTEN!** After completing any logical unit of work, commit your changes immediately. Do not wait until the end of a conversation.
-
 Go backend for Sermon Scribe.
 
 ## Structure
