@@ -392,11 +392,12 @@ type MetadataRequest struct {
 
 // MetadataResponse is the response from metadata extraction
 type MetadataResponse struct {
-	Title      string   `json:"title"`
-	Speaker    string   `json:"speaker"`
-	Scriptures []string `json:"scriptures"`
-	Topics     []string `json:"topics"`
-	Error      string   `json:"error,omitempty"`
+	Title          string   `json:"title"`
+	TitleGenerated bool     `json:"title_generated"`
+	Speaker        string   `json:"speaker"`
+	Scriptures     []string `json:"scriptures"`
+	Topics         []string `json:"topics"`
+	Error          string   `json:"error,omitempty"`
 }
 
 // extractMetadata calls OpenAI to extract metadata from transcript
@@ -407,11 +408,13 @@ func (s *Server) extractMetadata(ctx context.Context, transcript string) (*Metad
 
 1. **title**: The sermon title or main theme. If explicitly mentioned, use that. Otherwise, create a concise, descriptive title based on the main message.
 
-2. **speaker**: The name of the pastor/preacher if mentioned. Look for introductions like "Pastor John" or "Reverend Smith" or self-references.
+2. **title_generated**: A boolean. Set to false if the title was explicitly stated in the sermon, true if you generated/inferred it.
 
-3. **scriptures**: An array of all Bible references mentioned (e.g., "John 3:16", "Psalm 23:1-6", "Romans 8"). Include chapter and verse when available.
+3. **speaker**: The name of the pastor/preacher if mentioned. Look for introductions like "Pastor John" or "Reverend Smith" or self-references.
 
-4. **topics**: An array of 2-5 topics from the PREDEFINED LIST below that best match the sermon content. Use ONLY topics from this list, using the exact topic names provided. Select topics that are central themes, not just briefly mentioned.
+4. **scriptures**: An array of all Bible references mentioned (e.g., "John 3:16", "Psalm 23:1-6", "Romans 8"). Include chapter and verse when available.
+
+5. **topics**: An array of 2-5 topics from the PREDEFINED LIST below that best match the sermon content. Use ONLY topics from this list, using the exact topic names provided. Select topics that are central themes, not just briefly mentioned.
 
 PREDEFINED TOPICS:
 %s
@@ -419,6 +422,7 @@ PREDEFINED TOPICS:
 Return ONLY valid JSON in this exact format:
 {
   "title": "string",
+  "title_generated": boolean,
   "speaker": "string or null if not found",
   "scriptures": ["string", ...],
   "topics": ["string", ...]
