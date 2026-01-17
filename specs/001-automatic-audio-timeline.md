@@ -91,7 +91,7 @@ Consecutive windows matching singing characteristics are merged into singing reg
 
 **Audio preview after applying edits**: Server generates `final.mp3`, user previews before confirming transcription.
 
-**Edit persistence**: Regions are not persisted until "Apply Edits" is clicked. Refresh loses unsaved changes (acceptable for this workflow).
+**Edit persistence**: User adjustments are not persisted until "Apply Edits" is clicked. On refresh, auto-detected regions are shown again and any adjustments are lost.
 
 ## Task List
 
