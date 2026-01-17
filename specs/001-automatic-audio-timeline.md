@@ -50,9 +50,13 @@ Regions are contiguous with no gaps or overlaps - the entire file is covered.
 
 ## API Additions
 
-- `POST /api/sermons/{id}/analyze` - Runs waveform analysis, returns detected regions
 - `GET /api/sermons/{id}/waveform` - Returns pre-rendered waveform data (JSON amplitude samples)
-- `POST /api/sermons/{id}/edit` - Accepts regions with keep/delete flags, applies cuts, produces `final.mp3`
+- `POST /api/sermons/{id}/analyze` - Runs waveform analysis, returns detected regions
+- `POST /api/sermons/{id}/apply-edits` - Accepts regions with keep/delete flags, applies cuts, produces `final.mp3`
+
+Audio files are served via `GET /api/sermons/{id}/audio/{type}` (from Spec 000):
+- `normalized` - For editing preview
+- `final` - For confirmation before transcription
 
 ## Timeline UI
 
@@ -62,7 +66,8 @@ Regions are contiguous with no gaps or overlaps - the entire file is covered.
 - Dragging a boundary adjusts both adjacent regions
 - HTML5 `<audio>` element for playback, synced to timeline position
 - Playhead indicator that follows audio position
-- "Apply & Transcribe" button to proceed
+- "Apply Edits" button to generate `final.mp3`
+- "Confirm & Transcribe" button to proceed after preview
 
 ## Default Region Actions
 
@@ -80,13 +85,21 @@ Regions are contiguous with no gaps or overlaps - the entire file is covered.
 - Better performance (don't send full audio to browser just for visualization)
 - Generate amplitude data on the server, render in browser canvas
 
-### Audio preview: full file streaming vs snippets
+### Audio preview during editing
 
-**Chosen: Full file streaming**
+**Chosen: Client-side virtual preview**
 
-- Simpler implementation: serve `normalized.mp3` directly
-- Use HTML5 `<audio>` element with `currentTime` seeking
-- No extra server logic for extracting snippets
+- Browser uses Web Audio API to skip deleted regions during playback
+- Instant feedback without server round-trip
+- Plays from `normalized.mp3` but respects keep/delete selections
+
+### Audio preview after applying edits
+
+**Chosen: Server-generated final.mp3**
+
+- After "Apply Edits", server generates `final.mp3` with FFmpeg
+- User can preview the actual final audio before transcription
+- Served via `GET /api/sermons/{id}/audio/final`
 
 ### Singing detection approach
 
@@ -113,11 +126,11 @@ Regions are contiguous with no gaps or overlaps - the entire file is covered.
 
 ### Backend: Apply Edits
 
-- [ ] Create `POST /api/sermons/{id}/edit` endpoint
+- [ ] Create `POST /api/sermons/{id}/apply-edits` endpoint
 - [ ] Accept regions with keep/delete flags
 - [ ] Apply cuts using FFmpeg (keep only "keep" regions)
 - [ ] Save result as `final.mp3` (32kbps)
-- [ ] Resume job to continue to transcription
+- [ ] Return success (does not start transcription yet)
 
 ### Frontend: Timeline Component
 
@@ -134,13 +147,15 @@ Regions are contiguous with no gaps or overlaps - the entire file is covered.
 
 ### Frontend: Audio Playback
 
-- [ ] Integrate HTML5 audio player
+- [ ] Integrate HTML5 audio player with `normalized.mp3`
 - [ ] Sync playhead to audio position
 - [ ] Click on timeline to seek
+- [ ] Use Web Audio API to skip deleted regions during preview
 
 ### Frontend: Workflow Integration
 
 - [ ] Replace download/upload UI with timeline when job is `awaiting_edit`
 - [ ] Call analyze endpoint on load to get regions
-- [ ] "Apply & Transcribe" button calls edit endpoint
-- [ ] Show transcription progress after edits applied
+- [ ] "Apply Edits" button calls apply-edits endpoint, then loads `final.mp3` for preview
+- [ ] "Confirm & Transcribe" button resumes job (calls existing upload-edited or new confirm endpoint)
+- [ ] Show transcription progress after confirmation

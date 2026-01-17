@@ -73,7 +73,7 @@ uploads/{sermon_id}/
 
 ### New Endpoints
 
-- `GET /api/sermons/{id}/download-normalized` - Download `normalized.mp3` for editing
+- `GET /api/sermons/{id}/audio/{type}` - Download audio file where `type` is `original`, `normalized`, or `final`
 - `POST /api/sermons/{id}/upload-edited` - Upload edited file as `final.mp3`, resumes job
 
 ### Job Status Changes
@@ -132,10 +132,11 @@ New uploads go through the full normalization → edit → transcription flow.
 
 ### Add Download Endpoint
 
-- [ ] Create `GET /api/sermons/{id}/download-normalized` endpoint
-- [ ] Return `normalized.mp3` as file download
+- [ ] Create `GET /api/sermons/{id}/audio/{type}` endpoint
+- [ ] Support `type` values: `original`, `normalized`, `final`
+- [ ] Return appropriate file as download
 - [ ] Require auth (same as other protected endpoints)
-- [ ] Return 404 if file doesn't exist or job not in `awaiting_edit`
+- [ ] Return 404 if file doesn't exist
 
 ### Add Upload-Edited Endpoint
 
