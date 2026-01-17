@@ -78,9 +78,17 @@ uploads/{sermon_id}/
 
 ### Job Status Changes
 
-New status: `awaiting_edit` - Job pauses here until user uploads edited file.
+Current statuses: `pending`, `processing`, `complete`, `error`
+
+New statuses:
+- `normalizing` - FFmpeg normalization in progress
+- `awaiting_edit` - Paused, waiting for user to upload edited file
+- `transcribing` - Sending audio to OpenAI for transcription
+- `extracting` - Extracting metadata from transcript
 
 Full flow: `pending` → `normalizing` → `awaiting_edit` → `transcribing` → `extracting` → `complete`
+
+The generic `processing` status is replaced with specific stages.
 
 ## UI Changes
 
