@@ -96,28 +96,28 @@ When job status is `awaiting_edit`, show:
 
 ## Task List
 
-### 1. Add Normalization to Upload Pipeline
+### Add Normalization to Upload Pipeline
 
 - [ ] After saving `original.*`, run FFmpeg normalization pipeline
 - [ ] Save output as `normalized.mp3` (mono, 44100Hz, noise gate, normalize, 128kbps)
 - [ ] Add `normalizing` job status
 - [ ] Update job progress during normalization
 
-### 2. Add `awaiting_edit` Job Stage
+### Add `awaiting_edit` Job Stage
 
 - [ ] Add `awaiting_edit` job status
 - [ ] Worker pauses job after normalization completes
 - [ ] Update checkpointing to handle new stage
 - [ ] Job stays in `awaiting_edit` until user uploads edited file
 
-### 3. Add Download Endpoint
+### Add Download Endpoint
 
 - [ ] Create `GET /api/sermons/{id}/download` endpoint
 - [ ] Return `normalized.mp3` as file download
 - [ ] Require auth (same as other protected endpoints)
 - [ ] Return 404 if file doesn't exist or job not in `awaiting_edit`
 
-### 4. Add Upload-Edited Endpoint
+### Add Upload-Edited Endpoint
 
 - [ ] Create `POST /api/sermons/{id}/upload-edited` endpoint
 - [ ] Accept audio file upload
@@ -126,7 +126,7 @@ When job status is `awaiting_edit`, show:
 - [ ] Update job status to resume processing
 - [ ] Worker picks up job and continues to transcription
 
-### 5. Update Frontend for Edit Workflow
+### Update Frontend for Edit Workflow
 
 - [ ] Detect `awaiting_edit` status in sermon detail view
 - [ ] Show download button for normalized audio
@@ -134,7 +134,7 @@ When job status is `awaiting_edit`, show:
 - [ ] Show brief instructions for the workflow
 - [ ] After upload, show transcription progress as before
 
-### 6. Update Transcription to Use Final Audio
+### Update Transcription to Use Final Audio
 
 - [ ] Modify worker to use `final.mp3` for transcription (instead of `original.*`)
 - [ ] Fall back to `original.*` if `final.mp3` doesn't exist (backward compatibility)
