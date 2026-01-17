@@ -85,7 +85,7 @@ Consecutive windows matching singing characteristics are merged into singing reg
 
 **Waveform rendering**: Server-side. Generate amplitude data with FFmpeg, render in browser canvas.
 
-**Waveform resolution**: Fixed sample count (e.g., 2000 samples) regardless of duration. Frontend scales to canvas width.
+**Waveform resolution**: Fixed samples per second (e.g., 10-20 samples/sec). Consistent detail regardless of duration. Frontend scales to canvas width.
 
 **Audio preview during editing**: Client-side via Web Audio API, skipping deleted regions. Instant feedback without server round-trip.
 
