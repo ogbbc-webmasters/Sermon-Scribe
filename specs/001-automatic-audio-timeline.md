@@ -91,7 +91,7 @@ Consecutive windows matching singing characteristics are merged into singing reg
 
 **Audio preview after applying edits**: Server generates `final.mp3`, user previews before confirming transcription.
 
-**Edit persistence**: User adjustments are not persisted until "Apply Edits" is clicked. On refresh, auto-detected regions are shown again and any adjustments are lost.
+**Edit persistence**: User adjustments saved to browser localStorage (keyed by sermon ID). On load, restore from localStorage if available, otherwise call analyze endpoint. Clear localStorage after "Apply Edits" succeeds.
 
 ## Task List
 
