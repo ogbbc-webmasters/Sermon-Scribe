@@ -67,23 +67,24 @@ Regions are contiguous with no gaps or overlaps - the entire file is covered.
 
 - `speaking` → keep
 - `singing` → delete  
-- `silence` → delete, auto-trimmed to 1 second gaps between kept regions
+- `silence` → delete, with 1 second gaps between kept regions; leading/trailing silence trimmed to zero
 
 ## Singing Detection Algorithm
 
 Singing is visually distinct from speech in a waveform - congregational singing shows as dense, sustained amplitude with no gaps, while speech has irregular spikes with pauses between phrases.
 
-Detection uses three signals analyzed over sliding windows (1-2 seconds):
+Detection uses two signals analyzed over sliding windows (1-2 seconds):
 
 1. **Amplitude variance** - Low variance = singing (sustained energy), high variance = speech (spiky)
-2. **Gap ratio** - No gaps = singing, frequent gaps = speech  
-3. **Pitch stability** - Sustained/slowly-varying pitch = singing, rapidly varying = speech
+2. **Gap ratio** - No gaps = singing, frequent gaps = speech
 
 Consecutive windows matching singing characteristics are merged into singing regions. This is deterministic signal processing with tunable thresholds, not ML.
 
+**Future enhancement**: Pitch stability analysis could improve accuracy if needed, but adds complexity. The two-signal approach should be sufficient given the stark visual difference between singing and speech.
+
 ## Design Decisions
 
-**Waveform rendering**: Server-side. Generate amplitude data with FFmpeg, render in browser canvas.
+**Waveform generation**: Server-side during normalization step (not lazy). User sees timeline instantly when opening editor.
 
 **Waveform resolution**: Fixed samples per second (e.g., 10-20 samples/sec). Consistent detail regardless of duration. Frontend scales to canvas width.
 
@@ -91,15 +92,15 @@ Consecutive windows matching singing characteristics are merged into singing reg
 
 **Audio preview after applying edits**: Server generates `final.mp3`, user previews before confirming transcription.
 
-**Edit persistence**: User adjustments saved to browser localStorage (keyed by sermon ID). On load, restore from localStorage if available, otherwise call analyze endpoint. Clear localStorage after "Apply Edits" succeeds.
+**Edit persistence**: User adjustments saved to browser localStorage (keyed by sermon ID). On load, restore from localStorage if available, otherwise call analyze endpoint. Clear localStorage after "Apply Edits" succeeds. Multiple tabs editing the same sermon: last write wins (not worth adding complexity for this edge case).
 
 ## Task List
 
 ### Backend: Waveform Generation
 
-- [ ] Generate waveform amplitude data from `normalized.mp3`
-- [ ] Create `GET /api/sermons/{id}/waveform` endpoint
-- [ ] Return JSON array of amplitude samples suitable for canvas rendering
+- [ ] Generate waveform amplitude data during normalization step (alongside `normalized.mp3`)
+- [ ] Save waveform data to `uploads/{sermon_id}/waveform.json`
+- [ ] Create `GET /api/sermons/{id}/waveform` endpoint to serve the pre-generated data
 
 ### Backend: Region Detection
 
