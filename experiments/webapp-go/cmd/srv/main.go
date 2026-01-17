@@ -8,7 +8,10 @@ import (
 	"srv.exe.dev/srv"
 )
 
-var flagListenAddr = flag.String("listen", ":8000", "address to listen on")
+var (
+	flagListenAddr = flag.String("listen", ":8000", "address to listen on")
+	flagDBPath     = flag.String("db", "sermon-scribe.db", "path to SQLite database")
+)
 
 func main() {
 	if err := run(); err != nil {
@@ -25,6 +28,12 @@ func run() error {
 		return fmt.Errorf("OPENAI_API_KEY environment variable required")
 	}
 
-	server := srv.New(apiKey)
+	db, err := srv.OpenDB(*flagDBPath)
+	if err != nil {
+		return fmt.Errorf("failed to open database: %w", err)
+	}
+	defer db.Close()
+
+	server := srv.New(apiKey, db)
 	return server.Serve(*flagListenAddr)
 }

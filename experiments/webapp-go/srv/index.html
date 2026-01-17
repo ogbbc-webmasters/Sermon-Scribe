@@ -5,721 +5,457 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sermon Scribe - Sermon Metadata Extractor</title>
     <style>
-        * {
-            box-sizing: border-box;
-        }
-        
+        * { box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             font-size: 18px;
             line-height: 1.6;
-            max-width: 800px;
+            max-width: 900px;
             margin: 0 auto;
             padding: 20px;
             background: #f5f5f5;
             color: #333;
         }
-        
-        h1 {
-            color: #2c3e50;
-            text-align: center;
-            font-size: 2.2em;
-            margin-bottom: 10px;
-        }
-        
-        .subtitle {
-            text-align: center;
-            color: #666;
-            margin-bottom: 30px;
-            font-size: 1.1em;
-        }
-        
+        h1 { color: #2c3e50; text-align: center; font-size: 2.2em; margin-bottom: 10px; }
+        .subtitle { text-align: center; color: #666; margin-bottom: 30px; font-size: 1.1em; }
         .card {
             background: white;
             border-radius: 12px;
-            padding: 30px;
+            padding: 25px;
             margin-bottom: 20px;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
-        
-        label {
-            display: block;
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: #2c3e50;
-            font-size: 1.1em;
-        }
-        
+        label { display: block; font-weight: 600; margin-bottom: 8px; color: #2c3e50; }
         input[type="file"] {
             width: 100%;
             padding: 15px;
             font-size: 1em;
             border: 2px solid #ddd;
             border-radius: 8px;
-            margin-bottom: 20px;
+            margin-bottom: 15px;
         }
-        
-        input[type="file"]:focus {
-            outline: none;
-            border-color: #3498db;
-        }
-        
         button {
             background: #3498db;
             color: white;
             border: none;
-            padding: 15px 30px;
-            font-size: 1.1em;
+            padding: 12px 24px;
+            font-size: 1em;
             border-radius: 8px;
             cursor: pointer;
             transition: background 0.2s;
         }
-        
-        button:hover {
-            background: #2980b9;
-        }
-        
-        button:disabled {
-            background: #bdc3c7;
-            cursor: not-allowed;
-        }
-        
-        .btn-primary {
-            width: 100%;
-            padding: 18px;
-            font-size: 1.2em;
-        }
-        
-        .btn-copy {
-            background: #27ae60;
-            padding: 8px 16px;
-            font-size: 0.9em;
-            margin-left: 10px;
-        }
-        
-        .btn-copy:hover {
-            background: #219a52;
-        }
-        
-        .btn-copy.copied {
-            background: #16a085;
-        }
-        
-        .btn-action {
-            flex: 1;
-            padding: 16px 20px;
-            font-size: 1.1em;
-            min-width: 0;
-        }
-        
-        .btn-export {
-            background: #9b59b6;
-        }
-        
-        .btn-export:hover {
-            background: #8e44ad;
-        }
-        
-        .progress-container {
-            display: none;
-            text-align: center;
-            padding: 30px;
-        }
-        
-        .progress-container.active {
-            display: block;
-        }
-        
-        
-        .progress-text {
-            font-size: 1.2em;
-            color: #666;
-        }
-        
-        .progress-step {
-            color: #3498db;
-            font-weight: 600;
-        }
-        
-        .progress-bar-container {
-            margin-top: 20px;
-            background: #e0e0e0;
-            border-radius: 10px;
-            height: 20px;
-            overflow: hidden;
-        }
-        
-        .progress-bar {
-            height: 100%;
-            background: linear-gradient(90deg, #3498db, #2ecc71);
-            border-radius: 10px;
-            transition: width 0.3s ease;
-        }
-        
-        .progress-bar.indeterminate {
-            width: 30% !important;
-            animation: indeterminate 1.5s ease-in-out infinite;
-            background: linear-gradient(90deg, #3498db, #9b59b6, #3498db);
-            background-size: 200% 100%;
-        }
-        
-        @keyframes indeterminate {
-            0% {
-                margin-left: 0%;
-                background-position: 0% 0%;
-            }
-            50% {
-                margin-left: 70%;
-                background-position: 100% 0%;
-            }
-            100% {
-                margin-left: 0%;
-                background-position: 0% 0%;
-            }
-        }
-        
-        .results {
-            display: none;
-        }
-        
-        .results.active {
-            display: block;
-        }
-        
-        .metadata-item {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 15px;
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            flex-wrap: wrap;
-        }
-        
-        .metadata-label {
-            font-weight: 600;
-            color: #2c3e50;
-            font-size: 0.95em;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 5px;
-            width: 100%;
-        }
-        
-        .metadata-value {
-            font-size: 1.2em;
-            color: #333;
-            flex: 1;
-            word-break: break-word;
-        }
-        
-        .metadata-actions {
-            flex-shrink: 0;
-        }
-        
-        .topics-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        
-        .topics-list li {
-            display: inline-block;
-            background: #3498db;
-            color: white;
-            padding: 5px 12px;
-            border-radius: 20px;
-            margin: 3px;
-            font-size: 0.95em;
-        }
-        
-        .scripture-list {
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }
-        
-        .scripture-list li {
-            display: inline-block;
-            background: #e74c3c;
-            color: white;
-            padding: 5px 12px;
-            border-radius: 20px;
-            margin: 3px;
-            font-size: 0.95em;
-        }
-        
-        .title-badge {
-            display: inline-block;
-            font-size: 0.6em;
-            padding: 3px 8px;
-            border-radius: 12px;
-            vertical-align: middle;
-            margin-left: 8px;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-        
-        .title-badge.generated {
-            background: #f39c12;
-            color: white;
-        }
-        
-        .title-badge.extracted {
-            background: #27ae60;
-            color: white;
-        }
-        
-        .transcript-toggle {
-            background: #95a5a6;
-            width: 100%;
-            text-align: left;
-            padding: 15px 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .transcript-toggle:hover {
-            background: #7f8c8d;
-        }
-        
-        .transcript-content {
-            display: none;
-            background: #f8f9fa;
-            padding: 20px;
-            border-radius: 0 0 8px 8px;
-            max-height: 300px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-            font-size: 1em;
-            line-height: 1.8;
-        }
-        
-        .transcript-content.open {
-            display: block;
-        }
-        
-        .arrow {
-            transition: transform 0.2s;
-        }
-        
-        .arrow.open {
-            transform: rotate(180deg);
-        }
-        
-        .error {
-            background: #fee;
-            border: 1px solid #e74c3c;
-            color: #c0392b;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: none;
-        }
-        
-        .error.active {
-            display: block;
-        }
-        
-        .help-text {
-            font-size: 0.9em;
-            color: #666;
-            margin-top: -15px;
-            margin-bottom: 20px;
-        }
-        
-        .btn-reset {
-            background: #34495e;
-        }
-        
-        .btn-reset:hover {
-            background: #2c3e50;
-        }
-
-        .file-info {
-            display: none;
-            background: #e8f4fd;
-            padding: 10px 15px;
-            border-radius: 6px;
-            margin-bottom: 15px;
-            font-size: 0.95em;
-        }
+        button:hover { background: #2980b9; }
+        button:disabled { background: #bdc3c7; cursor: not-allowed; }
+        .btn-primary { width: 100%; padding: 16px; font-size: 1.1em; }
+        .btn-secondary { background: #95a5a6; }
+        .btn-secondary:hover { background: #7f8c8d; }
+        .btn-danger { background: #e74c3c; }
+        .btn-danger:hover { background: #c0392b; }
+        .btn-copy { background: #27ae60; padding: 6px 12px; font-size: 0.85em; }
+        .btn-copy:hover { background: #219a52; }
+        .hidden { display: none !important; }
     </style>
 </head>
 <body>
     <h1>📖 Sermon Scribe</h1>
     <p class="subtitle">Extract metadata from sermon audio files</p>
-    
-    <div id="error" class="error"></div>
-    
-    <div id="login-section" class="card" style="display: none; text-align: center;">
-        <p style="font-size: 1.2em; margin-bottom: 20px;">Please log in to use Sermon Scribe</p>
-        <button class="btn-primary" onclick="window.location.href='/__exe.dev/login?redirect=/'" style="width: auto; padding: 15px 40px;">
-            🔐 Log In
-        </button>
+
+    <div id="error" class="card hidden" style="background:#fee;border:1px solid #e74c3c;color:#c0392b;"></div>
+
+    <div id="login-section" class="card hidden" style="text-align:center;">
+        <p style="font-size:1.2em;margin-bottom:20px;">Please log in to upload sermons</p>
+        <button onclick="location.href='/__exe.dev/login?redirect=/'" style="width:auto;padding:15px 40px;">🔐 Log In</button>
     </div>
-    
-    <div id="input-section" class="card">
-        <label for="audio-file">Sermon Audio File</label>
-        <input type="file" id="audio-file" accept=".mp3,.wav,audio/mpeg,audio/wav">
-        <p class="help-text">Supported formats: MP3, WAV. Large files are automatically processed in chunks.</p>
-        <div id="file-info" class="file-info"></div>
-        
-        <div id="usage-info" style="background: #e8f4fd; padding: 10px 15px; border-radius: 6px; margin-bottom: 15px; font-size: 0.95em; display: none;">
-            <span id="usage-text"></span>
+
+    <!-- Sermon List -->
+    <div id="sermon-list" class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+            <h2 style="margin:0;color:#2c3e50;">📋 Recent Sermons</h2>
+            <button id="upload-btn" onclick="showUploadForm()">➕ Upload New</button>
         </div>
-        
-        <button id="process-btn" class="btn-primary" onclick="processSermon()">
-            🎙️ Process Sermon
-        </button>
+        <div id="sermons-container"></div>
     </div>
-    
-    <div id="progress" class="card progress-container">
-        <p class="progress-text">Please wait...</p>
-        <p class="progress-step" id="progress-step">Uploading audio file...</p>
-        <div class="progress-bar-container">
-            <div class="progress-bar indeterminate" id="progress-bar" style="width: 0%"></div>
+
+    <!-- Upload Form (hidden by default) -->
+    <div id="upload-section" class="card hidden">
+        <h2 style="margin-top:0;color:#2c3e50;">📤 Upload Sermon</h2>
+        <label for="audio-file">Audio File (MP3/WAV)</label>
+        <input type="file" id="audio-file" accept=".mp3,.wav,audio/*">
+        <div id="file-info" class="hidden" style="background:#e8f4fd;padding:10px 15px;border-radius:6px;margin-bottom:15px;"></div>
+        <div id="usage-info" class="hidden" style="background:#e8f4fd;padding:10px 15px;border-radius:6px;margin-bottom:15px;"></div>
+        <div style="display:flex;gap:10px;">
+            <button class="btn-primary" onclick="uploadSermon()" id="submit-btn">🎙️ Process Sermon</button>
+            <button class="btn-secondary" onclick="hideUploadForm()" style="flex-shrink:0;">Cancel</button>
         </div>
     </div>
+
+    <!-- Sermon Detail View -->
+    <div id="sermon-detail" class="card hidden"></div>
+
+<script>
+let isLoggedIn = false;
+let currentSermonId = null;
+let currentEventSource = null;  // Track active SSE connection
+
+async function init() {
+    await checkAuth();
+    await loadSermons();
     
-    <div id="results" class="card results">
-        <h2 style="margin-top: 0; color: #2c3e50;">📋 Sermon Metadata</h2>
-        
-        <div class="metadata-item">
-            <div style="flex: 1;">
-                <div class="metadata-label">Sermon Title</div>
-                <div class="metadata-value" id="result-title"></div>
-            </div>
-            <div class="metadata-actions">
-                <button class="btn-copy" onclick="copyToClipboard('result-title', this)">Copy</button>
-            </div>
-        </div>
-        
-        <div class="metadata-item">
-            <div style="flex: 1;">
-                <div class="metadata-label">Speaker</div>
-                <div class="metadata-value" id="result-speaker"></div>
-            </div>
-            <div class="metadata-actions">
-                <button class="btn-copy" onclick="copyToClipboard('result-speaker', this)">Copy</button>
-            </div>
-        </div>
-        
-        <div class="metadata-item">
-            <div style="flex: 1;">
-                <div class="metadata-label">Scripture References</div>
-                <div class="metadata-value" id="result-scriptures"></div>
-            </div>
-            <div class="metadata-actions">
-                <button class="btn-copy" onclick="copyScriptures(this)">Copy</button>
-            </div>
-        </div>
-        
-        <div class="metadata-item">
-            <div style="flex: 1;">
-                <div class="metadata-label">Topics</div>
-                <div class="metadata-value" id="result-topics"></div>
-            </div>
-            <div class="metadata-actions">
-                <button class="btn-copy" onclick="copyTopics(this)">Copy</button>
-            </div>
-        </div>
-        
-        <div style="margin-top: 20px;">
-            <button class="transcript-toggle" onclick="toggleTranscript()">
-                <span>📝 View Full Transcript</span>
-                <span class="arrow" id="transcript-arrow">▼</span>
-            </button>
-            <div class="transcript-content" id="transcript-content"></div>
-        </div>
-        
-        <div style="display: flex; gap: 10px; margin-top: 20px;">
-            <button class="btn-action btn-export" onclick="exportYAML()">
-                📥 Export as YAML
-            </button>
-            <button class="btn-action btn-reset" onclick="resetForm()">
-                🔄 Process Another
-            </button>
-        </div>
-    </div>
+    // Check URL for sermon ID
+    const params = new URLSearchParams(location.search);
+    if (params.get('sermon')) {
+        showSermonDetail(params.get('sermon'));
+    }
+}
+
+async function checkAuth() {
+    try {
+        const resp = await fetch('/api/usage');
+        if (resp.status === 401) {
+            isLoggedIn = false;
+            document.getElementById('login-section').classList.remove('hidden');
+            document.getElementById('upload-btn').classList.add('hidden');
+        } else {
+            isLoggedIn = true;
+            const data = await resp.json();
+            updateUsageDisplay(data);
+        }
+    } catch (e) {
+        console.error('Auth check failed:', e);
+    }
+}
+
+function updateUsageDisplay(data) {
+    const el = document.getElementById('usage-info');
+    el.classList.remove('hidden');
+    if (data.used >= data.limit) {
+        el.innerHTML = `⚠️ Daily limit reached (${data.used}/${data.limit}). Try again tomorrow.`;
+        el.style.background = '#fff3cd';
+        document.getElementById('submit-btn').disabled = true;
+    } else {
+        el.innerHTML = `📊 Usage: ${data.used}/${data.limit} sermons today`;
+    }
+}
+
+async function loadSermons() {
+    try {
+        const resp = await fetch('/api/sermons');
+        const sermons = await resp.json();
+        renderSermonList(sermons || []);
+    } catch (e) {
+        showError('Failed to load sermons: ' + e.message);
+    }
+}
+
+function renderSermonList(sermons) {
+    const container = document.getElementById('sermons-container');
+    if (sermons.length === 0) {
+        container.innerHTML = '<p style="color:#666;text-align:center;padding:20px;">No sermons yet. Upload one to get started!</p>';
+        return;
+    }
     
-    <script>
-        // Store results globally for export
-        let sermonData = {
-            title: '',
-            titleGenerated: false,
-            speaker: '',
-            scriptures: [],
-            topics: [],
-            transcript: ''
-        };
+    container.innerHTML = sermons.map(s => {
+        const job = s.latest_job;
+        let statusBadge = '';
+        if (job) {
+            if (job.status === 'pending') statusBadge = '<span style="background:#f39c12;color:white;padding:2px 8px;border-radius:10px;font-size:0.8em;">⏳ Pending</span>';
+            else if (job.status === 'processing') statusBadge = '<span style="background:#3498db;color:white;padding:2px 8px;border-radius:10px;font-size:0.8em;">⚙️ Processing</span>';
+            else if (job.status === 'error') statusBadge = '<span style="background:#e74c3c;color:white;padding:2px 8px;border-radius:10px;font-size:0.8em;">❌ Error</span>';
+            else if (job.status === 'complete') statusBadge = '<span style="background:#27ae60;color:white;padding:2px 8px;border-radius:10px;font-size:0.8em;">✓ Complete</span>';
+        }
+        const title = s.title || s.filename || 'Untitled';
+        const date = new Date(s.created_at).toLocaleDateString();
+        return `
+            <div style="padding:15px;border-bottom:1px solid #eee;cursor:pointer;" onclick="showSermonDetail('${s.id}')">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <strong style="font-size:1.1em;">${escapeHtml(title)}</strong>
+                        ${s.speaker ? '<span style="color:#666;"> — ' + escapeHtml(s.speaker) + '</span>' : ''}
+                    </div>
+                    ${statusBadge}
+                </div>
+                <div style="color:#888;font-size:0.9em;margin-top:5px;">${date} • ${formatSize(s.file_size)}</div>
+            </div>
+        `;
+    }).join('');
+}
+
+function showUploadForm() {
+    if (!isLoggedIn) {
+        location.href = '/__exe.dev/login?redirect=/';
+        return;
+    }
+    document.getElementById('upload-section').classList.remove('hidden');
+    document.getElementById('sermon-list').classList.add('hidden');
+}
+
+function hideUploadForm() {
+    document.getElementById('upload-section').classList.add('hidden');
+    document.getElementById('sermon-list').classList.remove('hidden');
+    document.getElementById('audio-file').value = '';
+    document.getElementById('file-info').classList.add('hidden');
+}
+
+document.getElementById('audio-file').addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    const info = document.getElementById('file-info');
+    if (file) {
+        info.innerHTML = `<strong>📁 ${file.name}</strong> (${formatSize(file.size)})`;
+        info.classList.remove('hidden');
+    } else {
+        info.classList.add('hidden');
+    }
+});
+
+async function uploadSermon() {
+    const fileInput = document.getElementById('audio-file');
+    const file = fileInput.files[0];
+    if (!file) {
+        showError('Please select an audio file.');
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('audio', file);
+
+    document.getElementById('submit-btn').disabled = true;
+    document.getElementById('submit-btn').textContent = '⏳ Uploading...';
+
+    try {
+        const resp = await fetch('/api/sermons', { method: 'POST', body: formData });
+        const data = await resp.json();
         
-        // Check auth and usage on page load
-        async function checkAuthAndUsage() {
-            try {
-                const resp = await fetch('/api/usage');
-                if (resp.status === 401) {
-                    // Not logged in
-                    document.getElementById('login-section').style.display = 'block';
-                    document.getElementById('input-section').style.display = 'none';
-                    return;
-                }
-                const data = await resp.json();
-                const usageInfo = document.getElementById('usage-info');
-                const usageText = document.getElementById('usage-text');
-                usageInfo.style.display = 'block';
-                
-                if (data.used >= data.limit) {
-                    usageText.innerHTML = `⚠️ Daily site limit reached (${data.used}/${data.limit}). Try again tomorrow.`;
-                    usageInfo.style.background = '#fff3cd';
-                    document.getElementById('process-btn').disabled = true;
-                } else {
-                    usageText.innerHTML = `📊 Site usage: ${data.used}/${data.limit} sermons today`;
-                }
-            } catch (e) {
-                console.error('Failed to check usage:', e);
+        if (!resp.ok) {
+            throw new Error(data.error || 'Upload failed');
+        }
+
+        hideUploadForm();
+        await loadSermons();
+        showSermonDetail(data.sermon.id);
+    } catch (e) {
+        showError('Upload failed: ' + e.message);
+    } finally {
+        document.getElementById('submit-btn').disabled = false;
+        document.getElementById('submit-btn').textContent = '🎙️ Process Sermon';
+    }
+}
+
+async function showSermonDetail(id) {
+    currentSermonId = id;
+    history.pushState({}, '', '?sermon=' + id);
+    
+    document.getElementById('sermon-list').classList.add('hidden');
+    document.getElementById('upload-section').classList.add('hidden');
+    document.getElementById('sermon-detail').classList.remove('hidden');
+    document.getElementById('sermon-detail').innerHTML = '<p style="text-align:center;">Loading...</p>';
+
+    try {
+        const resp = await fetch('/api/sermons/' + id);
+        if (!resp.ok) throw new Error('Sermon not found');
+        const data = await resp.json();
+        renderSermonDetail(data.sermon, data.jobs);
+        
+        // If there's an active job, stream updates
+        if (data.jobs && data.jobs.length > 0) {
+            const job = data.jobs[0];
+            if (job.status === 'pending' || job.status === 'processing') {
+                streamJobUpdates(job.id, data.sermon.id);
             }
         }
+    } catch (e) {
+        document.getElementById('sermon-detail').innerHTML = '<p style="color:#c0392b;">Error: ' + e.message + '</p>';
+    }
+}
+
+function renderSermonDetail(sermon, jobs) {
+    const job = jobs && jobs[0];
+    const isProcessing = job && (job.status === 'pending' || job.status === 'processing');
+    const hasError = job && job.status === 'error';
+    const isComplete = job && job.status === 'complete';
+
+    let content = `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
+            <div>
+                <h2 style="margin:0;color:#2c3e50;">${escapeHtml(sermon.title || sermon.filename || 'Processing...')}</h2>
+                ${sermon.speaker ? '<p style="color:#666;margin:5px 0 0 0;">Speaker: ' + escapeHtml(sermon.speaker) + '</p>' : ''}
+            </div>
+            <button class="btn-secondary" onclick="backToList()">← Back</button>
+        </div>
+    `;
+
+    if (isProcessing) {
+        content += `
+            <div id="progress-section" style="background:#e8f4fd;padding:20px;border-radius:8px;margin-bottom:20px;">
+                <p style="margin:0 0 10px 0;font-weight:600;">⏳ Processing...</p>
+                <p id="progress-text" style="margin:0;color:#666;">${job.progress || 'Waiting to start...'}</p>
+                <div style="background:#ddd;border-radius:10px;height:20px;margin-top:15px;overflow:hidden;">
+                    <div id="progress-bar" style="background:linear-gradient(90deg,#3498db,#2ecc71);height:100%;transition:width 0.3s;width:${job.percent >= 0 ? job.percent : 0}%;"></div>
+                </div>
+            </div>
+        `;
+    }
+
+    if (hasError) {
+        content += `
+            <div style="background:#fee;border:1px solid #e74c3c;padding:15px;border-radius:8px;margin-bottom:20px;color:#c0392b;">
+                <strong>❌ Processing Error:</strong> ${escapeHtml(job.error)}
+            </div>
+        `;
+    }
+
+    if (isComplete || sermon.transcript) {
+        // Metadata section
+        content += '<div style="display:grid;gap:15px;">';
         
-        // Check on page load
-        checkAuthAndUsage();
-        
-        function showError(message) {
-            const errorEl = document.getElementById('error');
-            errorEl.textContent = message;
-            errorEl.classList.add('active');
+        if (sermon.scriptures && sermon.scriptures.length > 0) {
+            content += `
+                <div style="background:#f8f9fa;padding:15px;border-radius:8px;">
+                    <div style="font-weight:600;color:#2c3e50;margin-bottom:8px;">📖 Scripture References</div>
+                    <div>${sermon.scriptures.map(s => '<span style="display:inline-block;background:#e74c3c;color:white;padding:4px 12px;border-radius:15px;margin:3px;font-size:0.9em;">' + escapeHtml(s) + '</span>').join('')}</div>
+                </div>
+            `;
+        }
+
+        if (sermon.topics && sermon.topics.length > 0) {
+            content += `
+                <div style="background:#f8f9fa;padding:15px;border-radius:8px;">
+                    <div style="font-weight:600;color:#2c3e50;margin-bottom:8px;">🏷️ Topics</div>
+                    <div>${sermon.topics.map(t => '<span style="display:inline-block;background:#3498db;color:white;padding:4px 12px;border-radius:15px;margin:3px;font-size:0.9em;">' + escapeHtml(t) + '</span>').join('')}</div>
+                </div>
+            `;
+        }
+
+        if (sermon.transcript) {
+            content += `
+                <div style="background:#f8f9fa;padding:15px;border-radius:8px;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <span style="font-weight:600;color:#2c3e50;">📝 Transcript</span>
+                        <button class="btn-copy" onclick="copyTranscript()">Copy</button>
+                    </div>
+                    <div style="max-height:300px;overflow-y:auto;white-space:pre-wrap;font-size:0.95em;line-height:1.7;">${escapeHtml(sermon.transcript)}</div>
+                </div>
+            `;
+        }
+
+        content += '</div>';
+    }
+
+    // Delete button
+    if (isLoggedIn) {
+        content += `
+            <div style="margin-top:20px;padding-top:20px;border-top:1px solid #eee;">
+                <button class="btn-danger" onclick="deleteSermon('${sermon.id}')">🗑️ Delete Sermon</button>
+            </div>
+        `;
+    }
+
+    document.getElementById('sermon-detail').innerHTML = content;
+}
+
+function streamJobUpdates(jobId, sermonId) {
+    // Close any existing connection
+    if (currentEventSource) {
+        currentEventSource.close();
+        currentEventSource = null;
+    }
+    
+    const evtSource = new EventSource('/api/jobs/' + jobId + '/stream');
+    currentEventSource = evtSource;
+    
+    evtSource.onmessage = function(e) {
+        // Ignore updates if we've navigated away from this sermon
+        if (currentSermonId !== sermonId) {
+            evtSource.close();
+            if (currentEventSource === evtSource) currentEventSource = null;
+            return;
         }
         
-        function hideError() {
-            document.getElementById('error').classList.remove('active');
-        }
+        const job = JSON.parse(e.data);
         
-        // File size display
-        document.getElementById('audio-file').addEventListener('change', function(e) {
-            const file = e.target.files[0];
-            const fileInfo = document.getElementById('file-info');
-            if (file) {
-                const sizeMB = (file.size / (1024 * 1024)).toFixed(1);
-                fileInfo.innerHTML = `<strong>📁 ${file.name}</strong> (${sizeMB} MB)`;
-                fileInfo.style.display = 'block';
-            } else {
-                fileInfo.style.display = 'none';
-            }
-        });
+        const progressText = document.getElementById('progress-text');
+        const progressBar = document.getElementById('progress-bar');
         
-        function setProgress(step, percent) {
-            document.getElementById('progress-step').textContent = step;
-            const bar = document.getElementById('progress-bar');
-            if (percent < 0) {
-                // Indeterminate state
-                bar.classList.add('indeterminate');
-                bar.style.width = '';
-            } else {
-                // Determinate state
-                bar.classList.remove('indeterminate');
-                bar.style.width = percent + '%';
-            }
-        }
+        if (progressText) progressText.textContent = job.progress || 'Processing...';
+        if (progressBar && job.percent >= 0) progressBar.style.width = job.percent + '%';
         
-        function showProgress() {
-            document.getElementById('progress').classList.add('active');
-            document.getElementById('input-section').style.display = 'none';
-        }
-        
-        function hideProgress() {
-            document.getElementById('progress').classList.remove('active');
-        }
-        
-        function showResults() {
-            document.getElementById('results').classList.add('active');
-        }
-        
-        async function processSermon() {
-            hideError();
-            
-            const fileInput = document.getElementById('audio-file');
-            const file = fileInput.files[0];
-            
-            if (!file) {
-                showError('Please select an audio file.');
-                return;
-            }
-            
-            const validTypes = ['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/x-wav'];
-            const extension = file.name.toLowerCase().split('.').pop();
-            if (!validTypes.includes(file.type) && !['mp3', 'wav'].includes(extension)) {
-                showError('Please select a valid MP3 or WAV file.');
-                return;
-            }
-            
-            showProgress();
-            setProgress('Uploading audio file...', 0);
-            
-            const formData = new FormData();
-            formData.append('audio', file);
-            
-            try {
-                const response = await fetch('/api/transcribe', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let buffer = '';
-                
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-                    
-                    buffer += decoder.decode(value, { stream: true });
-                    
-                    // Process complete SSE messages
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop(); // Keep incomplete line in buffer
-                    
-                    for (const line of lines) {
-                        if (line.startsWith('data: ')) {
-                            const data = JSON.parse(line.slice(6));
-                            
-                            if (data.type === 'progress') {
-                                setProgress(data.step, data.percent);
-                            } else if (data.type === 'error') {
-                                throw new Error(data.step);
-                            } else if (data.type === 'complete') {
-                                // All done!
-                                sermonData.transcript = data.data.transcript;
-                                sermonData.title = data.data.title || 'Unknown Title';
-                                sermonData.titleGenerated = data.data.title_generated || false;
-                                sermonData.speaker = data.data.speaker || 'Unknown Speaker';
-                                sermonData.scriptures = data.data.scriptures || [];
-                                sermonData.topics = data.data.topics || [];
-                                
-                                displayResults();
-                                hideProgress();
-                                showResults();
-                                checkAuthAndUsage();
-                                return;
-                            }
-                        }
-                    }
-                }
-            } catch (error) {
-                hideProgress();
-                document.getElementById('input-section').style.display = 'block';
-                showError('Error: ' + error.message);
-                checkAuthAndUsage();
+        if (job.status === 'complete' || job.status === 'error') {
+            evtSource.close();
+            if (currentEventSource === evtSource) currentEventSource = null;
+            // Reload the sermon detail only if still viewing this sermon
+            if (currentSermonId === sermonId) {
+                setTimeout(() => showSermonDetail(currentSermonId), 500);
             }
         }
-        
-        function displayResults() {
-            const titleEl = document.getElementById('result-title');
-            titleEl.innerHTML = sermonData.title + 
-                (sermonData.titleGenerated 
-                    ? ' <span class="title-badge generated">AI Generated</span>' 
-                    : ' <span class="title-badge extracted">From Sermon</span>');
-            document.getElementById('result-speaker').textContent = sermonData.speaker || 'Not identified';
-            
-            const scripturesEl = document.getElementById('result-scriptures');
-            if (sermonData.scriptures.length > 0) {
-                scripturesEl.innerHTML = '<ul class="scripture-list">' + 
-                    sermonData.scriptures.map(s => `<li>${s}</li>`).join('') + 
-                    '</ul>';
-            } else {
-                scripturesEl.textContent = 'None identified';
-            }
-            
-            const topicsEl = document.getElementById('result-topics');
-            if (sermonData.topics.length > 0) {
-                topicsEl.innerHTML = '<ul class="topics-list">' + 
-                    sermonData.topics.map(t => `<li>${t}</li>`).join('') + 
-                    '</ul>';
-            } else {
-                topicsEl.textContent = 'None identified';
-            }
-            
-            document.getElementById('transcript-content').textContent = sermonData.transcript;
-        }
-        
-        function toggleTranscript() {
-            const content = document.getElementById('transcript-content');
-            const arrow = document.getElementById('transcript-arrow');
-            content.classList.toggle('open');
-            arrow.classList.toggle('open');
-        }
-        
-        function copyToClipboard(elementId, button) {
-            const text = document.getElementById(elementId).textContent;
-            navigator.clipboard.writeText(text).then(() => {
-                const originalText = button.textContent;
-                button.textContent = 'Copied!';
-                button.classList.add('copied');
-                setTimeout(() => {
-                    button.textContent = originalText;
-                    button.classList.remove('copied');
-                }, 1500);
-            });
-        }
-        
-        function copyScriptures(button) {
-            const text = sermonData.scriptures.join(', ');
-            navigator.clipboard.writeText(text).then(() => {
-                const originalText = button.textContent;
-                button.textContent = 'Copied!';
-                button.classList.add('copied');
-                setTimeout(() => {
-                    button.textContent = originalText;
-                    button.classList.remove('copied');
-                }, 1500);
-            });
-        }
-        
-        function copyTopics(button) {
-            const text = sermonData.topics.join(', ');
-            navigator.clipboard.writeText(text).then(() => {
-                const originalText = button.textContent;
-                button.textContent = 'Copied!';
-                button.classList.add('copied');
-                setTimeout(() => {
-                    button.textContent = originalText;
-                    button.classList.remove('copied');
-                }, 1500);
-            });
-        }
-        
-        function exportYAML() {
-            const yaml = `# Sermon Metadata\n# Generated by Sermon Scribe\n\ntitle: "${sermonData.title.replace(/"/g, '\\"')}"\nspeaker: "${(sermonData.speaker || 'Unknown').replace(/"/g, '\\"')}"\n\nscriptures:\n${sermonData.scriptures.map(s => `  - "${s}"`).join('\n') || '  []'}\n\ntopics:\n${sermonData.topics.map(t => `  - "${t}"`).join('\n') || '  []'}\n\ntranscript: |\n${sermonData.transcript.split('\n').map(line => '  ' + line).join('\n')}\n`;
-            
-            const blob = new Blob([yaml], { type: 'text/yaml' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `sermon-${sermonData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').substring(0, 50)}.yaml`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-        }
-        
-        function resetForm() {
-            document.getElementById('results').classList.remove('active');
-            document.getElementById('input-section').style.display = 'block';
-            document.getElementById('audio-file').value = '';
-            document.getElementById('file-info').style.display = 'none';
-            document.getElementById('transcript-content').classList.remove('open');
-            document.getElementById('transcript-arrow').classList.remove('open');
-            sermonData = {
-                title: '',
-                titleGenerated: false,
-                speaker: '',
-                scriptures: [],
-                topics: [],
-                transcript: ''
-            };
-        }
-    </script>
+    };
+    
+    evtSource.onerror = function() {
+        evtSource.close();
+        if (currentEventSource === evtSource) currentEventSource = null;
+    };
+}
+
+function backToList() {
+    // Close any active SSE connection
+    if (currentEventSource) {
+        currentEventSource.close();
+        currentEventSource = null;
+    }
+    currentSermonId = null;
+    history.pushState({}, '', '/');
+    document.getElementById('sermon-detail').classList.add('hidden');
+    document.getElementById('sermon-list').classList.remove('hidden');
+    loadSermons();
+}
+
+async function deleteSermon(id) {
+    if (!confirm('Delete this sermon? This cannot be undone.')) return;
+    
+    try {
+        const resp = await fetch('/api/sermons/' + id, { method: 'DELETE' });
+        if (!resp.ok) throw new Error('Delete failed');
+        backToList();
+    } catch (e) {
+        showError('Delete failed: ' + e.message);
+    }
+}
+
+function copyTranscript() {
+    const text = document.querySelector('#sermon-detail [style*="pre-wrap"]').textContent;
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = document.querySelector('#sermon-detail .btn-copy');
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+}
+
+function showError(msg) {
+    const el = document.getElementById('error');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    setTimeout(() => el.classList.add('hidden'), 5000);
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+    return (bytes/(1024*1024)).toFixed(1) + ' MB';
+}
+
+window.onpopstate = function() {
+    const params = new URLSearchParams(location.search);
+    if (params.get('sermon')) {
+        showSermonDetail(params.get('sermon'));
+    } else {
+        backToList();
+    }
+};
+
+init();
+</script>
 </body>
 </html>
