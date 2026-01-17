@@ -26,10 +26,7 @@ Replace the download/edit/re-upload workflow with:
 
 3. **Apply edits** - Server applies cuts based on user selections, produces `final.mp3`
 
-## Prerequisites
-
-- [Spec 000](000-basic-audio-normalization.md) must be complete
-- Job already pauses at `awaiting_edit` with `normalized.mp3` ready
+Builds on [Spec 000](000-basic-audio-normalization.md) - job pauses at `awaiting_edit` with `normalized.mp3` ready.
 
 ## Region Data Structure
 
@@ -51,12 +48,9 @@ Regions are contiguous with no gaps or overlaps - the entire file is covered.
 ## API Additions
 
 - `GET /api/sermons/{id}/waveform` - Returns pre-rendered waveform data (JSON amplitude samples)
-- `POST /api/sermons/{id}/analyze` - Runs waveform analysis, returns detected regions
+- `POST /api/sermons/{id}/analyze` - Runs region detection, returns detected regions (async, may take 30s-2min for long audio)
 - `POST /api/sermons/{id}/apply-edits` - Accepts regions with keep/delete flags, applies cuts, produces `final.mp3`
-
-Audio files are served via `GET /api/sermons/{id}/audio/{type}` (from Spec 000):
-- `normalized` - For editing preview
-- `final` - For confirmation before transcription
+- `POST /api/sermons/{id}/confirm` - Resumes job to start transcription
 
 ## Timeline UI
 
@@ -73,41 +67,31 @@ Audio files are served via `GET /api/sermons/{id}/audio/{type}` (from Spec 000):
 
 - `speaking` → keep
 - `singing` → delete  
-- `silence` → delete (or auto-trim to ~1 second gap)
+- `silence` → delete, auto-trimmed to 1 second gaps between kept regions
+
+## Singing Detection Algorithm
+
+Singing is visually distinct from speech in a waveform - congregational singing shows as dense, sustained amplitude with no gaps, while speech has irregular spikes with pauses between phrases.
+
+Detection uses three signals analyzed over sliding windows (1-2 seconds):
+
+1. **Amplitude variance** - Low variance = singing (sustained energy), high variance = speech (spiky)
+2. **Gap ratio** - No gaps = singing, frequent gaps = speech  
+3. **Pitch stability** - Sustained/slowly-varying pitch = singing, rapidly varying = speech
+
+Consecutive windows matching singing characteristics are merged into singing regions. This is deterministic signal processing with tunable thresholds, not ML.
 
 ## Design Decisions
 
-### Waveform rendering: server-side vs client-side
+**Waveform rendering**: Server-side. Generate amplitude data with FFmpeg, render in browser canvas.
 
-**Chosen: Server-side**
+**Waveform resolution**: Fixed sample count (e.g., 2000 samples) regardless of duration. Frontend scales to canvas width.
 
-- Server already has FFmpeg
-- Better performance (don't send full audio to browser just for visualization)
-- Generate amplitude data on the server, render in browser canvas
+**Audio preview during editing**: Client-side via Web Audio API, skipping deleted regions. Instant feedback without server round-trip.
 
-### Audio preview during editing
+**Audio preview after applying edits**: Server generates `final.mp3`, user previews before confirming transcription.
 
-**Chosen: Client-side virtual preview**
-
-- Browser uses Web Audio API to skip deleted regions during playback
-- Instant feedback without server round-trip
-- Plays from `normalized.mp3` but respects keep/delete selections
-
-### Audio preview after applying edits
-
-**Chosen: Server-generated final.mp3**
-
-- After "Apply Edits", server generates `final.mp3` with FFmpeg
-- User can preview the actual final audio before transcription
-- Served via `GET /api/sermons/{id}/audio/final`
-
-### Singing detection approach
-
-**Chosen: Waveform analysis**
-
-- Singing has distinct characteristics: sustained energy, regular amplitude, smoother envelope
-- Speech has irregular amplitude, transients, gaps between words
-- Can detect without ML using basic signal analysis
+**Edit persistence**: Regions are not persisted until "Apply Edits" is clicked. Refresh loses unsaved changes (acceptable for this workflow).
 
 ## Task List
 
@@ -157,5 +141,5 @@ Audio files are served via `GET /api/sermons/{id}/audio/{type}` (from Spec 000):
 - [ ] Replace download/upload UI with timeline when job is `awaiting_edit`
 - [ ] Call analyze endpoint on load to get regions
 - [ ] "Apply Edits" button calls apply-edits endpoint, then loads `final.mp3` for preview
-- [ ] "Confirm & Transcribe" button resumes job (calls existing upload-edited or new confirm endpoint)
+- [ ] "Confirm & Transcribe" button calls `POST /api/sermons/{id}/confirm` to resume job
 - [ ] Show transcription progress after confirmation

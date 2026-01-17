@@ -19,9 +19,7 @@ Currently, sermon audio must be manually edited in Audacity before upload:
 
 This is tedious and requires specialized software. The goal is to eliminate Audacity entirely by handling the full workflow in the web app: **raw audio → edited audio → transcription → metadata**.
 
-## Implementation Phases
-
-### Phase 1: Manual Editing Workflow (this spec)
+## Proposed Solution
 
 Add server-side audio normalization with a manual editing step:
 
@@ -33,31 +31,24 @@ Add server-side audio normalization with a manual editing step:
 6. User uploads edited file back to same sermon → `final.mp3`
 7. Job resumes → transcription → metadata
 
-This validates the `awaiting_edit` job stage and file structure before building the complex UI.
-
-### Phase 2: In-Browser Editing
-
-See [Spec 001](001-automatic-audio-timeline.md) - replaces steps 4-6 with a timeline UI.
+[Spec 001](001-automatic-audio-timeline.md) will later replace steps 4-6 with an in-browser timeline UI.
 
 ## Normalization Pipeline
-
-FFmpeg processes the uploaded audio:
-
-1. **Convert to mono** - Mix stereo down to single channel
-2. **Resample to 44100 Hz** - Standard sample rate
-3. **Noise gate** - Remove low-level background noise
-4. **Normalize volume** - Consistent loudness
 
 ```bash
 ffmpeg -i original.wav \
   -ac 1 \
   -ar 44100 \
-  -af "agate=threshold=-30dB,loudnorm" \
+  -af "agate=threshold=TBD,loudnorm" \
   -b:a 128k \
   normalized.mp3
 ```
 
-Output is 128kbps for good editing quality. Final export after user edits will be 32kbps.
+Converts to mono, resamples to 44100 Hz, applies noise gate and loudness normalization. Output is 128kbps for editing quality; `final.mp3` will be 32kbps.
+
+**Supported input formats**: Any format FFmpeg can decode.
+
+**Noise gate threshold**: TBD - needs testing with actual sermon recordings to find optimal value.
 
 ## File Structure
 
@@ -78,17 +69,14 @@ uploads/{sermon_id}/
 
 ### Job Status Changes
 
-Current statuses: `pending`, `processing`, `complete`, `error`
+New statuses replace the generic `processing` status:
 
-New statuses:
 - `normalizing` - FFmpeg normalization in progress
 - `awaiting_edit` - Paused, waiting for user to upload edited file
 - `transcribing` - Sending audio to OpenAI for transcription
 - `extracting` - Extracting metadata from transcript
 
 Full flow: `pending` → `normalizing` → `awaiting_edit` → `transcribing` → `extracting` → `complete`
-
-The generic `processing` status is replaced with specific stages.
 
 ## UI Changes
 
@@ -101,9 +89,11 @@ When job status is `awaiting_edit`, show:
 ## Backward Compatibility
 
 - **Completed sermons**: Unaffected
-- **In-progress jobs**: On restart, jobs with old `processing` status will be reset. Since they have no `final.mp3`, they'll use `original.*` directly for transcription (skipping the edit workflow). This matches the old behavior.
+- **In-progress jobs**: On startup, `ResetStaleJobs()` already resets `processing` jobs to `pending`. These will fall back to `original.*` for transcription since they have no `final.mp3`.
 
-New uploads go through the full normalization → edit → transcription flow.
+## Authentication
+
+New endpoints use the existing exe.dev proxy auth (`X-Exedev-Userid` header), same as other protected endpoints.
 
 ## Task List
 
