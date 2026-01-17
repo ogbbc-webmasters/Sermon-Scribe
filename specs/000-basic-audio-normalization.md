@@ -35,13 +35,9 @@ Add server-side audio normalization with a manual editing step:
 
 This validates the `awaiting_edit` job stage and file structure before building the complex UI.
 
-### Phase 2: In-Browser Editing (future spec)
+### Phase 2: In-Browser Editing
 
-Replace steps 4-6 with a timeline UI:
-
-- Waveform display with region detection (silence, speaking, singing)
-- User adjusts boundaries and marks regions to keep/delete
-- Server applies cuts automatically
+See [001-automatic-audio-timeline.md](001-automatic-audio-timeline.md) - replaces steps 4-6 with a timeline UI.
 
 ## Normalization Pipeline
 
