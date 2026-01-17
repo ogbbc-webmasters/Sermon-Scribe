@@ -37,7 +37,7 @@ This validates the `awaiting_edit` job stage and file structure before building 
 
 ### Phase 2: In-Browser Editing
 
-See [spec 001](001-automatic-audio-timeline.md) - replaces steps 4-6 with a timeline UI.
+See [Spec 001](001-automatic-audio-timeline.md) - replaces steps 4-6 with a timeline UI.
 
 ## Normalization Pipeline
 
