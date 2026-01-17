@@ -19,154 +19,122 @@ Currently, sermon audio must be manually edited in Audacity before upload:
 
 This is tedious and requires specialized software. The goal is to eliminate Audacity entirely by handling the full workflow in the web app: **raw audio → edited audio → transcription → metadata**.
 
-## Proposed Solution
+## Implementation Phases
 
-Add an audio editing stage between upload and transcription with:
+### Phase 1: Manual Editing Workflow (this spec)
 
-1. **Automatic audio normalization** - Convert to mono, resample, apply noise gate and normalization using FFmpeg
-2. **Automatic region detection** - Analyze the waveform to detect three region types:
-   - `silence` - Extended periods of low amplitude
-   - `speaking` - Normal speech patterns
-   - `singing` - Sustained notes, regular amplitude (easily distinguishable from speech)
-3. **Timeline UI** - Visual waveform display with color-coded regions where users can:
-   - Adjust region boundaries (drag edges)
-   - Mark regions as keep/delete
-   - Preview audio playback synced to timeline
-4. **Apply edits** - Generate final edited audio, then proceed to existing transcription pipeline
+Add server-side audio normalization with a manual editing step:
+
+1. Upload raw audio → creates sermon
+2. Server normalizes (mono, resample, noise gate, normalize) → `normalized.mp3`
+3. Job pauses at `awaiting_edit`
+4. User downloads `normalized.mp3`
+5. User edits in Audacity (cuts singing, silence, etc.)
+6. User uploads edited file back to same sermon → `final.mp3`
+7. Job resumes → transcription → metadata
+
+This validates the `awaiting_edit` job stage and file structure before building the complex UI.
+
+### Phase 2: In-Browser Editing (future spec)
+
+Replace steps 4-6 with a timeline UI:
+
+- Waveform display with region detection (silence, speaking, singing)
+- User adjusts boundaries and marks regions to keep/delete
+- Server applies cuts automatically
+
+## Normalization Pipeline
+
+FFmpeg processes the uploaded audio:
+
+1. **Convert to mono** - Mix stereo down to single channel
+2. **Resample to 44100 Hz** - Standard sample rate
+3. **Noise gate** - Remove low-level background noise
+4. **Normalize volume** - Consistent loudness
+
+```bash
+ffmpeg -i original.wav \
+  -ac 1 \
+  -ar 44100 \
+  -af "agate=threshold=-30dB,loudnorm" \
+  -b:a 128k \
+  normalized.mp3
+```
+
+Output is 128kbps for good editing quality. Final export after user edits will be 32kbps.
 
 ## File Structure
 
 ```
 uploads/{sermon_id}/
   original.*          # Raw upload (any format: wav, mp3, m4a, etc.)
-  normalized.mp3      # Transcoded for browser playback (64-128kbps)
-  final.mp3           # After user edits applied (32kbps)
+  normalized.mp3      # After normalization (128kbps, for editing)
+  final.mp3           # After user edits (32kbps, for transcription)
   chunks/chunk_N.mp3  # For transcription (from final.mp3)
 ```
 
-## API Additions
+## API Changes
 
-- `POST /api/sermons/{id}/analyze` - Runs FFmpeg analysis, returns detected regions
-- `GET /api/sermons/{id}/waveform` - Returns pre-rendered waveform data (JSON amplitude samples or SVG)
-- `POST /api/sermons/{id}/edit` - Accepts final region boundaries, applies cuts, produces edited audio
-- `GET /uploads/{id}/normalized.mp3` - Serve normalized audio for browser playback
+### New Endpoints
 
-## Region Data Structure
+- `GET /api/sermons/{id}/download` - Download `normalized.mp3` for editing
+- `POST /api/sermons/{id}/upload-edited` - Upload edited file as `final.mp3`, resumes job
 
-```json
-{
-  "duration": 5400.0,
-  "regions": [
-    {"start": 0, "end": 45.2, "type": "silence"},
-    {"start": 45.2, "end": 120.5, "type": "speaking"},
-    {"start": 120.5, "end": 185.0, "type": "singing"},
-    {"start": 185.0, "end": 187.5, "type": "silence"},
-    {"start": 187.5, "end": 2400.0, "type": "speaking"}
-  ]
-}
-```
+### Job Status Changes
 
-Regions are contiguous with no gaps or overlaps - the entire file is covered.
+New status: `awaiting_edit` - Job pauses here until user uploads edited file.
 
-## Timeline UI
+Full flow: `pending` → `normalizing` → `awaiting_edit` → `transcribing` → `extracting` → `complete`
 
-- Waveform display rendered from server-generated data
-- Color-coded regions: speaking=green, singing=red, silence=gray
-- Each region has a keep/delete toggle
-- Dragging a boundary adjusts both adjacent regions
-- HTML5 `<audio>` element for playback, synced to timeline position
-- "Apply & Transcribe" button to proceed
+## UI Changes
 
-## Job Stages
+When job status is `awaiting_edit`, show:
 
-The job pipeline becomes:
-
-1. `pending` → `analyzing` → `awaiting_edit` (pauses for user input)
-2. User reviews regions, adjusts as needed, submits edits
-3. `editing` → `transcribing` → `extracting` → `complete`
-
-## Design Decisions
-
-### Waveform rendering: server-side vs client-side
-
-**Chosen: Server-side**
-
-- Server already has FFmpeg
-- Better performance (don't send full audio to browser just for visualization)
-- Generate amplitude data or SVG on the server
-
-### Audio preview: full file streaming vs snippets
-
-**Chosen: Full file streaming**
-
-- Simpler implementation: serve `normalized.mp3` directly
-- Use HTML5 `<audio>` element with `currentTime` seeking
-- No extra server logic for extracting snippets
-
-### Region detection approach
-
-**Chosen: Server-side FFmpeg + custom analysis**
-
-- Silence detection via FFmpeg `silencedetect` filter
-- Singing detection via waveform characteristics (sustained energy, less amplitude variance, pitch stability)
-- All processing happens server-side
-
-### Default region actions
-
-- `speaking` → keep
-- `singing` → delete
-- `silence` → delete (or auto-trim to ~1 second gap)
+1. Download button for `normalized.mp3`
+2. Upload form for edited file
+3. Instructions: "Download, edit in Audacity, then upload your edited file"
 
 ## Task List
 
-### Backend: Audio Normalization
+### 1. Add Normalization to Upload Pipeline
 
-- [ ] On upload, save original file with original extension
-- [ ] Add FFmpeg pipeline to normalize audio (mono, resample 44100Hz, noise gate, normalize)
-- [ ] Save normalized output as `normalized.mp3` (64-128kbps)
-- [ ] Serve normalized file at `/uploads/{id}/normalized.mp3`
+- [ ] After saving `original.*`, run FFmpeg normalization pipeline
+- [ ] Save output as `normalized.mp3` (mono, 44100Hz, noise gate, normalize, 128kbps)
+- [ ] Add `normalizing` job status
+- [ ] Update job progress during normalization
 
-### Backend: Region Detection
+### 2. Add `awaiting_edit` Job Stage
 
-- [ ] Implement silence detection using FFmpeg `silencedetect`
-- [ ] Implement singing detection via waveform analysis
-- [ ] Create `POST /api/sermons/{id}/analyze` endpoint
-- [ ] Return regions as JSON with start, end, type
+- [ ] Add `awaiting_edit` job status
+- [ ] Worker pauses job after normalization completes
+- [ ] Update checkpointing to handle new stage
+- [ ] Job stays in `awaiting_edit` until user uploads edited file
 
-### Backend: Waveform Generation
+### 3. Add Download Endpoint
 
-- [ ] Generate waveform amplitude data from normalized audio
-- [ ] Create `GET /api/sermons/{id}/waveform` endpoint
-- [ ] Return data suitable for frontend rendering (JSON array or SVG)
+- [ ] Create `GET /api/sermons/{id}/download` endpoint
+- [ ] Return `normalized.mp3` as file download
+- [ ] Require auth (same as other protected endpoints)
+- [ ] Return 404 if file doesn't exist or job not in `awaiting_edit`
 
-### Backend: Edit Application
+### 4. Add Upload-Edited Endpoint
 
-- [ ] Create `POST /api/sermons/{id}/edit` endpoint
-- [ ] Accept region boundaries with keep/delete flags
-- [ ] Apply cuts using FFmpeg
-- [ ] Save result as `final.mp3` (32kbps)
-- [ ] Trigger transcription pipeline on `final.mp3`
+- [ ] Create `POST /api/sermons/{id}/upload-edited` endpoint
+- [ ] Accept audio file upload
+- [ ] Validate job is in `awaiting_edit` status
+- [ ] Save as `final.mp3` (transcode to 32kbps mono if needed)
+- [ ] Update job status to resume processing
+- [ ] Worker picks up job and continues to transcription
 
-### Backend: Job Stage Updates
+### 5. Update Frontend for Edit Workflow
 
-- [ ] Add new job statuses: `analyzing`, `awaiting_edit`, `editing`
-- [ ] Update worker to pause at `awaiting_edit` for user input
-- [ ] Update checkpointing to handle new stages
+- [ ] Detect `awaiting_edit` status in sermon detail view
+- [ ] Show download button for normalized audio
+- [ ] Show upload form for edited file
+- [ ] Show brief instructions for the workflow
+- [ ] After upload, show transcription progress as before
 
-### Frontend: Timeline UI
+### 6. Update Transcription to Use Final Audio
 
-- [ ] Create timeline component with waveform display
-- [ ] Render color-coded region overlays (green/red/gray)
-- [ ] Implement boundary dragging to adjust regions
-- [ ] Add keep/delete toggle for each region
-- [ ] Integrate HTML5 audio player synced to timeline
-- [ ] Add playhead indicator that follows audio position
-- [ ] Add "Apply & Transcribe" button
-
-### Frontend: Workflow Integration
-
-- [ ] Update upload flow to show editing stage
-- [ ] Show analysis progress while detecting regions
-- [ ] Transition to timeline UI when `awaiting_edit`
-- [ ] Submit edits and show transcription progress
-- [ ] Handle errors gracefully at each stage
+- [ ] Modify worker to use `final.mp3` for transcription (instead of `original.*`)
+- [ ] Fall back to `original.*` if `final.mp3` doesn't exist (backward compatibility)
