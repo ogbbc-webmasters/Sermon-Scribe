@@ -63,6 +63,9 @@ func (s *Server) Serve(addr string) error {
 	mux.HandleFunc("GET /api/sermons/{id}", s.handleGetSermon)
 	mux.HandleFunc("DELETE /api/sermons/{id}", s.requireAuth(s.handleDeleteSermon))
 	
+	// Audio
+	mux.HandleFunc("GET /api/sermons/{id}/audio", s.handleSermonAudio)
+	
 	// Jobs
 	mux.HandleFunc("GET /api/sermons/{id}/jobs", s.handleListJobs)
 	mux.HandleFunc("GET /api/jobs/{id}", s.handleGetJob)
@@ -319,6 +322,38 @@ func (s *Server) handleDeleteSermon(w http.ResponseWriter, r *http.Request) {
 
 	slog.Info("deleted sermon", "id", id)
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// handleSermonAudio serves the audio file for a sermon
+func (s *Server) handleSermonAudio(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	uploadsDir := filepath.Join("uploads", id)
+
+	// Look for original.* file (could be .mp3 or .wav)
+	var audioPath string
+	var contentType string
+	for _, ext := range []string{".mp3", ".wav"} {
+		path := filepath.Join(uploadsDir, "original"+ext)
+		if _, err := os.Stat(path); err == nil {
+			audioPath = path
+			if ext == ".mp3" {
+				contentType = "audio/mpeg"
+			} else {
+				contentType = "audio/wav"
+			}
+			break
+		}
+	}
+
+	if audioPath == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Audio file not found"})
+		return
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	http.ServeFile(w, r, audioPath)
 }
 
 // handleListJobs returns jobs for a sermon

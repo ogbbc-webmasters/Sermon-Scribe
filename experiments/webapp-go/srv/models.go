@@ -86,9 +86,8 @@ func (r *SermonRow) ToSermon() (*Sermon, error) {
 	}
 
 	if r.TopicsReasoningJSON != "" {
-		if err := json.Unmarshal([]byte(r.TopicsReasoningJSON), &s.TopicsReasoning); err != nil {
-			return nil, err
-		}
+		// Try to parse as JSON object, ignore errors (old data may be plain string)
+		json.Unmarshal([]byte(r.TopicsReasoningJSON), &s.TopicsReasoning)
 	}
 
 	if r.ScripturesJSON != "" {
