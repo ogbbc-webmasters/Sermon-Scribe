@@ -80,6 +80,12 @@ func (d *DB) migrate() error {
 	// Add checkpoint_json column if it doesn't exist (migration for existing DBs)
 	d.db.Exec(`ALTER TABLE jobs ADD COLUMN checkpoint_json TEXT NOT NULL DEFAULT '{}'`)
 
+	// Add title_reasoning column if it doesn't exist (migration for existing DBs)
+	d.db.Exec(`ALTER TABLE sermons ADD COLUMN title_reasoning TEXT NOT NULL DEFAULT ''`)
+
+	// Add topics_reasoning column if it doesn't exist (migration for existing DBs)
+	d.db.Exec(`ALTER TABLE sermons ADD COLUMN topics_reasoning TEXT NOT NULL DEFAULT ''`)
+
 	return nil
 }
 
@@ -108,14 +114,14 @@ func (d *DB) CreateSermon(filename string, fileSize int64) (*Sermon, error) {
 // GetSermon retrieves a sermon by ID
 func (d *DB) GetSermon(id string) (*Sermon, error) {
 	row := d.db.QueryRow(`
-		SELECT id, title, title_generated, speaker, scriptures_json, topics_json,
-		       transcript, filename, file_size, created_at, updated_at
+		SELECT id, title, title_generated, title_reasoning, speaker, scriptures_json, topics_json,
+		       topics_reasoning, transcript, filename, file_size, created_at, updated_at
 		FROM sermons WHERE id = ?
 	`, id)
 
 	var r SermonRow
-	err := row.Scan(&r.ID, &r.Title, &r.TitleGenerated, &r.Speaker,
-		&r.ScripturesJSON, &r.TopicsJSON, &r.Transcript, &r.Filename,
+	err := row.Scan(&r.ID, &r.Title, &r.TitleGenerated, &r.TitleReasoning, &r.Speaker,
+		&r.ScripturesJSON, &r.TopicsJSON, &r.TopicsReasoningJSON, &r.Transcript, &r.Filename,
 		&r.FileSize, &r.CreatedAt, &r.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -130,8 +136,8 @@ func (d *DB) GetSermon(id string) (*Sermon, error) {
 // ListSermons returns all sermons, most recent first
 func (d *DB) ListSermons(limit, offset int) ([]*Sermon, error) {
 	rows, err := d.db.Query(`
-		SELECT id, title, title_generated, speaker, scriptures_json, topics_json,
-		       transcript, filename, file_size, created_at, updated_at
+		SELECT id, title, title_generated, title_reasoning, speaker, scriptures_json, topics_json,
+		       topics_reasoning, transcript, filename, file_size, created_at, updated_at
 		FROM sermons
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
@@ -144,8 +150,8 @@ func (d *DB) ListSermons(limit, offset int) ([]*Sermon, error) {
 	var sermons []*Sermon
 	for rows.Next() {
 		var r SermonRow
-		err := rows.Scan(&r.ID, &r.Title, &r.TitleGenerated, &r.Speaker,
-			&r.ScripturesJSON, &r.TopicsJSON, &r.Transcript, &r.Filename,
+		err := rows.Scan(&r.ID, &r.Title, &r.TitleGenerated, &r.TitleReasoning, &r.Speaker,
+			&r.ScripturesJSON, &r.TopicsJSON, &r.TopicsReasoningJSON, &r.Transcript, &r.Filename,
 			&r.FileSize, &r.CreatedAt, &r.UpdatedAt)
 		if err != nil {
 			return nil, err
@@ -161,16 +167,17 @@ func (d *DB) ListSermons(limit, offset int) ([]*Sermon, error) {
 }
 
 // UpdateSermonMetadata updates the extracted metadata for a sermon
-func (d *DB) UpdateSermonMetadata(id string, title string, titleGenerated bool, speaker string, scriptures, topics []string, transcript string) error {
+func (d *DB) UpdateSermonMetadata(id string, title string, titleGenerated bool, titleReasoning string, speaker string, scriptures, topics []string, topicsReasoning map[string]string, transcript string) error {
 	scripturesJSON, _ := json.Marshal(scriptures)
 	topicsJSON, _ := json.Marshal(topics)
+	topicsReasoningJSON, _ := json.Marshal(topicsReasoning)
 
 	_, err := d.db.Exec(`
 		UPDATE sermons
-		SET title = ?, title_generated = ?, speaker = ?, scriptures_json = ?,
-		    topics_json = ?, transcript = ?, updated_at = ?
+		SET title = ?, title_generated = ?, title_reasoning = ?, speaker = ?, scriptures_json = ?,
+		    topics_json = ?, topics_reasoning = ?, transcript = ?, updated_at = ?
 		WHERE id = ?
-	`, title, titleGenerated, speaker, string(scripturesJSON), string(topicsJSON), transcript, time.Now(), id)
+	`, title, titleGenerated, titleReasoning, speaker, string(scripturesJSON), string(topicsJSON), string(topicsReasoningJSON), transcript, time.Now(), id)
 	return err
 }
 
@@ -348,5 +355,14 @@ func (d *DB) FailJob(id string, errMsg string) error {
 	_, err := d.db.Exec(`
 		UPDATE jobs SET status = ?, error = ?, completed_at = ? WHERE id = ?
 	`, string(JobStatusError), errMsg, now, id)
+	return err
+}
+
+// RetryJob resets a failed job to pending so it can be resumed from checkpoint
+func (d *DB) RetryJob(id string) error {
+	_, err := d.db.Exec(`
+		UPDATE jobs SET status = ?, error = '', started_at = NULL, completed_at = NULL
+		WHERE id = ? AND status = ?
+	`, string(JobStatusPending), id, string(JobStatusError))
 	return err
 }

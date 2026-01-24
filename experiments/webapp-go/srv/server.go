@@ -63,10 +63,14 @@ func (s *Server) Serve(addr string) error {
 	mux.HandleFunc("GET /api/sermons/{id}", s.handleGetSermon)
 	mux.HandleFunc("DELETE /api/sermons/{id}", s.requireAuth(s.handleDeleteSermon))
 	
+	// Audio
+	mux.HandleFunc("GET /api/sermons/{id}/audio", s.handleSermonAudio)
+	
 	// Jobs
 	mux.HandleFunc("GET /api/sermons/{id}/jobs", s.handleListJobs)
 	mux.HandleFunc("GET /api/jobs/{id}", s.handleGetJob)
 	mux.HandleFunc("GET /api/jobs/{id}/stream", s.handleJobStream)
+	mux.HandleFunc("POST /api/jobs/{id}/retry", s.requireAuth(s.handleRetryJob))
 
 	slog.Info("starting server", "addr", addr, "dailyLimit", DailyLimit)
 	return http.ListenAndServe(addr, mux)
@@ -137,12 +141,14 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 // MetadataResponse is the response from metadata extraction
 type MetadataResponse struct {
-	Title          string   `json:"title"`
-	TitleGenerated bool     `json:"title_generated"`
-	Speaker        string   `json:"speaker"`
-	Scriptures     []string `json:"scriptures"`
-	Topics         []string `json:"topics"`
-	Error          string   `json:"error,omitempty"`
+	Title           string   `json:"title"`
+	TitleGenerated  bool     `json:"title_generated"`
+	TitleReasoning  string   `json:"title_reasoning"`
+	Speaker         string   `json:"speaker"`
+	Scriptures      []string `json:"scriptures"`
+	Topics          []string `json:"topics"`
+	TopicsReasoning map[string]string `json:"topics_reasoning"`
+	Error           string   `json:"error,omitempty"`
 }
 
 // handleListSermons returns all sermons
@@ -318,6 +324,38 @@ func (s *Server) handleDeleteSermon(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }
 
+// handleSermonAudio serves the audio file for a sermon
+func (s *Server) handleSermonAudio(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	uploadsDir := filepath.Join("uploads", id)
+
+	// Look for original.* file (could be .mp3 or .wav)
+	var audioPath string
+	var contentType string
+	for _, ext := range []string{".mp3", ".wav"} {
+		path := filepath.Join(uploadsDir, "original"+ext)
+		if _, err := os.Stat(path); err == nil {
+			audioPath = path
+			if ext == ".mp3" {
+				contentType = "audio/mpeg"
+			} else {
+				contentType = "audio/wav"
+			}
+			break
+		}
+	}
+
+	if audioPath == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Audio file not found"})
+		return
+	}
+
+	w.Header().Set("Content-Type", contentType)
+	http.ServeFile(w, r, audioPath)
+}
+
 // handleListJobs returns jobs for a sermon
 func (s *Server) handleListJobs(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -408,4 +446,42 @@ func sendJobSSE(w http.ResponseWriter, job *Job) {
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+// handleRetryJob resets a failed job to pending so it can be retried
+func (s *Server) handleRetryJob(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	id := r.PathValue("id")
+	job, err := s.DB.GetJob(id)
+	if err != nil {
+		slog.Error("failed to get job", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to get job"})
+		return
+	}
+	if job == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Job not found"})
+		return
+	}
+
+	if job.Status != JobStatusError {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Only failed jobs can be retried"})
+		return
+	}
+
+	if err := s.DB.RetryJob(id); err != nil {
+		slog.Error("failed to retry job", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to retry job"})
+		return
+	}
+
+	slog.Info("job queued for retry", "jobID", id)
+
+	// Return updated job
+	job, _ = s.DB.GetJob(id)
+	json.NewEncoder(w).Encode(job)
 }

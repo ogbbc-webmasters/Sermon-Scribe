@@ -7,17 +7,19 @@ import (
 
 // Sermon represents a processed sermon with metadata
 type Sermon struct {
-	ID             string    `json:"id"`
-	Title          string    `json:"title"`
-	TitleGenerated bool      `json:"title_generated"`
-	Speaker        string    `json:"speaker"`
-	Scriptures     []string  `json:"scriptures"`
-	Topics         []string  `json:"topics"`
-	Transcript     string    `json:"transcript"`
-	Filename       string    `json:"filename"`
-	FileSize       int64     `json:"file_size"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID              string    `json:"id"`
+	Title           string    `json:"title"`
+	TitleGenerated  bool      `json:"title_generated"`
+	TitleReasoning  string    `json:"title_reasoning"`
+	Speaker         string    `json:"speaker"`
+	Scriptures      []string  `json:"scriptures"`
+	Topics          []string  `json:"topics"`
+	TopicsReasoning map[string]string `json:"topics_reasoning"`
+	Transcript      string    `json:"transcript"`
+	Filename        string    `json:"filename"`
+	FileSize        int64     `json:"file_size"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 // JobStatus represents the state of a job
@@ -53,17 +55,19 @@ type Job struct {
 
 // SermonRow is the database representation of a Sermon
 type SermonRow struct {
-	ID             string
-	Title          string
-	TitleGenerated bool
-	Speaker        string
-	ScripturesJSON string
-	TopicsJSON     string
-	Transcript     string
-	Filename       string
-	FileSize       int64
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	ID              string
+	Title           string
+	TitleGenerated  bool
+	TitleReasoning  string
+	Speaker         string
+	ScripturesJSON  string
+	TopicsJSON      string
+	TopicsReasoningJSON string
+	Transcript      string
+	Filename        string
+	FileSize        int64
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // ToSermon converts a database row to a Sermon
@@ -72,12 +76,18 @@ func (r *SermonRow) ToSermon() (*Sermon, error) {
 		ID:             r.ID,
 		Title:          r.Title,
 		TitleGenerated: r.TitleGenerated,
+		TitleReasoning: r.TitleReasoning,
 		Speaker:        r.Speaker,
 		Transcript:     r.Transcript,
 		Filename:       r.Filename,
 		FileSize:       r.FileSize,
 		CreatedAt:      r.CreatedAt,
 		UpdatedAt:      r.UpdatedAt,
+	}
+
+	if r.TopicsReasoningJSON != "" {
+		// Try to parse as JSON object, ignore errors (old data may be plain string)
+		json.Unmarshal([]byte(r.TopicsReasoningJSON), &s.TopicsReasoning)
 	}
 
 	if r.ScripturesJSON != "" {

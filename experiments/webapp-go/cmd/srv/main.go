@@ -23,9 +23,9 @@ func main() {
 func run() error {
 	flag.Parse()
 
-	apiKey := os.Getenv("OPENAI_API_KEY")
+	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	if apiKey == "" {
-		return fmt.Errorf("OPENAI_API_KEY environment variable required")
+		return fmt.Errorf("OPENROUTER_API_KEY environment variable required")
 	}
 
 	db, err := srv.OpenDB(*flagDBPath)

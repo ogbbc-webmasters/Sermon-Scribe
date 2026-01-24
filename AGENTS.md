@@ -39,9 +39,8 @@ Sermon-Scribe/
 
 Go backend with embedded HTML frontend.
 
-- **Transcription**: OpenAI `gpt-4o-transcribe`
-- **Metadata extraction**: OpenAI `gpt-5-mini`
-- **Audio processing**: Server-side FFmpeg (splits into 10-min chunks)
+- **Transcription + Metadata**: OpenRouter with `google/gemini-3-flash-preview`
+- **Audio processing**: Server-side FFmpeg (prepares audio for API)
 - **Rate limit**: 20 sermons/day site-wide
 - **Auth**: Requires exe.dev login (checks `X-Exedev-Userid` header)
 - **Live Demo**: https://sermon-scribe.exe.xyz/
@@ -80,28 +79,33 @@ Python script using AssemblyAI for transcription.
 
 ## API Notes
 
-- `gpt-5-mini` does not support custom `temperature` parameter
-- Transcription uses parallel chunk processing (max 3 concurrent)
+- Single API call via OpenRouter (using Gemini 3 Flash) handles both transcription and metadata extraction
 - Progress updates streamed via SSE to frontend
 - Use `-1` for indeterminate progress percentage, `0-100` for determinate
 
 ## Specture System
 
-This project uses the Specture System for managing specifications and design documents. When the user asks about planned features, architectural decisions, or implementation details, refer to the specs/ directory in the repository. Each spec file (specs/NNN-name.md) contains:
+This project uses the Specture System for managing specifications and design documents. When the user asks about planned features, architectural decisions, or implementation details, refer to the `specs/` directory in the repository. Each spec file (specs/NNN-name.md) contains:
 
 - Design rationale and decisions
 - Task lists for implementation
 - Requirements and acceptance criteria
 
-The specs/ directory also contains [README.md](specs/README.md) with complete guidelines on how the spec system works.
+The `specs/` directory also contains `README.md` with complete guidelines on how the spec system works.
 
-Be sure to prompt the user for explicit permission before editing the design in any spec file.
+### Implementation Workflow
 
-When implementing a spec, follow this workflow for each task:
+**CRITICAL**: When implementing a spec, each task MUST be exactly one commit containing both the implementation AND the spec file update (change `- [ ]` to `- [x]`). Do NOT commit implementation changes without the corresponding spec update in the same commit.
 
-1. Complete a single task from the task list
-2. Update the spec file by changing `- [ ]` to `- [x]` for that task
-3. Commit both the implementation and spec update together with a conventional commit message (e.g., `feat: implement feature X`)
-4. Push the changes
+**Important**: Only edit spec files to mark tasks as complete during implementation. Do not retroactively update completed specs or modify design decisions without explicit user permission.
 
-This keeps the spec file as a living document that tracks implementation progress, with each task corresponding to one commit.
+### CLI Usage for AI Agents
+
+**IMPORTANT**: Always use non-interactive flags when running `specture` commands. The default interactive mode will hang waiting for user input and cause your workflow to fail.
+
+Use these flags:
+- `specture new --title "Spec Title"` (non-interactive spec creation)
+- `specture setup --yes` (non-interactive setup)
+- Pipe spec content: `cat body.md | specture new --title "Spec Title"`
+
+Run `specture --help` and `specture <command> --help` to learn about all available flags and options. See `specs/README.md` for complete non-interactive CLI examples.

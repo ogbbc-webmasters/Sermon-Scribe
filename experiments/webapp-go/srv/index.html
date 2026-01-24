@@ -10,7 +10,6 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             font-size: 18px;
             line-height: 1.6;
-            max-width: 900px;
             margin: 0 auto;
             padding: 20px;
             background: #f5f5f5;
@@ -20,10 +19,10 @@
         .subtitle { text-align: center; color: #666; margin-bottom: 30px; font-size: 1.1em; }
         .card {
             background: white;
-            border-radius: 12px;
             padding: 25px;
             margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            border: 1px solid #e0e0e0;
         }
         label { display: block; font-weight: 600; margin-bottom: 8px; color: #2c3e50; }
         input[type="file"] {
@@ -54,11 +53,151 @@
         .btn-copy { background: #27ae60; padding: 6px 12px; font-size: 0.85em; }
         .btn-copy:hover { background: #219a52; }
         .hidden { display: none !important; }
+        
+        @keyframes progress-shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .progress-bar-animated {
+            background: linear-gradient(90deg, #3498db 0%, #2ecc71 25%, #3498db 50%, #2ecc71 75%, #3498db 100%);
+            background-size: 200% 100%;
+            animation: progress-shimmer 2s linear infinite;
+        }
+        
+        /* Sermon Detail Desktop Layout */
+        .sermon-detail-content {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .sermon-detail-columns {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .sermon-left-col {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .sermon-right-col {
+            display: flex;
+            flex-direction: column;
+        }
+        .metadata-box {
+            background: #f8f9fa;
+        }
+        .metadata-label {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 6px;
+            font-size: 0.95em;
+        }
+        .tag { 
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 15px;
+            margin: 2px;
+            font-size: 0.9em;
+        }
+        .tag-scripture { background: #e74c3c; color: white; }
+        .tag-topic { background: #3498db; color: white; }
+        .transcript-box {
+            background: #f8f9fa;
+            display: flex;
+            flex-direction: column;
+            min-height: 200px;
+        }
+        .transcript-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .transcript-search-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .transcript-search-row input {
+            flex: 1;
+            min-width: 150px;
+            padding: 10px 14px;
+            font-size: 1em;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+        }
+        .transcript-content {
+            flex: 1;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            font-size: 0.95em;
+            line-height: 1.7;
+            max-height: 300px;
+        }
+        .search-nav-btn {
+            padding: 8px 14px;
+            font-size: 1em;
+            min-width: 80px;
+        }
+        
+        @media (min-width: 900px) {
+            body {
+                padding: 15px 20px;
+            }
+            .card { padding: 20px; margin-bottom: 15px; }
+            #sermon-detail {
+                height: calc(100vh - 50px);
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+            .sermon-detail-content {
+                flex: 1;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+            }
+            .sermon-detail-columns {
+                flex: 1;
+                flex-direction: row;
+                overflow: hidden;
+            }
+            .sermon-left-col {
+                width: 38%;
+                flex-shrink: 0;
+                overflow-y: auto;
+                padding-right: 15px;
+            }
+            .sermon-right-col {
+                width: 62%;
+                overflow: hidden;
+            }
+            .transcript-box {
+                height: 100%;
+                min-height: 0;
+            }
+            .transcript-content {
+                max-height: none;
+                flex: 1;
+                min-height: 0;
+            }
+            .sermon-header {
+                flex-shrink: 0;
+            }
+            .sermon-footer {
+                flex-shrink: 0;
+            }
+        }
     </style>
 </head>
 <body>
-    <h1>📖 Sermon Scribe</h1>
-    <p class="subtitle">Extract metadata from sermon audio files</p>
+    <div id="page-header">
+        <h1>📖 Sermon Scribe</h1>
+        <p class="subtitle">Extract metadata from sermon audio files</p>
+    </div>
 
     <div id="error" class="card hidden" style="background:#fee;border:1px solid #e74c3c;color:#c0392b;"></div>
 
@@ -68,7 +207,7 @@
     </div>
 
     <!-- Sermon List -->
-    <div id="sermon-list" class="card">
+    <div id="sermon-list" class="card" style="max-width:600px;margin:0 auto 20px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
             <h2 style="margin:0;color:#2c3e50;">📋 Recent Sermons</h2>
             <button id="upload-btn" onclick="showUploadForm()">➕ Upload New</button>
@@ -77,7 +216,7 @@
     </div>
 
     <!-- Upload Form (hidden by default) -->
-    <div id="upload-section" class="card hidden">
+    <div id="upload-section" class="card hidden" style="max-width:600px;margin:0 auto 20px;">
         <h2 style="margin-top:0;color:#2c3e50;">📤 Upload Sermon</h2>
         <label for="audio-file">Audio File (MP3/WAV)</label>
         <input type="file" id="audio-file" accept=".mp3,.wav,audio/*">
@@ -90,12 +229,14 @@
     </div>
 
     <!-- Sermon Detail View -->
-    <div id="sermon-detail" class="card hidden"></div>
+    <div id="sermon-detail" class="hidden"></div>
 
 <script>
 let isLoggedIn = false;
 let currentSermonId = null;
 let currentEventSource = null;  // Track active SSE connection
+let searchMatchIndex = -1;  // Current highlighted match index (-1 = none)
+let searchMatchCount = 0;   // Total number of matches
 
 async function init() {
     await checkAuth();
@@ -246,6 +387,7 @@ async function showSermonDetail(id) {
     
     document.getElementById('sermon-list').classList.add('hidden');
     document.getElementById('upload-section').classList.add('hidden');
+    document.getElementById('page-header').classList.add('hidden');
     document.getElementById('sermon-detail').classList.remove('hidden');
     document.getElementById('sermon-detail').innerHTML = '<p style="text-align:center;">Loading...</p>';
 
@@ -272,78 +414,147 @@ function renderSermonDetail(sermon, jobs) {
     const isProcessing = job && (job.status === 'pending' || job.status === 'processing');
     const hasError = job && job.status === 'error';
     const isComplete = job && job.status === 'complete';
+    const hasContent = isComplete || sermon.transcript;
 
     let content = `
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;">
-            <div>
-                <h2 style="margin:0;color:#2c3e50;">${escapeHtml(sermon.title || sermon.filename || 'Processing...')}</h2>
-                ${sermon.speaker ? '<p style="color:#666;margin:5px 0 0 0;">Speaker: ' + escapeHtml(sermon.speaker) + '</p>' : ''}
-            </div>
+        <div class="sermon-header" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
             <button class="btn-secondary" onclick="backToList()">← Back</button>
         </div>
     `;
 
     if (isProcessing) {
         content += `
-            <div id="progress-section" style="background:#e8f4fd;padding:20px;border-radius:8px;margin-bottom:20px;">
-                <p style="margin:0 0 10px 0;font-weight:600;">⏳ Processing...</p>
+            <div id="progress-section" style="background:#e8f4fd;padding:15px;border-radius:8px;margin-bottom:15px;">
+                <p style="margin:0 0 8px 0;font-weight:600;">⏳ Processing...</p>
                 <p id="progress-text" style="margin:0;color:#666;">${job.progress || 'Waiting to start...'}</p>
-                <div style="background:#ddd;border-radius:10px;height:20px;margin-top:15px;overflow:hidden;">
-                    <div id="progress-bar" style="background:linear-gradient(90deg,#3498db,#2ecc71);height:100%;transition:width 0.3s;width:${job.percent >= 0 ? job.percent : 0}%;"></div>
+                <div style="background:#ddd;border-radius:10px;height:16px;margin-top:10px;overflow:hidden;">
+                    <div id="progress-bar" class="progress-bar-animated" style="height:100%;transition:width 0.3s;width:${job.percent >= 0 ? job.percent : 5}%;min-width:5%;"></div>
                 </div>
             </div>
         `;
     }
 
     if (hasError) {
+        console.error('Job error:', job.error);
         content += `
-            <div style="background:#fee;border:1px solid #e74c3c;padding:15px;border-radius:8px;margin-bottom:20px;color:#c0392b;">
-                <strong>❌ Processing Error:</strong> ${escapeHtml(job.error)}
+            <div style="background:#fee;border:1px solid #e74c3c;padding:12px;border-radius:8px;margin-bottom:15px;color:#c0392b;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div><strong>❌ Processing failed.</strong> Please try again.</div>
+                    ${isLoggedIn ? '<button onclick="retryJob(\''+job.id+'\')" style="background:#e74c3c;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;">🔄 Retry</button>' : ''}
+                </div>
             </div>
         `;
     }
 
-    if (isComplete || sermon.transcript) {
-        // Metadata section
-        content += '<div style="display:grid;gap:15px;">';
+    content += '<div class="sermon-detail-content">';
+    
+    if (hasContent) {
+        content += '<div class="sermon-detail-columns">';
+        
+        // Left column: title, speaker, reasoning, scriptures, topics
+        content += '<div class="sermon-left-col">';
+        
+        // Warning banner
+        content += `
+            <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:0.8em;color:#856404;">
+                ⚠️ AI-generated to save you time — please carefully verify before submitting.
+            </div>
+        `;
+        
+        // Title section
+        content += `
+            <div>
+                <h2 style="margin:0 0 5px 0;color:#2c3e50;font-size:1.4em;">${escapeHtml(sermon.title || sermon.filename || 'Untitled')}</h2>
+                <p style="color:#888;margin:0 0 5px 0;font-size:0.85em;">📁 ${escapeHtml(sermon.filename)}</p>
+                ${sermon.speaker ? '<p style="color:#666;margin:0 0 5px 0;">Speaker: ' + escapeHtml(sermon.speaker) + '</p>' : ''}
+                ${sermon.title_reasoning ? '<details style="margin-top:5px;"><summary style="cursor:pointer;color:#888;font-size:0.85em;">💡 Why this title?</summary><p style="color:#666;margin:5px 0 0 0;font-size:0.85em;font-style:italic;">' + escapeHtml(sermon.title_reasoning) + '</p></details>' : ''}
+            </div>
+        `;
         
         if (sermon.scriptures && sermon.scriptures.length > 0) {
             content += `
-                <div style="background:#f8f9fa;padding:15px;border-radius:8px;">
-                    <div style="font-weight:600;color:#2c3e50;margin-bottom:8px;">📖 Scripture References</div>
-                    <div>${sermon.scriptures.map(s => '<span style="display:inline-block;background:#e74c3c;color:white;padding:4px 12px;border-radius:15px;margin:3px;font-size:0.9em;">' + escapeHtml(s) + '</span>').join('')}</div>
+                <div class="card metadata-box">
+                    <div class="metadata-label">📖 Scriptures</div>
+                    <div>${sermon.scriptures.map(s => '<span class="tag tag-scripture">' + escapeHtml(s) + '</span>').join('')}</div>
                 </div>
             `;
         }
 
         if (sermon.topics && sermon.topics.length > 0) {
+            const topicsHtml = sermon.topics.map(t => {
+                const reasoning = sermon.topics_reasoning && sermon.topics_reasoning[t];
+                if (reasoning) {
+                    return `<span class="tag tag-topic" style="cursor:help;" title="${escapeHtml(reasoning)}">${escapeHtml(t)}</span>`;
+                }
+                return '<span class="tag tag-topic">' + escapeHtml(t) + '</span>';
+            }).join('');
+            
+            // Collect all reasoning for expandable section
+            const reasoningList = sermon.topics.filter(t => sermon.topics_reasoning && sermon.topics_reasoning[t]).map(t => 
+                `<div style="margin-bottom:8px;"><strong>${escapeHtml(t)}:</strong> ${escapeHtml(sermon.topics_reasoning[t])}</div>`
+            ).join('');
+            
             content += `
-                <div style="background:#f8f9fa;padding:15px;border-radius:8px;">
-                    <div style="font-weight:600;color:#2c3e50;margin-bottom:8px;">🏷️ Topics</div>
-                    <div>${sermon.topics.map(t => '<span style="display:inline-block;background:#3498db;color:white;padding:4px 12px;border-radius:15px;margin:3px;font-size:0.9em;">' + escapeHtml(t) + '</span>').join('')}</div>
+                <div class="card metadata-box">
+                    <div class="metadata-label">🏷️ Topics</div>
+                    <div>${topicsHtml}</div>
+                    ${reasoningList ? '<details style="margin-top:8px;"><summary style="cursor:pointer;color:#888;font-size:0.85em;">💡 Why these topics?</summary><div style="margin-top:8px;font-size:0.85em;color:#666;">' + reasoningList + '</div></details>' : ''}
                 </div>
             `;
         }
-
+        
+        content += '</div>'; // end left col
+        
+        // Right column: transcript
+        content += '<div class="sermon-right-col">';
+        
+        // Audio player
+        content += `
+            <div class="card">
+                <div class="metadata-label">🔊 Audio</div>
+                <audio controls style="width:100%;" src="/api/sermons/${sermon.id}/audio"></audio>
+            </div>
+        `;
+        
         if (sermon.transcript) {
             content += `
-                <div style="background:#f8f9fa;padding:15px;border-radius:8px;">
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                        <span style="font-weight:600;color:#2c3e50;">📝 Transcript</span>
-                        <button class="btn-copy" onclick="copyTranscript()">Copy</button>
+                <div class="card transcript-box">
+                    <div class="transcript-header">
+                        <span class="metadata-label" style="margin:0;">📝 Transcript</span>
+                        <button class="btn-copy" onclick="copyTranscript()">Copy Full Transcript</button>
                     </div>
-                    <div style="max-height:300px;overflow-y:auto;white-space:pre-wrap;font-size:0.95em;line-height:1.7;">${escapeHtml(sermon.transcript)}</div>
+                    <div class="transcript-search-row">
+                        <input type="text" id="transcript-search" placeholder="Search transcript..." oninput="searchTranscript()">
+                        <div id="search-nav" class="hidden" style="display:flex;align-items:center;gap:8px;">
+                            <button class="search-nav-btn" onclick="prevMatch()">◀ Prev</button>
+                            <span id="search-match-count" style="font-size:1em;color:#666;white-space:nowrap;"></span>
+                            <button class="search-nav-btn" onclick="nextMatch()">Next ▶</button>
+                        </div>
+                        <span id="search-no-matches" class="hidden" style="font-size:1em;color:#e74c3c;">No matches</span>
+                    </div>
+                    <div id="transcript-content" class="transcript-content" data-original="${escapeHtml(sermon.transcript).replace(/"/g, '&quot;')}">${escapeHtml(sermon.transcript)}</div>
                 </div>
             `;
         }
-
-        content += '</div>';
+        
+        content += '</div>'; // end right col
+        content += '</div>'; // end columns
+    } else {
+        // No content yet - show title only (during processing)
+        content += `
+            <div>
+                <h2 style="margin:0 0 5px 0;color:#2c3e50;">${escapeHtml(sermon.title || sermon.filename || 'Processing...')}</h2>
+                ${sermon.speaker ? '<p style="color:#666;margin:0;">Speaker: ' + escapeHtml(sermon.speaker) + '</p>' : ''}
+            </div>
+        `;
     }
+    
+    content += '</div>'; // end sermon-detail-content
 
     // Delete button
     if (isLoggedIn) {
         content += `
-            <div style="margin-top:20px;padding-top:20px;border-top:1px solid #eee;">
+            <div class="sermon-footer" style="margin-top:15px;padding-top:15px;border-top:1px solid #eee;">
                 <button class="btn-danger" onclick="deleteSermon('${sermon.id}')">🗑️ Delete Sermon</button>
             </div>
         `;
@@ -404,6 +615,7 @@ function backToList() {
     history.pushState({}, '', '/');
     document.getElementById('sermon-detail').classList.add('hidden');
     document.getElementById('sermon-list').classList.remove('hidden');
+    document.getElementById('page-header').classList.remove('hidden');
     loadSermons();
 }
 
@@ -419,13 +631,131 @@ async function deleteSermon(id) {
     }
 }
 
+async function retryJob(jobId) {
+    try {
+        const resp = await fetch('/api/jobs/' + jobId + '/retry', { method: 'POST' });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Retry failed');
+        // Reload sermon detail to show processing state
+        showSermonDetail(currentSermonId);
+    } catch (e) {
+        showError('Retry failed: ' + e.message);
+    }
+}
+
 function copyTranscript() {
-    const text = document.querySelector('#sermon-detail [style*="pre-wrap"]').textContent;
+    const transcriptEl = document.getElementById('transcript-content');
+    // Use original text if available (to avoid copying highlight markup)
+    const text = transcriptEl.dataset.original ? 
+        transcriptEl.dataset.original.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"') :
+        transcriptEl.textContent;
     navigator.clipboard.writeText(text).then(() => {
         const btn = document.querySelector('#sermon-detail .btn-copy');
         btn.textContent = 'Copied!';
-        setTimeout(() => btn.textContent = 'Copy', 1500);
+        setTimeout(() => btn.textContent = 'Copy Full Transcript', 1500);
     });
+}
+
+function searchTranscript() {
+    const searchInput = document.getElementById('transcript-search');
+    const transcriptEl = document.getElementById('transcript-content');
+    const matchCountEl = document.getElementById('search-match-count');
+    const searchNavEl = document.getElementById('search-nav');
+    const noMatchesEl = document.getElementById('search-no-matches');
+    
+    if (!searchInput || !transcriptEl) return;
+    
+    const searchTerm = searchInput.value.trim();
+    const originalText = transcriptEl.dataset.original || '';
+    
+    // Clear highlights if search is empty
+    if (!searchTerm) {
+        transcriptEl.innerHTML = originalText;
+        searchNavEl.classList.add('hidden');
+        noMatchesEl.classList.add('hidden');
+        searchMatchIndex = -1;
+        searchMatchCount = 0;
+        return;
+    }
+    
+    // Escape special regex characters in search term
+    const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp('(' + escapedTerm + ')', 'gi');
+    
+    // Count matches
+    const decodedText = originalText.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+    const matches = decodedText.match(regex);
+    searchMatchCount = matches ? matches.length : 0;
+    
+    // Update match count display
+    if (searchMatchCount === 0) {
+        searchNavEl.classList.add('hidden');
+        noMatchesEl.classList.remove('hidden');
+        searchMatchIndex = -1;
+        transcriptEl.innerHTML = originalText;
+        return;
+    } else {
+        noMatchesEl.classList.add('hidden');
+        searchNavEl.classList.remove('hidden');
+        searchNavEl.style.display = 'flex';
+        // Start at first match
+        searchMatchIndex = 0;
+    }
+    
+    // Highlight matches in the HTML-escaped text with data-match-index
+    let matchIdx = 0;
+    const highlightedText = originalText.replace(regex, function(match) {
+        const idx = matchIdx++;
+        return '<mark class="search-match" data-match-index="' + idx + '" style="background:#ffeb3b;padding:2px 4px;border-radius:3px;">' + match + '</mark>';
+    });
+    transcriptEl.innerHTML = highlightedText;
+    
+    // Update display and scroll to first match
+    updateMatchDisplay();
+}
+
+function updateMatchDisplay() {
+    const matchCountEl = document.getElementById('search-match-count');
+    const transcriptEl = document.getElementById('transcript-content');
+    
+    if (searchMatchCount === 0) {
+        matchCountEl.textContent = '';
+        return;
+    }
+    
+    // Update counter text
+    matchCountEl.textContent = (searchMatchIndex + 1) + ' of ' + searchMatchCount;
+    matchCountEl.style.color = '#27ae60';
+    
+    // Reset all marks to yellow, then highlight current as orange
+    const marks = transcriptEl.querySelectorAll('mark.search-match');
+    marks.forEach((mark, idx) => {
+        if (idx === searchMatchIndex) {
+            mark.style.background = '#ff9800';  // Orange for current
+            mark.style.boxShadow = '0 0 0 2px #ff9800';
+        } else {
+            mark.style.background = '#ffeb3b';  // Yellow for others
+            mark.style.boxShadow = 'none';
+        }
+    });
+    
+    // Scroll to current match
+    const currentMark = transcriptEl.querySelector('mark[data-match-index="' + searchMatchIndex + '"]');
+    if (currentMark) {
+        currentMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+}
+
+function nextMatch() {
+    if (searchMatchCount === 0) return;
+    searchMatchIndex = (searchMatchIndex + 1) % searchMatchCount;  // Wrap around
+    updateMatchDisplay();
+}
+
+function prevMatch() {
+    if (searchMatchCount === 0) return;
+    searchMatchIndex = (searchMatchIndex - 1 + searchMatchCount) % searchMatchCount;  // Wrap around
+    updateMatchDisplay();
 }
 
 function showError(msg) {
