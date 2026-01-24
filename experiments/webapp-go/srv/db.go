@@ -83,6 +83,9 @@ func (d *DB) migrate() error {
 	// Add title_reasoning column if it doesn't exist (migration for existing DBs)
 	d.db.Exec(`ALTER TABLE sermons ADD COLUMN title_reasoning TEXT NOT NULL DEFAULT ''`)
 
+	// Add topics_reasoning column if it doesn't exist (migration for existing DBs)
+	d.db.Exec(`ALTER TABLE sermons ADD COLUMN topics_reasoning TEXT NOT NULL DEFAULT ''`)
+
 	return nil
 }
 
@@ -112,13 +115,13 @@ func (d *DB) CreateSermon(filename string, fileSize int64) (*Sermon, error) {
 func (d *DB) GetSermon(id string) (*Sermon, error) {
 	row := d.db.QueryRow(`
 		SELECT id, title, title_generated, title_reasoning, speaker, scriptures_json, topics_json,
-		       transcript, filename, file_size, created_at, updated_at
+		       topics_reasoning, transcript, filename, file_size, created_at, updated_at
 		FROM sermons WHERE id = ?
 	`, id)
 
 	var r SermonRow
 	err := row.Scan(&r.ID, &r.Title, &r.TitleGenerated, &r.TitleReasoning, &r.Speaker,
-		&r.ScripturesJSON, &r.TopicsJSON, &r.Transcript, &r.Filename,
+		&r.ScripturesJSON, &r.TopicsJSON, &r.TopicsReasoning, &r.Transcript, &r.Filename,
 		&r.FileSize, &r.CreatedAt, &r.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -134,7 +137,7 @@ func (d *DB) GetSermon(id string) (*Sermon, error) {
 func (d *DB) ListSermons(limit, offset int) ([]*Sermon, error) {
 	rows, err := d.db.Query(`
 		SELECT id, title, title_generated, title_reasoning, speaker, scriptures_json, topics_json,
-		       transcript, filename, file_size, created_at, updated_at
+		       topics_reasoning, transcript, filename, file_size, created_at, updated_at
 		FROM sermons
 		ORDER BY created_at DESC
 		LIMIT ? OFFSET ?
@@ -148,7 +151,7 @@ func (d *DB) ListSermons(limit, offset int) ([]*Sermon, error) {
 	for rows.Next() {
 		var r SermonRow
 		err := rows.Scan(&r.ID, &r.Title, &r.TitleGenerated, &r.TitleReasoning, &r.Speaker,
-			&r.ScripturesJSON, &r.TopicsJSON, &r.Transcript, &r.Filename,
+			&r.ScripturesJSON, &r.TopicsJSON, &r.TopicsReasoning, &r.Transcript, &r.Filename,
 			&r.FileSize, &r.CreatedAt, &r.UpdatedAt)
 		if err != nil {
 			return nil, err
@@ -164,16 +167,16 @@ func (d *DB) ListSermons(limit, offset int) ([]*Sermon, error) {
 }
 
 // UpdateSermonMetadata updates the extracted metadata for a sermon
-func (d *DB) UpdateSermonMetadata(id string, title string, titleGenerated bool, titleReasoning string, speaker string, scriptures, topics []string, transcript string) error {
+func (d *DB) UpdateSermonMetadata(id string, title string, titleGenerated bool, titleReasoning string, speaker string, scriptures, topics []string, topicsReasoning string, transcript string) error {
 	scripturesJSON, _ := json.Marshal(scriptures)
 	topicsJSON, _ := json.Marshal(topics)
 
 	_, err := d.db.Exec(`
 		UPDATE sermons
 		SET title = ?, title_generated = ?, title_reasoning = ?, speaker = ?, scriptures_json = ?,
-		    topics_json = ?, transcript = ?, updated_at = ?
+		    topics_json = ?, topics_reasoning = ?, transcript = ?, updated_at = ?
 		WHERE id = ?
-	`, title, titleGenerated, titleReasoning, speaker, string(scripturesJSON), string(topicsJSON), transcript, time.Now(), id)
+	`, title, titleGenerated, titleReasoning, speaker, string(scripturesJSON), string(topicsJSON), topicsReasoning, transcript, time.Now(), id)
 	return err
 }
 

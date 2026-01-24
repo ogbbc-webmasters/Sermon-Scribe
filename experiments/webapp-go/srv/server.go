@@ -138,13 +138,14 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 
 // MetadataResponse is the response from metadata extraction
 type MetadataResponse struct {
-	Title          string   `json:"title"`
-	TitleGenerated bool     `json:"title_generated"`
-	TitleReasoning string   `json:"title_reasoning"`
-	Speaker        string   `json:"speaker"`
-	Scriptures     []string `json:"scriptures"`
-	Topics         []string `json:"topics"`
-	Error          string   `json:"error,omitempty"`
+	Title           string   `json:"title"`
+	TitleGenerated  bool     `json:"title_generated"`
+	TitleReasoning  string   `json:"title_reasoning"`
+	Speaker         string   `json:"speaker"`
+	Scriptures      []string `json:"scriptures"`
+	Topics          []string `json:"topics"`
+	TopicsReasoning string   `json:"topics_reasoning"`
+	Error           string   `json:"error,omitempty"`
 }
 
 // handleListSermons returns all sermons

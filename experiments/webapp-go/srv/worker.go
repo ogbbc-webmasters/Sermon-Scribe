@@ -217,7 +217,7 @@ func (w *Worker) processJob(job *Job, checkpoint *Checkpoint) {
 	if err != nil {
 		slog.Error("metadata extraction failed", "error", err)
 		// Still save transcript even if metadata fails
-		if saveErr := w.db.UpdateSermonMetadata(sermon.ID, "Unknown", true, "", "", nil, nil, transcript); saveErr != nil {
+		if saveErr := w.db.UpdateSermonMetadata(sermon.ID, "Unknown", true, "", "", nil, nil, "", transcript); saveErr != nil {
 			slog.Error("failed to save transcript", "error", saveErr)
 		}
 		w.failJob(job, "Metadata extraction failed: "+err.Error())
@@ -233,6 +233,7 @@ func (w *Worker) processJob(job *Job, checkpoint *Checkpoint) {
 		metadata.Speaker,
 		metadata.Scriptures,
 		metadata.Topics,
+		metadata.TopicsReasoning,
 		transcript,
 	)
 	if err != nil {
@@ -479,10 +480,12 @@ func (w *Worker) extractMetadata(ctx context.Context, transcript string) (*Metad
 5. **scriptures**: All Bible references mentioned (e.g., "John 3:16", "Psalm 23:1-6").
    - Deduplicate: if both "Jeremiah 2" and "Jeremiah 2:1-37" appear, keep only the more specific one
    - Combine contiguous verses: "Revelation 2:1, Revelation 2:2, Revelation 2:3" becomes "Revelation 2:1-3"
-   - Sort in biblical order (Genesis first, Revelation last)
+   - Keep in order of first mention in the sermon
 6. **topics**: 2-5 topics from this predefined list that best match:
 
 %s
+
+7. **topics_reasoning**: Explain why each topic was selected. For each topic, briefly describe what content in the sermon led to its selection (e.g., "Faith: The speaker emphasized trusting God throughout trials in the middle section; Prayer: Extended teaching on the Lord's Prayer").
 
 Respond ONLY with JSON:
 {
@@ -491,7 +494,8 @@ Respond ONLY with JSON:
   "title_reasoning": "string",
   "speaker": "string or null",
   "scriptures": ["string", ...],
-  "topics": ["string", ...]
+  "topics": ["string", ...],
+  "topics_reasoning": "string"
 }
 
 Transcript:
