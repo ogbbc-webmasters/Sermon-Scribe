@@ -540,6 +540,7 @@ Transcript:
 			Message struct {
 				Content string `json:"content"`
 			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(respBody, &chatResp); err != nil {
@@ -550,7 +551,17 @@ Transcript:
 		return nil, fmt.Errorf("no response from API")
 	}
 
+	finishReason := chatResp.Choices[0].FinishReason
+	if finishReason != "stop" && finishReason != "end_turn" {
+		slog.Warn("metadata response may be truncated", "finish_reason", finishReason)
+	}
+
 	content := chatResp.Choices[0].Message.Content
+	if content == "" {
+		slog.Error("empty content from API", "finish_reason", finishReason, "response_body", string(respBody))
+		return nil, fmt.Errorf("empty response from API (finish_reason: %s)", finishReason)
+	}
+
 	content = strings.TrimPrefix(content, "```json")
 	content = strings.TrimPrefix(content, "```")
 	content = strings.TrimSuffix(content, "```")
@@ -558,6 +569,7 @@ Transcript:
 
 	var metadata MetadataResponse
 	if err := json.Unmarshal([]byte(content), &metadata); err != nil {
+		slog.Error("failed to parse metadata JSON", "error", err, "content_preview", truncateForLog(content, 500))
 		return nil, fmt.Errorf("failed to parse metadata: %w", err)
 	}
 
@@ -585,6 +597,14 @@ func (w *Worker) parseAPIError(statusCode int, body []byte) error {
 		}
 		return fmt.Errorf("API error %d", statusCode)
 	}
+}
+
+// truncateForLog returns a truncated string for logging, avoiding huge log entries
+func truncateForLog(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "...[truncated]"
 }
 
 // extractTextContent handles both string and array content formats from OpenRouter
