@@ -217,7 +217,7 @@ func (w *Worker) processJob(job *Job, checkpoint *Checkpoint) {
 	if err != nil {
 		slog.Error("metadata extraction failed", "error", err)
 		// Still save transcript even if metadata fails
-		if saveErr := w.db.UpdateSermonMetadata(sermon.ID, "Unknown", true, "", nil, nil, transcript); saveErr != nil {
+		if saveErr := w.db.UpdateSermonMetadata(sermon.ID, "Unknown", true, "", "", nil, nil, transcript); saveErr != nil {
 			slog.Error("failed to save transcript", "error", saveErr)
 		}
 		w.failJob(job, "Metadata extraction failed: "+err.Error())
@@ -229,6 +229,7 @@ func (w *Worker) processJob(job *Job, checkpoint *Checkpoint) {
 		sermon.ID,
 		metadata.Title,
 		metadata.TitleGenerated,
+		metadata.TitleReasoning,
 		metadata.Speaker,
 		metadata.Scriptures,
 		metadata.Topics,
@@ -471,9 +472,15 @@ func (w *Worker) extractMetadata(ctx context.Context, transcript string) (*Metad
 
 1. **title**: The sermon title or main theme. If explicitly mentioned, use that. Otherwise, create a concise, descriptive title.
 2. **title_generated**: false if title was explicitly stated, true if you inferred it.
-3. **speaker**: The pastor/preacher's name if mentioned.
-4. **scriptures**: All Bible references mentioned (e.g., "John 3:16", "Psalm 23:1-6").
-5. **topics**: 2-5 topics from this predefined list that best match:
+3. **title_reasoning**: Explain how the title was determined:
+   - If found directly in the transcript, quote the exact phrase where it was stated (e.g., "The speaker said 'Today's sermon is titled Walking in Faith'")
+   - If generated, explain your reasoning (e.g., "Generated based on the main theme of forgiveness discussed throughout")
+4. **speaker**: The pastor/preacher's name if mentioned.
+5. **scriptures**: All Bible references mentioned (e.g., "John 3:16", "Psalm 23:1-6").
+   - Deduplicate: if both "Jeremiah 2" and "Jeremiah 2:1-37" appear, keep only the more specific one
+   - Combine contiguous verses: "Revelation 2:1, Revelation 2:2, Revelation 2:3" becomes "Revelation 2:1-3"
+   - Sort in biblical order (Genesis first, Revelation last)
+6. **topics**: 2-5 topics from this predefined list that best match:
 
 %s
 
@@ -481,6 +488,7 @@ Respond ONLY with JSON:
 {
   "title": "string",
   "title_generated": boolean,
+  "title_reasoning": "string",
   "speaker": "string or null",
   "scriptures": ["string", ...],
   "topics": ["string", ...]

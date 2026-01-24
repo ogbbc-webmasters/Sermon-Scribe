@@ -140,6 +140,7 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 type MetadataResponse struct {
 	Title          string   `json:"title"`
 	TitleGenerated bool     `json:"title_generated"`
+	TitleReasoning string   `json:"title_reasoning"`
 	Speaker        string   `json:"speaker"`
 	Scriptures     []string `json:"scriptures"`
 	Topics         []string `json:"topics"`

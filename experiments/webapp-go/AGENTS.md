@@ -85,3 +85,21 @@ uploads/
 - Never show raw API errors to users - log to console, show friendly message
 - Progress bars should have animation so users know it's not frozen
 - Provide retry buttons for failed operations - don't require manual intervention
+
+## Subagent Coordination
+
+When delegating tasks to subagents:
+
+1. **Partition files carefully** - Assign each subagent to non-overlapping files
+2. **Subagents don't build** - They make code changes only, report when done
+3. **Main agent builds** - After subagent reports done, main agent builds and tests
+4. **Sequential for overlapping files** - If tasks touch same files, run subagents one at a time
+5. **One subagent for related changes** - If a feature spans multiple files, give it all to one subagent
+
+Example workflow:
+```
+Me: "subagent-1, update worker.go lines 470-500. Don't build."
+Me: "subagent-2, add search UI to index.html. Don't build."
+[wait for both to finish]
+Me: go build, test, fix issues
+```

@@ -10,6 +10,7 @@ type Sermon struct {
 	ID             string    `json:"id"`
 	Title          string    `json:"title"`
 	TitleGenerated bool      `json:"title_generated"`
+	TitleReasoning string    `json:"title_reasoning"`
 	Speaker        string    `json:"speaker"`
 	Scriptures     []string  `json:"scriptures"`
 	Topics         []string  `json:"topics"`
@@ -56,6 +57,7 @@ type SermonRow struct {
 	ID             string
 	Title          string
 	TitleGenerated bool
+	TitleReasoning string
 	Speaker        string
 	ScripturesJSON string
 	TopicsJSON     string
@@ -72,6 +74,7 @@ func (r *SermonRow) ToSermon() (*Sermon, error) {
 		ID:             r.ID,
 		Title:          r.Title,
 		TitleGenerated: r.TitleGenerated,
+		TitleReasoning: r.TitleReasoning,
 		Speaker:        r.Speaker,
 		Transcript:     r.Transcript,
 		Filename:       r.Filename,
