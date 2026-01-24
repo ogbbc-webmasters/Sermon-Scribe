@@ -30,13 +30,14 @@ The service uses `EnvironmentFile` to load `.env` safely.
 ## Key Details
 
 - Uses OpenRouter API with `google/gemini-3-flash-preview` for transcription
-- Audio split into 10-minute chunks for reliable API calls
+- Audio split into 10-minute chunks for reliable API calls (don't try large single requests)
 - Max 3 concurrent transcription requests
 - FFmpeg used to prepare audio chunks (mono, 16kHz, 64kbps MP3)
 - Frontend is embedded in binary via `//go:embed`
 - SQLite database for sermon/job persistence
 - Background worker processes jobs independently of HTTP requests
 - SSE streaming for real-time progress updates
+- Always restart server after build - changes don't take effect until restart
 
 ## Job Checkpointing
 
@@ -81,10 +82,13 @@ uploads/
 
 ## UI Guidelines
 
-- Target audience is 50+ years old - large fonts, simple UX
+- Target audience is 50+ years old - large fonts, simple UX, plain language ("AI" not "LLM")
+- Sermon detail view must fit on desktop without scrolling - keep UI compact
 - Never show raw API errors to users - log to console, show friendly message
 - Progress bars should have animation so users know it's not frozen
 - Provide retry buttons for failed operations - don't require manual intervention
+- Use context-appropriate icons (sermons are spoken word: 🔊 not 🎵)
+- Prefer CSS classes over inline styles - consolidate duplicate styles into reusable classes
 
 ## Subagent Coordination
 
@@ -105,17 +109,8 @@ Me: "subagent-2, add search UI to index.html. Don't build."
 Me: go build, test, fix issues
 ```
 
-## Common Mistakes to Avoid
+## Code Style
 
-1. **Never manually fix data** - Build UI for users to fix their own problems (retry buttons, etc.)
-2. **Always restart server after build** - Changes don't take effect until restart
-3. **Never show raw errors to users** - Log to console, show friendly message in UI
-4. **Don't be clever with API calls** - Chunking exists for reliability; large single requests hit limits
-5. **Keep docs precise** - "OpenRouter" not "Gemini"; small inaccuracies compound
-6. **Ask clarifying questions early** - Don't assume preferences for architecture, error handling, etc.
-7. **Remove code, don't neutralize** - Delete lines instead of setting values to "none" or empty
-8. **Consolidate CSS** - Look for duplicate styles that can reuse existing classes (e.g., .card)
-9. **No jargon for 50+ audience** - Use "AI" not "LLM", plain language over technical terms
-10. **No scroll on desktop** - Sermon detail view must fit without scrolling; keep UI compact
-11. **Context-appropriate icons** - Sermons are spoken word, not music (use 🔊 not 🎵)
-12. **Prefer CSS classes over inline styles** - Inline styles override class-based styling and cause inconsistency
+- Remove unused code entirely - don't neutralize with empty values or "none"
+- Keep documentation precise - "OpenRouter" not "Gemini"; small inaccuracies compound
+- Ask clarifying questions early - don't assume preferences for architecture, error handling, etc.
