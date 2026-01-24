@@ -3,11 +3,11 @@ package srv
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"os/exec"
@@ -15,6 +15,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+)
+
+const (
+	openRouterURL     = "https://openrouter.ai/api/v1/chat/completions"
+	geminiModel       = "google/gemini-3-flash-preview"
+	openRouterAppURL  = "https://sermon-scribe.exe.xyz"
+	openRouterAppName = "Sermon Scribe"
 )
 
 // Worker processes jobs in the background
@@ -131,92 +138,69 @@ func (w *Worker) processJob(job *Job, checkpoint *Checkpoint) {
 	}
 
 	uploadsDir := filepath.Join("uploads", sermon.ID)
-	chunksDir := filepath.Join(uploadsDir, "chunks")
 
-	var chunks []string
-	var transcript string
-
-	// Check if we can resume from checkpoint
-	if checkpoint.Stage == "transcribing" || checkpoint.Stage == "extracting_metadata" {
-		// We have chunks already, find them
-		for i := 0; i < checkpoint.ChunkCount; i++ {
-			chunkPath := filepath.Join(chunksDir, fmt.Sprintf("chunk_%d.mp3", i))
-			if _, err := os.Stat(chunkPath); err == nil {
-				chunks = append(chunks, chunkPath)
-			}
-		}
-		slog.Info("resuming from checkpoint", "stage", checkpoint.Stage, "chunks_found", len(chunks), "transcripts_done", len(checkpoint.Transcripts))
+	// Find the audio file
+	files, err := filepath.Glob(filepath.Join(uploadsDir, "original.*"))
+	if err != nil || len(files) == 0 {
+		w.failJob(job, "Audio file not found")
+		return
 	}
+	inputPath := files[0]
+
+	// Check if we already have transcript from checkpoint
+	var transcript string
+	var metadata *MetadataResponse
 
 	if checkpoint.Stage == "extracting_metadata" && checkpoint.FullTranscript != "" {
-		// We already have the full transcript, skip to metadata
+		// Resume from transcript - just need metadata
 		transcript = checkpoint.FullTranscript
 		slog.Info("resuming at metadata extraction", "transcript_len", len(transcript))
+		w.updateProgress(job, "Extracting metadata...", 80)
+
+		metadata, err = w.extractMetadataOnly(ctx, transcript)
+		if err != nil {
+			w.failJob(job, "Metadata extraction failed: "+err.Error())
+			return
+		}
 	} else {
-		// Need to do splitting and/or transcription
-		if len(chunks) == 0 {
-			// Need to split audio
-			files, err := filepath.Glob(filepath.Join(uploadsDir, "original.*"))
-			if err != nil || len(files) == 0 {
-				w.failJob(job, "Audio file not found")
-				return
-			}
-			inputPath := files[0]
+		// Need to process audio - convert to optimal format first
+		w.updateProgress(job, "Preparing audio...", 5)
 
-			w.updateProgress(job, "Processing audio with FFmpeg...", -1)
-
-			// Create chunks directory (persistent, not temp)
-			if err := os.MkdirAll(chunksDir, 0755); err != nil {
-				w.failJob(job, "Failed to create chunks directory")
-				return
-			}
-
-			chunks, err = w.splitAudio(chunksDir, inputPath)
-			if err != nil {
-				slog.Error("ffmpeg split failed", "error", err)
-				w.failJob(job, "Failed to process audio: "+err.Error())
-				return
-			}
-
-			slog.Info("split audio into chunks", "count", len(chunks))
-
-			// Save checkpoint after splitting
-			checkpoint.Stage = "transcribing"
-			checkpoint.ChunkCount = len(chunks)
-			checkpoint.Transcripts = make([]string, len(chunks))
-			w.db.SaveCheckpoint(job.ID, checkpoint)
+		processedPath := filepath.Join(uploadsDir, "processed.mp3")
+		if err := w.prepareAudio(inputPath, processedPath); err != nil {
+			slog.Error("audio preparation failed", "error", err)
+			w.failJob(job, "Failed to prepare audio: "+err.Error())
+			return
 		}
 
-		w.updateProgress(job, fmt.Sprintf("Processed audio into %d chunks", len(chunks)), -1)
+		w.updateProgress(job, "Reading audio file...", 10)
 
-		// Transcribe chunks (with resume support)
-		w.updateProgress(job, fmt.Sprintf("Transcribing %d chunks...", len(chunks)), 0)
-		transcript, err = w.transcribeChunksWithCheckpoint(ctx, job, chunks, checkpoint)
+		// Read and base64 encode the audio
+		audioData, err := os.ReadFile(processedPath)
 		if err != nil {
+			w.failJob(job, "Failed to read audio file: "+err.Error())
+			return
+		}
+
+		slog.Info("audio file read", "size_mb", len(audioData)/(1024*1024), "path", processedPath)
+
+		w.updateProgress(job, "Transcribing and analyzing sermon...", 20)
+
+		// Single API call for transcription + metadata
+		transcript, metadata, err = w.transcribeAndExtract(ctx, audioData, "mp3")
+		if err != nil {
+			slog.Error("transcription failed", "error", err)
 			w.failJob(job, "Transcription failed: "+err.Error())
 			return
 		}
 
-		// Save checkpoint with full transcript
+		// Save checkpoint with transcript in case metadata extraction needs retry
 		checkpoint.Stage = "extracting_metadata"
 		checkpoint.FullTranscript = transcript
 		w.db.SaveCheckpoint(job.ID, checkpoint)
 	}
 
-	w.updateProgress(job, "Extracting metadata...", -1)
-
-	// Extract metadata
-	metadata, err := w.extractMetadata(ctx, transcript)
-	if err != nil {
-		slog.Error("metadata extraction failed", "error", err)
-		errMsg := err.Error()
-		// Still save transcript even if metadata fails
-		if saveErr := w.db.UpdateSermonMetadata(sermon.ID, "Unknown", true, "", nil, nil, transcript); saveErr != nil {
-			slog.Error("failed to save transcript", "error", saveErr)
-		}
-		w.failJob(job, "Metadata extraction failed: "+errMsg)
-		return
-	}
+	w.updateProgress(job, "Saving results...", 95)
 
 	// Save results
 	err = w.db.UpdateSermonMetadata(
@@ -258,195 +242,212 @@ func (w *Worker) failJob(job *Job, errMsg string) {
 	slog.Error("job failed", "jobID", job.ID, "error", errMsg)
 }
 
-func (w *Worker) splitAudio(tmpDir, inputPath string) ([]string, error) {
-	// Get duration
-	durationCmd := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", inputPath)
-	output, err := durationCmd.Output()
+// prepareAudio converts audio to optimal format for API (mono, 16kHz, 64kbps MP3)
+func (w *Worker) prepareAudio(inputPath, outputPath string) error {
+	cmd := exec.Command("ffmpeg", "-y",
+		"-i", inputPath,
+		"-acodec", "libmp3lame",
+		"-b:a", "64k",
+		"-ar", "16000",
+		"-ac", "1",
+		outputPath,
+	)
+	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("ffprobe failed: %w", err)
+		return fmt.Errorf("ffmpeg failed: %w, output: %s", err, string(output))
 	}
-
-	var duration float64
-	fmt.Sscanf(strings.TrimSpace(string(output)), "%f", &duration)
-	slog.Info("audio duration", "seconds", duration)
-
-	// Split into 10-minute chunks
-	chunkDuration := 600.0
-	var chunks []string
-
-	for i := 0; float64(i)*chunkDuration < duration; i++ {
-		start := float64(i) * chunkDuration
-		outputPath := filepath.Join(tmpDir, fmt.Sprintf("chunk_%d.mp3", i))
-
-		cmd := exec.Command("ffmpeg", "-y",
-			"-i", inputPath,
-			"-ss", fmt.Sprintf("%.0f", start),
-			"-t", fmt.Sprintf("%.0f", chunkDuration),
-			"-acodec", "libmp3lame",
-			"-b:a", "64k",
-			"-ar", "16000",
-			"-ac", "1",
-			outputPath,
-		)
-		if err := cmd.Run(); err != nil {
-			return nil, fmt.Errorf("ffmpeg chunk %d failed: %w", i, err)
-		}
-
-		// Check if file has content
-		info, err := os.Stat(outputPath)
-		if err == nil && info.Size() > 1000 {
-			chunks = append(chunks, outputPath)
-		}
-	}
-
-	return chunks, nil
+	return nil
 }
 
-func (w *Worker) transcribeChunksWithCheckpoint(ctx context.Context, job *Job, chunks []string, checkpoint *Checkpoint) (string, error) {
-	if len(chunks) == 0 {
-		return "", fmt.Errorf("no audio chunks to transcribe")
+// transcribeAndExtract sends audio to Gemini and gets transcript + metadata in one call
+func (w *Worker) transcribeAndExtract(ctx context.Context, audioData []byte, format string) (string, *MetadataResponse, error) {
+	base64Audio := base64.StdEncoding.EncodeToString(audioData)
+
+	slog.Info("sending audio to Gemini",
+		"audio_size_mb", len(audioData)/(1024*1024),
+		"base64_size_mb", len(base64Audio)/(1024*1024),
+		"model", geminiModel)
+
+	prompt := fmt.Sprintf(`You are analyzing a sermon audio recording. Please:
+
+1. **Transcribe** the entire sermon word-for-word.
+
+2. **Extract metadata** from the content:
+   - **title**: The sermon title or main theme. If explicitly mentioned, use that. Otherwise, create a concise, descriptive title.
+   - **title_generated**: false if title was explicitly stated, true if you inferred it.
+   - **speaker**: The pastor/preacher's name if mentioned.
+   - **scriptures**: All Bible references mentioned (e.g., "John 3:16", "Psalm 23:1-6").
+   - **topics**: 2-5 topics from this predefined list that best match the sermon:
+
+%s
+
+Respond with JSON in this exact format:
+{
+  "transcript": "full word-for-word transcript here...",
+  "metadata": {
+    "title": "string",
+    "title_generated": boolean,
+    "speaker": "string or null",
+    "scriptures": ["string", ...],
+    "topics": ["string", ...]
+  }
+}`, TopicsForPrompt())
+
+	requestBody := map[string]any{
+		"model": geminiModel,
+		"messages": []map[string]any{
+			{
+				"role": "user",
+				"content": []map[string]any{
+					{
+						"type": "text",
+						"text": prompt,
+					},
+					{
+						"type": "input_audio",
+						"input_audio": map[string]string{
+							"data":   base64Audio,
+							"format": format,
+						},
+					},
+				},
+			},
+		},
 	}
 
-	// Ensure transcripts slice is the right size
-	if len(checkpoint.Transcripts) != len(chunks) {
-		checkpoint.Transcripts = make([]string, len(chunks))
-	}
-
-	// Find chunks that still need transcription
-	var pendingChunks []int
-	for i, t := range checkpoint.Transcripts {
-		if t == "" {
-			pendingChunks = append(pendingChunks, i)
-		}
-	}
-
-	completed := len(chunks) - len(pendingChunks)
-	slog.Info("transcription status", "total", len(chunks), "completed", completed, "pending", len(pendingChunks))
-
-	if len(pendingChunks) > 0 {
-		type result struct {
-			index int
-			text  string
-			err   error
-		}
-
-		resultsCh := make(chan result, len(pendingChunks))
-		var wg sync.WaitGroup
-		sem := make(chan struct{}, 3) // Limit concurrency
-
-		for _, idx := range pendingChunks {
-			wg.Add(1)
-			go func(chunkIdx int) {
-				defer wg.Done()
-				sem <- struct{}{}
-				defer func() { <-sem }()
-
-				slog.Info("transcribing chunk", "index", chunkIdx, "path", chunks[chunkIdx])
-				text, err := w.transcribeSingle(ctx, chunks[chunkIdx])
-				resultsCh <- result{index: chunkIdx, text: text, err: err}
-			}(idx)
-		}
-
-		// Collect results as they come in and save checkpoints
-		go func() {
-			wg.Wait()
-			close(resultsCh)
-		}()
-
-		for r := range resultsCh {
-			if r.err != nil {
-				return "", fmt.Errorf("chunk %d failed: %w", r.index, r.err)
-			}
-
-			// Save transcript and checkpoint
-			checkpoint.Transcripts[r.index] = r.text
-			if err := w.db.SaveCheckpoint(job.ID, checkpoint); err != nil {
-				slog.Error("failed to save checkpoint", "error", err)
-			}
-
-			completed++
-			percent := (completed * 100) / len(chunks)
-			w.updateProgress(job, fmt.Sprintf("Transcribing chunk %d of %d...", completed, len(chunks)), percent)
-		}
-	}
-
-	// Combine all transcripts in order
-	return strings.Join(checkpoint.Transcripts, "\n\n"), nil
-}
-
-func (w *Worker) transcribeSingle(ctx context.Context, audioPath string) (string, error) {
-	file, err := os.Open(audioPath)
+	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {
-		return "", err
+		return "", nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-	defer file.Close()
 
-	// Create multipart form
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
+	slog.Info("sending request to OpenRouter", "body_size_mb", len(jsonBody)/(1024*1024))
 
-	part, err := writer.CreateFormFile("file", filepath.Base(audioPath))
+	req, err := http.NewRequestWithContext(ctx, "POST", openRouterURL, bytes.NewReader(jsonBody))
 	if err != nil {
-		return "", err
-	}
-	io.Copy(part, file)
-
-	writer.WriteField("model", "gpt-4o-transcribe")
-	writer.WriteField("language", "en")
-	writer.Close()
-
-	req, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/audio/transcriptions", &buf)
-	if err != nil {
-		return "", err
+		return "", nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+w.apiKey)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("HTTP-Referer", openRouterAppURL)
+	req.Header.Set("X-Title", openRouterAppName)
 
-	client := &http.Client{Timeout: 5 * time.Minute}
+	client := &http.Client{Timeout: 10 * time.Minute} // Long timeout for audio processing
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", err
+		return "", nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	slog.Info("received response from OpenRouter", "status", resp.StatusCode, "body_size", len(respBody))
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("OpenAI API error %d: %s", resp.StatusCode, string(body))
+		slog.Error("OpenRouter error", "status", resp.StatusCode, "body", string(respBody))
+		return "", nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(respBody))
 	}
 
+	var chatResp struct {
+		Choices []struct {
+			Message struct {
+				Content any `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	if err := json.Unmarshal(respBody, &chatResp); err != nil {
+		return "", nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return "", nil, fmt.Errorf("no choices in response")
+	}
+
+	// Handle content which could be string or array
+	var content string
+	switch c := chatResp.Choices[0].Message.Content.(type) {
+	case string:
+		content = c
+	case []any:
+		// Multimodal response - find text block
+		for _, block := range c {
+			if m, ok := block.(map[string]any); ok {
+				if t, ok := m["type"].(string); ok && (t == "text" || t == "output_text") {
+					if text, ok := m["text"].(string); ok {
+						content = text
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if content == "" {
+		return "", nil, fmt.Errorf("no content in response")
+	}
+
+	slog.Info("parsing response content", "content_len", len(content))
+
+	// Strip markdown code blocks if present
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	content = strings.TrimSpace(content)
+
+	// Parse combined response
 	var result struct {
-		Text string `json:"text"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", err
+		Transcript string `json:"transcript"`
+		Metadata   struct {
+			Title          string   `json:"title"`
+			TitleGenerated bool     `json:"title_generated"`
+			Speaker        string   `json:"speaker"`
+			Scriptures     []string `json:"scriptures"`
+			Topics         []string `json:"topics"`
+		} `json:"metadata"`
 	}
 
-	return result.Text, nil
+	if err := json.Unmarshal([]byte(content), &result); err != nil {
+		slog.Error("failed to parse JSON response", "error", err, "content_preview", content[:min(500, len(content))])
+		return "", nil, fmt.Errorf("failed to parse response JSON: %w", err)
+	}
+
+	metadata := &MetadataResponse{
+		Title:          result.Metadata.Title,
+		TitleGenerated: result.Metadata.TitleGenerated,
+		Speaker:        result.Metadata.Speaker,
+		Scriptures:     result.Metadata.Scriptures,
+		Topics:         result.Metadata.Topics,
+	}
+
+	slog.Info("transcription and extraction complete",
+		"transcript_len", len(result.Transcript),
+		"title", metadata.Title,
+		"speaker", metadata.Speaker)
+
+	return result.Transcript, metadata, nil
 }
 
-func (w *Worker) extractMetadata(ctx context.Context, transcript string) (*MetadataResponse, error) {
-	slog.Info("extractMetadata called", "transcriptLen", len(transcript))
+// extractMetadataOnly extracts metadata from an existing transcript (for checkpoint resume)
+func (w *Worker) extractMetadataOnly(ctx context.Context, transcript string) (*MetadataResponse, error) {
+	slog.Info("extracting metadata from transcript", "transcript_len", len(transcript))
 
-	prompt := fmt.Sprintf(`You are analyzing a sermon transcript. Extract the following metadata from the transcript and return it as JSON:
+	prompt := fmt.Sprintf(`You are analyzing a sermon transcript. Extract the following metadata and return as JSON:
 
-1. **title**: The sermon title or main theme. If explicitly mentioned, use that. Otherwise, create a concise, descriptive title based on the main message.
+1. **title**: The sermon title or main theme. If explicitly mentioned, use that. Otherwise, create a concise, descriptive title.
+2. **title_generated**: false if title was explicitly stated, true if you inferred it.
+3. **speaker**: The pastor/preacher's name if mentioned.
+4. **scriptures**: All Bible references mentioned (e.g., "John 3:16", "Psalm 23:1-6").
+5. **topics**: 2-5 topics from this predefined list that best match:
 
-2. **title_generated**: A boolean. Set to false if the title was explicitly stated in the sermon, true if you generated/inferred it.
-
-3. **speaker**: The name of the pastor/preacher if mentioned. Look for introductions like "Pastor John" or "Reverend Smith" or self-references.
-
-4. **scriptures**: An array of all Bible references mentioned (e.g., "John 3:16", "Psalm 23:1-6", "Romans 8"). Include chapter and verse when available.
-
-5. **topics**: An array of 2-5 topics from the PREDEFINED LIST below that best match the sermon content. Use ONLY topics from this list, using the exact topic names provided. Select topics that are central themes, not just briefly mentioned.
-
-PREDEFINED TOPICS:
 %s
 
-Return ONLY valid JSON in this exact format:
+Respond ONLY with JSON:
 {
   "title": "string",
   "title_generated": boolean,
-  "speaker": "string or null if not found",
+  "speaker": "string or null",
   "scriptures": ["string", ...],
   "topics": ["string", ...]
 }
@@ -455,45 +456,34 @@ Transcript:
 %s`, TopicsForPrompt(), transcript)
 
 	requestBody := map[string]any{
-		"model": "gpt-5-mini",
-		"messages": []map[string]string{
+		"model": geminiModel,
+		"messages": []map[string]any{
 			{"role": "user", "content": prompt},
 		},
 	}
 
 	jsonBody, _ := json.Marshal(requestBody)
-	slog.Info("calling OpenAI chat completions", "model", "gpt-5-mini", "requestLen", len(jsonBody))
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", "https://api.openai.com/v1/chat/completions", bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, "POST", openRouterURL, bytes.NewReader(jsonBody))
 	if err != nil {
-		slog.Error("failed to create request", "error", err)
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	httpReq.Header.Set("Authorization", "Bearer "+w.apiKey)
-	httpReq.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+w.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("HTTP-Referer", openRouterAppURL)
+	req.Header.Set("X-Title", openRouterAppName)
 
 	client := &http.Client{Timeout: 2 * time.Minute}
-	resp, err := client.Do(httpReq)
+	resp, err := client.Do(req)
 	if err != nil {
-		slog.Error("OpenAI request failed", "error", err)
-		return nil, fmt.Errorf("failed to call OpenAI: %w", err)
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	slog.Info("OpenAI response received", "status", resp.StatusCode)
-
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		slog.Error("OpenAI error response", "status", resp.StatusCode, "body", string(body))
-		return nil, fmt.Errorf("OpenAI error %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
 	}
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		slog.Error("failed to read response body", "error", err)
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-	slog.Info("OpenAI response body", "len", len(respBody))
 
 	var chatResp struct {
 		Choices []struct {
@@ -502,33 +492,24 @@ Transcript:
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	if err := json.Unmarshal(respBody, &chatResp); err != nil {
-		slog.Error("failed to parse OpenAI response", "error", err, "body", string(respBody[:min(500, len(respBody))]))
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if len(chatResp.Choices) == 0 {
-		slog.Error("no choices in OpenAI response", "body", string(respBody[:min(500, len(respBody))]))
-		return nil, fmt.Errorf("no response from OpenAI")
+		return nil, fmt.Errorf("no response from API")
 	}
 
 	content := chatResp.Choices[0].Message.Content
-	slog.Info("OpenAI content received", "contentLen", len(content), "preview", content[:min(200, len(content))])
-
-	// Strip markdown code blocks if present
 	content = strings.TrimPrefix(content, "```json")
 	content = strings.TrimPrefix(content, "```")
 	content = strings.TrimSuffix(content, "```")
 	content = strings.TrimSpace(content)
 
-	slog.Info("parsing metadata JSON", "content", content[:min(500, len(content))])
-
 	var metadata MetadataResponse
 	if err := json.Unmarshal([]byte(content), &metadata); err != nil {
-		slog.Error("failed to parse metadata JSON", "error", err, "content", content)
 		return nil, fmt.Errorf("failed to parse metadata: %w", err)
 	}
 
-	slog.Info("metadata extracted", "title", metadata.Title, "speaker", metadata.Speaker, "scriptures", len(metadata.Scriptures), "topics", len(metadata.Topics))
 	return &metadata, nil
 }

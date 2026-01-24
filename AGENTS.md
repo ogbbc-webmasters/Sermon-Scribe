@@ -39,9 +39,8 @@ Sermon-Scribe/
 
 Go backend with embedded HTML frontend.
 
-- **Transcription**: OpenAI `gpt-4o-transcribe`
-- **Metadata extraction**: OpenAI `gpt-5-mini`
-- **Audio processing**: Server-side FFmpeg (splits into 10-min chunks)
+- **Transcription + Metadata**: OpenRouter with `google/gemini-3-flash-preview`
+- **Audio processing**: Server-side FFmpeg (prepares audio for API)
 - **Rate limit**: 20 sermons/day site-wide
 - **Auth**: Requires exe.dev login (checks `X-Exedev-Userid` header)
 - **Live Demo**: https://sermon-scribe.exe.xyz/
@@ -80,8 +79,7 @@ Python script using AssemblyAI for transcription.
 
 ## API Notes
 
-- `gpt-5-mini` does not support custom `temperature` parameter
-- Transcription uses parallel chunk processing (max 3 concurrent)
+- Single API call via OpenRouter (using Gemini 3 Flash) handles both transcription and metadata extraction
 - Progress updates streamed via SSE to frontend
 - Use `-1` for indeterminate progress percentage, `0-100` for determinate
 
