@@ -113,3 +113,9 @@ Me: go build, test, fix issues
 4. **Don't be clever with API calls** - Chunking exists for reliability; large single requests hit limits
 5. **Keep docs precise** - "OpenRouter" not "Gemini"; small inaccuracies compound
 6. **Ask clarifying questions early** - Don't assume preferences for architecture, error handling, etc.
+7. **Remove code, don't neutralize** - Delete lines instead of setting values to "none" or empty
+8. **Consolidate CSS** - Look for duplicate styles that can reuse existing classes (e.g., .card)
+9. **No jargon for 50+ audience** - Use "AI" not "LLM", plain language over technical terms
+10. **No scroll on desktop** - Sermon detail view must fit without scrolling; keep UI compact
+11. **Context-appropriate icons** - Sermons are spoken word, not music (use 🔊 not 🎵)
+12. **Prefer CSS classes over inline styles** - Inline styles override class-based styling and cause inconsistency

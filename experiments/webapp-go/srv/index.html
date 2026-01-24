@@ -10,7 +10,6 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             font-size: 18px;
             line-height: 1.6;
-            max-width: 900px;
             margin: 0 auto;
             padding: 20px;
             background: #f5f5f5;
@@ -20,10 +19,10 @@
         .subtitle { text-align: center; color: #666; margin-bottom: 30px; font-size: 1.1em; }
         .card {
             background: white;
-            border-radius: 12px;
             padding: 25px;
             margin-bottom: 20px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            border-radius: 12px;
+            border: 1px solid #e0e0e0;
         }
         label { display: block; font-weight: 600; margin-bottom: 8px; color: #2c3e50; }
         input[type="file"] {
@@ -87,8 +86,6 @@
         }
         .metadata-box {
             background: #f8f9fa;
-            padding: 12px;
-            border-radius: 8px;
         }
         .metadata-label {
             font-weight: 600;
@@ -107,8 +104,6 @@
         .tag-topic { background: #3498db; color: white; }
         .transcript-box {
             background: #f8f9fa;
-            padding: 12px;
-            border-radius: 8px;
             display: flex;
             flex-direction: column;
             min-height: 200px;
@@ -150,7 +145,6 @@
         
         @media (min-width: 900px) {
             body {
-                max-width: 1200px;
                 padding: 15px 20px;
             }
             .card { padding: 20px; margin-bottom: 15px; }
@@ -213,7 +207,7 @@
     </div>
 
     <!-- Sermon List -->
-    <div id="sermon-list" class="card">
+    <div id="sermon-list" class="card" style="max-width:600px;margin:0 auto 20px;">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
             <h2 style="margin:0;color:#2c3e50;">📋 Recent Sermons</h2>
             <button id="upload-btn" onclick="showUploadForm()">➕ Upload New</button>
@@ -222,7 +216,7 @@
     </div>
 
     <!-- Upload Form (hidden by default) -->
-    <div id="upload-section" class="card hidden">
+    <div id="upload-section" class="card hidden" style="max-width:600px;margin:0 auto 20px;">
         <h2 style="margin-top:0;color:#2c3e50;">📤 Upload Sermon</h2>
         <label for="audio-file">Audio File (MP3/WAV)</label>
         <input type="file" id="audio-file" accept=".mp3,.wav,audio/*">
@@ -235,7 +229,7 @@
     </div>
 
     <!-- Sermon Detail View -->
-    <div id="sermon-detail" class="card hidden"></div>
+    <div id="sermon-detail" class="hidden"></div>
 
 <script>
 let isLoggedIn = false;
@@ -460,10 +454,18 @@ function renderSermonDetail(sermon, jobs) {
         // Left column: title, speaker, reasoning, scriptures, topics
         content += '<div class="sermon-left-col">';
         
+        // Warning banner
+        content += `
+            <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:8px 10px;margin-bottom:10px;font-size:0.8em;color:#856404;">
+                ⚠️ AI-generated to save you time — please carefully verify before submitting.
+            </div>
+        `;
+        
         // Title section
         content += `
             <div>
                 <h2 style="margin:0 0 5px 0;color:#2c3e50;font-size:1.4em;">${escapeHtml(sermon.title || sermon.filename || 'Untitled')}</h2>
+                <p style="color:#888;margin:0 0 5px 0;font-size:0.85em;">📁 ${escapeHtml(sermon.filename)}</p>
                 ${sermon.speaker ? '<p style="color:#666;margin:0 0 5px 0;">Speaker: ' + escapeHtml(sermon.speaker) + '</p>' : ''}
                 ${sermon.title_reasoning ? '<details style="margin-top:5px;"><summary style="cursor:pointer;color:#888;font-size:0.85em;">💡 Why this title?</summary><p style="color:#666;margin:5px 0 0 0;font-size:0.85em;font-style:italic;">' + escapeHtml(sermon.title_reasoning) + '</p></details>' : ''}
             </div>
@@ -471,7 +473,7 @@ function renderSermonDetail(sermon, jobs) {
         
         if (sermon.scriptures && sermon.scriptures.length > 0) {
             content += `
-                <div class="metadata-box">
+                <div class="card metadata-box">
                     <div class="metadata-label">📖 Scriptures</div>
                     <div>${sermon.scriptures.map(s => '<span class="tag tag-scripture">' + escapeHtml(s) + '</span>').join('')}</div>
                 </div>
@@ -493,7 +495,7 @@ function renderSermonDetail(sermon, jobs) {
             ).join('');
             
             content += `
-                <div class="metadata-box">
+                <div class="card metadata-box">
                     <div class="metadata-label">🏷️ Topics</div>
                     <div>${topicsHtml}</div>
                     ${reasoningList ? '<details style="margin-top:8px;"><summary style="cursor:pointer;color:#888;font-size:0.85em;">💡 Why these topics?</summary><div style="margin-top:8px;font-size:0.85em;color:#666;">' + reasoningList + '</div></details>' : ''}
@@ -506,10 +508,17 @@ function renderSermonDetail(sermon, jobs) {
         // Right column: transcript
         content += '<div class="sermon-right-col">';
         
+        // Audio player
+        content += `
+            <div class="card">
+                <div class="metadata-label">🔊 Audio</div>
+                <audio controls style="width:100%;" src="/api/sermons/${sermon.id}/audio"></audio>
+            </div>
+        `;
+        
         if (sermon.transcript) {
             content += `
-                <div class="transcript-box">
-                    <audio controls style="width:100%;margin-bottom:12px;" src="/api/sermons/${sermon.id}/audio"></audio>
+                <div class="card transcript-box">
                     <div class="transcript-header">
                         <span class="metadata-label" style="margin:0;">📝 Transcript</span>
                         <button class="btn-copy" onclick="copyTranscript()">Copy Full Transcript</button>
