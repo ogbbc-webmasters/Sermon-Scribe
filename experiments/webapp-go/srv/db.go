@@ -121,7 +121,7 @@ func (d *DB) GetSermon(id string) (*Sermon, error) {
 
 	var r SermonRow
 	err := row.Scan(&r.ID, &r.Title, &r.TitleGenerated, &r.TitleReasoning, &r.Speaker,
-		&r.ScripturesJSON, &r.TopicsJSON, &r.TopicsReasoning, &r.Transcript, &r.Filename,
+		&r.ScripturesJSON, &r.TopicsJSON, &r.TopicsReasoningJSON, &r.Transcript, &r.Filename,
 		&r.FileSize, &r.CreatedAt, &r.UpdatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -151,7 +151,7 @@ func (d *DB) ListSermons(limit, offset int) ([]*Sermon, error) {
 	for rows.Next() {
 		var r SermonRow
 		err := rows.Scan(&r.ID, &r.Title, &r.TitleGenerated, &r.TitleReasoning, &r.Speaker,
-			&r.ScripturesJSON, &r.TopicsJSON, &r.TopicsReasoning, &r.Transcript, &r.Filename,
+			&r.ScripturesJSON, &r.TopicsJSON, &r.TopicsReasoningJSON, &r.Transcript, &r.Filename,
 			&r.FileSize, &r.CreatedAt, &r.UpdatedAt)
 		if err != nil {
 			return nil, err
@@ -167,16 +167,17 @@ func (d *DB) ListSermons(limit, offset int) ([]*Sermon, error) {
 }
 
 // UpdateSermonMetadata updates the extracted metadata for a sermon
-func (d *DB) UpdateSermonMetadata(id string, title string, titleGenerated bool, titleReasoning string, speaker string, scriptures, topics []string, topicsReasoning string, transcript string) error {
+func (d *DB) UpdateSermonMetadata(id string, title string, titleGenerated bool, titleReasoning string, speaker string, scriptures, topics []string, topicsReasoning map[string]string, transcript string) error {
 	scripturesJSON, _ := json.Marshal(scriptures)
 	topicsJSON, _ := json.Marshal(topics)
+	topicsReasoningJSON, _ := json.Marshal(topicsReasoning)
 
 	_, err := d.db.Exec(`
 		UPDATE sermons
 		SET title = ?, title_generated = ?, title_reasoning = ?, speaker = ?, scriptures_json = ?,
 		    topics_json = ?, topics_reasoning = ?, transcript = ?, updated_at = ?
 		WHERE id = ?
-	`, title, titleGenerated, titleReasoning, speaker, string(scripturesJSON), string(topicsJSON), topicsReasoning, transcript, time.Now(), id)
+	`, title, titleGenerated, titleReasoning, speaker, string(scripturesJSON), string(topicsJSON), string(topicsReasoningJSON), transcript, time.Now(), id)
 	return err
 }
 

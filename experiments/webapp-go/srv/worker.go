@@ -217,7 +217,7 @@ func (w *Worker) processJob(job *Job, checkpoint *Checkpoint) {
 	if err != nil {
 		slog.Error("metadata extraction failed", "error", err)
 		// Still save transcript even if metadata fails
-		if saveErr := w.db.UpdateSermonMetadata(sermon.ID, "Unknown", true, "", "", nil, nil, "", transcript); saveErr != nil {
+		if saveErr := w.db.UpdateSermonMetadata(sermon.ID, "Unknown", true, "", "", nil, nil, nil, transcript); saveErr != nil {
 			slog.Error("failed to save transcript", "error", saveErr)
 		}
 		w.failJob(job, "Metadata extraction failed: "+err.Error())
@@ -485,7 +485,7 @@ func (w *Worker) extractMetadata(ctx context.Context, transcript string) (*Metad
 
 %s
 
-7. **topics_reasoning**: Explain why each topic was selected. For each topic, briefly describe what content in the sermon led to its selection (e.g., "Faith: The speaker emphasized trusting God throughout trials in the middle section; Prayer: Extended teaching on the Lord's Prayer").
+7. **topics_reasoning**: An object mapping each selected topic to its reasoning. For each topic, briefly explain what content in the sermon led to its selection.
 
 Respond ONLY with JSON:
 {
@@ -495,7 +495,7 @@ Respond ONLY with JSON:
   "speaker": "string or null",
   "scriptures": ["string", ...],
   "topics": ["string", ...],
-  "topics_reasoning": "string"
+  "topics_reasoning": {"Topic Name": "reason for selection", ...}
 }
 
 Transcript:

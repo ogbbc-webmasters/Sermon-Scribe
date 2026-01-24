@@ -95,6 +95,7 @@ When delegating tasks to subagents:
 3. **Main agent builds** - After subagent reports done, main agent builds and tests
 4. **Sequential for overlapping files** - If tasks touch same files, run subagents one at a time
 5. **One subagent for related changes** - If a feature spans multiple files, give it all to one subagent
+6. **Delegate more, flow less** - Pause before doing work yourself and ask "could a subagent do this?"
 
 Example workflow:
 ```
@@ -103,3 +104,12 @@ Me: "subagent-2, add search UI to index.html. Don't build."
 [wait for both to finish]
 Me: go build, test, fix issues
 ```
+
+## Common Mistakes to Avoid
+
+1. **Never manually fix data** - Build UI for users to fix their own problems (retry buttons, etc.)
+2. **Always restart server after build** - Changes don't take effect until restart
+3. **Never show raw errors to users** - Log to console, show friendly message in UI
+4. **Don't be clever with API calls** - Chunking exists for reliability; large single requests hit limits
+5. **Keep docs precise** - "OpenRouter" not "Gemini"; small inaccuracies compound
+6. **Ask clarifying questions early** - Don't assume preferences for architecture, error handling, etc.

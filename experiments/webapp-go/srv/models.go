@@ -14,7 +14,7 @@ type Sermon struct {
 	Speaker         string    `json:"speaker"`
 	Scriptures      []string  `json:"scriptures"`
 	Topics          []string  `json:"topics"`
-	TopicsReasoning string    `json:"topics_reasoning"`
+	TopicsReasoning map[string]string `json:"topics_reasoning"`
 	Transcript      string    `json:"transcript"`
 	Filename        string    `json:"filename"`
 	FileSize        int64     `json:"file_size"`
@@ -62,7 +62,7 @@ type SermonRow struct {
 	Speaker         string
 	ScripturesJSON  string
 	TopicsJSON      string
-	TopicsReasoning string
+	TopicsReasoningJSON string
 	Transcript      string
 	Filename        string
 	FileSize        int64
@@ -73,17 +73,22 @@ type SermonRow struct {
 // ToSermon converts a database row to a Sermon
 func (r *SermonRow) ToSermon() (*Sermon, error) {
 	s := &Sermon{
-		ID:              r.ID,
-		Title:           r.Title,
-		TitleGenerated:  r.TitleGenerated,
-		TitleReasoning:  r.TitleReasoning,
-		Speaker:         r.Speaker,
-		TopicsReasoning: r.TopicsReasoning,
-		Transcript:      r.Transcript,
-		Filename:        r.Filename,
-		FileSize:        r.FileSize,
-		CreatedAt:       r.CreatedAt,
-		UpdatedAt:       r.UpdatedAt,
+		ID:             r.ID,
+		Title:          r.Title,
+		TitleGenerated: r.TitleGenerated,
+		TitleReasoning: r.TitleReasoning,
+		Speaker:        r.Speaker,
+		Transcript:     r.Transcript,
+		Filename:       r.Filename,
+		FileSize:       r.FileSize,
+		CreatedAt:      r.CreatedAt,
+		UpdatedAt:      r.UpdatedAt,
+	}
+
+	if r.TopicsReasoningJSON != "" {
+		if err := json.Unmarshal([]byte(r.TopicsReasoningJSON), &s.TopicsReasoning); err != nil {
+			return nil, err
+		}
 	}
 
 	if r.ScripturesJSON != "" {

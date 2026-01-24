@@ -144,7 +144,7 @@ type MetadataResponse struct {
 	Speaker         string   `json:"speaker"`
 	Scriptures      []string `json:"scriptures"`
 	Topics          []string `json:"topics"`
-	TopicsReasoning string   `json:"topics_reasoning"`
+	TopicsReasoning map[string]string `json:"topics_reasoning"`
 	Error           string   `json:"error,omitempty"`
 }
 

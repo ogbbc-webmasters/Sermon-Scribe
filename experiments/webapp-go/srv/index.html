@@ -479,11 +479,17 @@ function renderSermonDetail(sermon, jobs) {
         }
 
         if (sermon.topics && sermon.topics.length > 0) {
+            const topicsHtml = sermon.topics.map(t => {
+                const reasoning = sermon.topics_reasoning && sermon.topics_reasoning[t];
+                if (reasoning) {
+                    return `<details style="display:inline-block;margin:3px;"><summary class="tag tag-topic" style="cursor:pointer;list-style:none;">${escapeHtml(t)} ▼</summary><p style="margin:5px 0;padding:8px;background:#f0f0f0;border-radius:6px;font-size:0.85em;color:#666;">${escapeHtml(reasoning)}</p></details>`;
+                }
+                return '<span class="tag tag-topic">' + escapeHtml(t) + '</span>';
+            }).join('');
             content += `
                 <div class="metadata-box">
                     <div class="metadata-label">🏷️ Topics</div>
-                    <div>${sermon.topics.map(t => '<span class="tag tag-topic">' + escapeHtml(t) + '</span>').join('')}</div>
-                    ${sermon.topics_reasoning ? '<details style="margin-top:8px;"><summary style="cursor:pointer;color:#888;font-size:0.85em;">💡 Why these topics?</summary><p style="color:#666;margin:5px 0 0 0;font-size:0.85em;font-style:italic;">' + escapeHtml(sermon.topics_reasoning) + '</p></details>' : ''}
+                    <div>${topicsHtml}</div>
                 </div>
             `;
         }
