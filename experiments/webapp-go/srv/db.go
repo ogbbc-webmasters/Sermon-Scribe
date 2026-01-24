@@ -350,3 +350,12 @@ func (d *DB) FailJob(id string, errMsg string) error {
 	`, string(JobStatusError), errMsg, now, id)
 	return err
 }
+
+// RetryJob resets a failed job to pending so it can be resumed from checkpoint
+func (d *DB) RetryJob(id string) error {
+	_, err := d.db.Exec(`
+		UPDATE jobs SET status = ?, error = '', started_at = NULL, completed_at = NULL
+		WHERE id = ? AND status = ?
+	`, string(JobStatusPending), id, string(JobStatusError))
+	return err
+}

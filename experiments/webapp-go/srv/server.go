@@ -67,6 +67,7 @@ func (s *Server) Serve(addr string) error {
 	mux.HandleFunc("GET /api/sermons/{id}/jobs", s.handleListJobs)
 	mux.HandleFunc("GET /api/jobs/{id}", s.handleGetJob)
 	mux.HandleFunc("GET /api/jobs/{id}/stream", s.handleJobStream)
+	mux.HandleFunc("POST /api/jobs/{id}/retry", s.requireAuth(s.handleRetryJob))
 
 	slog.Info("starting server", "addr", addr, "dailyLimit", DailyLimit)
 	return http.ListenAndServe(addr, mux)
@@ -408,4 +409,42 @@ func sendJobSSE(w http.ResponseWriter, job *Job) {
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+// handleRetryJob resets a failed job to pending so it can be retried
+func (s *Server) handleRetryJob(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	id := r.PathValue("id")
+	job, err := s.DB.GetJob(id)
+	if err != nil {
+		slog.Error("failed to get job", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to get job"})
+		return
+	}
+	if job == nil {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Job not found"})
+		return
+	}
+
+	if job.Status != JobStatusError {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Only failed jobs can be retried"})
+		return
+	}
+
+	if err := s.DB.RetryJob(id); err != nil {
+		slog.Error("failed to retry job", "error", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Failed to retry job"})
+		return
+	}
+
+	slog.Info("job queued for retry", "jobID", id)
+
+	// Return updated job
+	job, _ = s.DB.GetJob(id)
+	json.NewEncoder(w).Encode(job)
 }

@@ -54,6 +54,16 @@
         .btn-copy { background: #27ae60; padding: 6px 12px; font-size: 0.85em; }
         .btn-copy:hover { background: #219a52; }
         .hidden { display: none !important; }
+        
+        @keyframes progress-shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .progress-bar-animated {
+            background: linear-gradient(90deg, #3498db 0%, #2ecc71 25%, #3498db 50%, #2ecc71 75%, #3498db 100%);
+            background-size: 200% 100%;
+            animation: progress-shimmer 2s linear infinite;
+        }
     </style>
 </head>
 <body>
@@ -289,16 +299,20 @@ function renderSermonDetail(sermon, jobs) {
                 <p style="margin:0 0 10px 0;font-weight:600;">⏳ Processing...</p>
                 <p id="progress-text" style="margin:0;color:#666;">${job.progress || 'Waiting to start...'}</p>
                 <div style="background:#ddd;border-radius:10px;height:20px;margin-top:15px;overflow:hidden;">
-                    <div id="progress-bar" style="background:linear-gradient(90deg,#3498db,#2ecc71);height:100%;transition:width 0.3s;width:${job.percent >= 0 ? job.percent : 0}%;"></div>
+                    <div id="progress-bar" class="progress-bar-animated" style="height:100%;transition:width 0.3s;width:${job.percent >= 0 ? job.percent : 5}%;min-width:5%;"></div>
                 </div>
             </div>
         `;
     }
 
     if (hasError) {
+        console.error('Job error:', job.error);
         content += `
             <div style="background:#fee;border:1px solid #e74c3c;padding:15px;border-radius:8px;margin-bottom:20px;color:#c0392b;">
-                <strong>❌ Processing Error:</strong> ${escapeHtml(job.error)}
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div><strong>❌ Processing failed.</strong> Please try again.</div>
+                    ${isLoggedIn ? '<button onclick="retryJob(\''+job.id+'\')" style="background:#e74c3c;color:white;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;">🔄 Retry</button>' : ''}
+                </div>
             </div>
         `;
     }
@@ -416,6 +430,18 @@ async function deleteSermon(id) {
         backToList();
     } catch (e) {
         showError('Delete failed: ' + e.message);
+    }
+}
+
+async function retryJob(jobId) {
+    try {
+        const resp = await fetch('/api/jobs/' + jobId + '/retry', { method: 'POST' });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || 'Retry failed');
+        // Reload sermon detail to show processing state
+        showSermonDetail(currentSermonId);
+    } catch (e) {
+        showError('Retry failed: ' + e.message);
     }
 }
 

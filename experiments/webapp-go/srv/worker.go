@@ -138,69 +138,91 @@ func (w *Worker) processJob(job *Job, checkpoint *Checkpoint) {
 	}
 
 	uploadsDir := filepath.Join("uploads", sermon.ID)
+	chunksDir := filepath.Join(uploadsDir, "chunks")
 
-	// Find the audio file
-	files, err := filepath.Glob(filepath.Join(uploadsDir, "original.*"))
-	if err != nil || len(files) == 0 {
-		w.failJob(job, "Audio file not found")
-		return
-	}
-	inputPath := files[0]
-
-	// Check if we already have transcript from checkpoint
+	var chunks []string
 	var transcript string
-	var metadata *MetadataResponse
+
+	// Check if we can resume from checkpoint
+	if checkpoint.Stage == "transcribing" || checkpoint.Stage == "extracting_metadata" {
+		// We have chunks already, find them
+		for i := 0; i < checkpoint.ChunkCount; i++ {
+			chunkPath := filepath.Join(chunksDir, fmt.Sprintf("chunk_%d.mp3", i))
+			if _, err := os.Stat(chunkPath); err == nil {
+				chunks = append(chunks, chunkPath)
+			}
+		}
+		slog.Info("resuming from checkpoint", "stage", checkpoint.Stage, "chunks_found", len(chunks), "transcripts_done", len(checkpoint.Transcripts))
+	}
 
 	if checkpoint.Stage == "extracting_metadata" && checkpoint.FullTranscript != "" {
-		// Resume from transcript - just need metadata
+		// We already have the full transcript, skip to metadata
 		transcript = checkpoint.FullTranscript
 		slog.Info("resuming at metadata extraction", "transcript_len", len(transcript))
-		w.updateProgress(job, "Extracting metadata...", 80)
-
-		metadata, err = w.extractMetadataOnly(ctx, transcript)
-		if err != nil {
-			w.failJob(job, "Metadata extraction failed: "+err.Error())
-			return
-		}
 	} else {
-		// Need to process audio - convert to optimal format first
-		w.updateProgress(job, "Preparing audio...", 5)
+		// Need to do splitting and/or transcription
+		if len(chunks) == 0 {
+			// Need to split audio
+			files, err := filepath.Glob(filepath.Join(uploadsDir, "original.*"))
+			if err != nil || len(files) == 0 {
+				w.failJob(job, "Audio file not found")
+				return
+			}
+			inputPath := files[0]
 
-		processedPath := filepath.Join(uploadsDir, "processed.mp3")
-		if err := w.prepareAudio(inputPath, processedPath); err != nil {
-			slog.Error("audio preparation failed", "error", err)
-			w.failJob(job, "Failed to prepare audio: "+err.Error())
-			return
+			w.updateProgress(job, "Processing audio with FFmpeg...", -1)
+
+			// Create chunks directory
+			if err := os.MkdirAll(chunksDir, 0755); err != nil {
+				w.failJob(job, "Failed to create chunks directory")
+				return
+			}
+
+			chunks, err = w.splitAudio(chunksDir, inputPath)
+			if err != nil {
+				slog.Error("ffmpeg split failed", "error", err)
+				w.failJob(job, "Failed to process audio: "+err.Error())
+				return
+			}
+
+			slog.Info("split audio into chunks", "count", len(chunks))
+
+			// Save checkpoint after splitting
+			checkpoint.Stage = "transcribing"
+			checkpoint.ChunkCount = len(chunks)
+			checkpoint.Transcripts = make([]string, len(chunks))
+			w.db.SaveCheckpoint(job.ID, checkpoint)
 		}
 
-		w.updateProgress(job, "Reading audio file...", 10)
+		w.updateProgress(job, fmt.Sprintf("Processed audio into %d chunks", len(chunks)), -1)
 
-		// Read and base64 encode the audio
-		audioData, err := os.ReadFile(processedPath)
+		// Transcribe chunks (with resume support)
+		w.updateProgress(job, fmt.Sprintf("Transcribing %d chunks...", len(chunks)), 0)
+		transcript, err = w.transcribeChunksWithCheckpoint(ctx, job, chunks, checkpoint)
 		if err != nil {
-			w.failJob(job, "Failed to read audio file: "+err.Error())
-			return
-		}
-
-		slog.Info("audio file read", "size_mb", len(audioData)/(1024*1024), "path", processedPath)
-
-		w.updateProgress(job, "Transcribing and analyzing sermon...", 20)
-
-		// Single API call for transcription + metadata
-		transcript, metadata, err = w.transcribeAndExtract(ctx, audioData, "mp3")
-		if err != nil {
-			slog.Error("transcription failed", "error", err)
 			w.failJob(job, "Transcription failed: "+err.Error())
 			return
 		}
 
-		// Save checkpoint with transcript in case metadata extraction needs retry
+		// Save checkpoint with full transcript
 		checkpoint.Stage = "extracting_metadata"
 		checkpoint.FullTranscript = transcript
 		w.db.SaveCheckpoint(job.ID, checkpoint)
 	}
 
-	w.updateProgress(job, "Saving results...", 95)
+	w.updateProgress(job, "Extracting metadata...", 90)
+
+	// Extract metadata
+	metadata, err := w.extractMetadata(ctx, transcript)
+	if err != nil {
+		slog.Error("metadata extraction failed", "error", err)
+		// Still save transcript even if metadata fails
+		if saveErr := w.db.UpdateSermonMetadata(sermon.ID, "Unknown", true, "", nil, nil, transcript); saveErr != nil {
+			slog.Error("failed to save transcript", "error", saveErr)
+		}
+		w.failJob(job, "Metadata extraction failed: "+err.Error())
+		return
+	}
 
 	// Save results
 	err = w.db.UpdateSermonMetadata(
@@ -242,56 +264,133 @@ func (w *Worker) failJob(job *Job, errMsg string) {
 	slog.Error("job failed", "jobID", job.ID, "error", errMsg)
 }
 
-// prepareAudio converts audio to optimal format for API (mono, 16kHz, 64kbps MP3)
-func (w *Worker) prepareAudio(inputPath, outputPath string) error {
-	cmd := exec.Command("ffmpeg", "-y",
-		"-i", inputPath,
-		"-acodec", "libmp3lame",
-		"-b:a", "64k",
-		"-ar", "16000",
-		"-ac", "1",
-		outputPath,
-	)
-	output, err := cmd.CombinedOutput()
+func (w *Worker) splitAudio(chunksDir, inputPath string) ([]string, error) {
+	// Get duration
+	durationCmd := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", inputPath)
+	output, err := durationCmd.Output()
 	if err != nil {
-		return fmt.Errorf("ffmpeg failed: %w, output: %s", err, string(output))
+		return nil, fmt.Errorf("ffprobe failed: %w", err)
 	}
-	return nil
+
+	var duration float64
+	fmt.Sscanf(strings.TrimSpace(string(output)), "%f", &duration)
+	slog.Info("audio duration", "seconds", duration)
+
+	// Split into 10-minute chunks
+	chunkDuration := 600.0
+	var chunks []string
+
+	for i := 0; float64(i)*chunkDuration < duration; i++ {
+		start := float64(i) * chunkDuration
+		outputPath := filepath.Join(chunksDir, fmt.Sprintf("chunk_%d.mp3", i))
+
+		cmd := exec.Command("ffmpeg", "-y",
+			"-i", inputPath,
+			"-ss", fmt.Sprintf("%.0f", start),
+			"-t", fmt.Sprintf("%.0f", chunkDuration),
+			"-acodec", "libmp3lame",
+			"-b:a", "64k",
+			"-ar", "16000",
+			"-ac", "1",
+			outputPath,
+		)
+		if err := cmd.Run(); err != nil {
+			return nil, fmt.Errorf("ffmpeg chunk %d failed: %w", i, err)
+		}
+
+		// Check if file has content
+		info, err := os.Stat(outputPath)
+		if err == nil && info.Size() > 1000 {
+			chunks = append(chunks, outputPath)
+		}
+	}
+
+	return chunks, nil
 }
 
-// transcribeAndExtract sends audio to Gemini and gets transcript + metadata in one call
-func (w *Worker) transcribeAndExtract(ctx context.Context, audioData []byte, format string) (string, *MetadataResponse, error) {
+func (w *Worker) transcribeChunksWithCheckpoint(ctx context.Context, job *Job, chunks []string, checkpoint *Checkpoint) (string, error) {
+	if len(chunks) == 0 {
+		return "", fmt.Errorf("no audio chunks to transcribe")
+	}
+
+	// Ensure transcripts slice is the right size
+	if len(checkpoint.Transcripts) != len(chunks) {
+		checkpoint.Transcripts = make([]string, len(chunks))
+	}
+
+	// Find chunks that still need transcription
+	var pendingChunks []int
+	for i, t := range checkpoint.Transcripts {
+		if t == "" {
+			pendingChunks = append(pendingChunks, i)
+		}
+	}
+
+	completed := len(chunks) - len(pendingChunks)
+	slog.Info("transcription status", "total", len(chunks), "completed", completed, "pending", len(pendingChunks))
+
+	if len(pendingChunks) > 0 {
+		type result struct {
+			index int
+			text  string
+			err   error
+		}
+
+		resultsCh := make(chan result, len(pendingChunks))
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, 3) // Limit concurrency
+
+		for _, idx := range pendingChunks {
+			wg.Add(1)
+			go func(chunkIdx int) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				slog.Info("transcribing chunk", "index", chunkIdx, "path", chunks[chunkIdx])
+				text, err := w.transcribeChunk(ctx, chunks[chunkIdx])
+				resultsCh <- result{index: chunkIdx, text: text, err: err}
+			}(idx)
+		}
+
+		// Collect results as they come in and save checkpoints
+		go func() {
+			wg.Wait()
+			close(resultsCh)
+		}()
+
+		for r := range resultsCh {
+			if r.err != nil {
+				return "", fmt.Errorf("chunk %d failed: %w", r.index, r.err)
+			}
+
+			// Save transcript and checkpoint
+			checkpoint.Transcripts[r.index] = r.text
+			if err := w.db.SaveCheckpoint(job.ID, checkpoint); err != nil {
+				slog.Error("failed to save checkpoint", "error", err)
+			}
+
+			completed++
+			percent := (completed * 80) / len(chunks) // 0-80% for transcription
+			w.updateProgress(job, fmt.Sprintf("Transcribing chunk %d of %d...", completed, len(chunks)), percent)
+		}
+	}
+
+	// Combine all transcripts in order
+	return strings.Join(checkpoint.Transcripts, "\n\n"), nil
+}
+
+// transcribeChunk sends a single audio chunk to OpenRouter for transcription
+func (w *Worker) transcribeChunk(ctx context.Context, chunkPath string) (string, error) {
+	// Read audio file
+	audioData, err := os.ReadFile(chunkPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read audio: %w", err)
+	}
+
 	base64Audio := base64.StdEncoding.EncodeToString(audioData)
 
-	slog.Info("sending audio to Gemini",
-		"audio_size_mb", len(audioData)/(1024*1024),
-		"base64_size_mb", len(base64Audio)/(1024*1024),
-		"model", geminiModel)
-
-	prompt := fmt.Sprintf(`You are analyzing a sermon audio recording. Please:
-
-1. **Transcribe** the entire sermon word-for-word.
-
-2. **Extract metadata** from the content:
-   - **title**: The sermon title or main theme. If explicitly mentioned, use that. Otherwise, create a concise, descriptive title.
-   - **title_generated**: false if title was explicitly stated, true if you inferred it.
-   - **speaker**: The pastor/preacher's name if mentioned.
-   - **scriptures**: All Bible references mentioned (e.g., "John 3:16", "Psalm 23:1-6").
-   - **topics**: 2-5 topics from this predefined list that best match the sermon:
-
-%s
-
-Respond with JSON in this exact format:
-{
-  "transcript": "full word-for-word transcript here...",
-  "metadata": {
-    "title": "string",
-    "title_generated": boolean,
-    "speaker": "string or null",
-    "scriptures": ["string", ...],
-    "topics": ["string", ...]
-  }
-}`, TopicsForPrompt())
+	slog.Info("sending chunk to Gemini", "chunk", chunkPath, "size_kb", len(audioData)/1024)
 
 	requestBody := map[string]any{
 		"model": geminiModel,
@@ -301,13 +400,13 @@ Respond with JSON in this exact format:
 				"content": []map[string]any{
 					{
 						"type": "text",
-						"text": prompt,
+						"text": "Transcribe this audio exactly as spoken. Output only the transcript text, nothing else.",
 					},
 					{
 						"type": "input_audio",
 						"input_audio": map[string]string{
 							"data":   base64Audio,
-							"format": format,
+							"format": "mp3",
 						},
 					},
 				},
@@ -317,37 +416,33 @@ Respond with JSON in this exact format:
 
 	jsonBody, err := json.Marshal(requestBody)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to marshal request: %w", err)
+		return "", fmt.Errorf("failed to marshal request: %w", err)
 	}
-
-	slog.Info("sending request to OpenRouter", "body_size_mb", len(jsonBody)/(1024*1024))
 
 	req, err := http.NewRequestWithContext(ctx, "POST", openRouterURL, bytes.NewReader(jsonBody))
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to create request: %w", err)
+		return "", fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+w.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("HTTP-Referer", openRouterAppURL)
 	req.Header.Set("X-Title", openRouterAppName)
 
-	client := &http.Client{Timeout: 10 * time.Minute} // Long timeout for audio processing
+	client := &http.Client{Timeout: 5 * time.Minute}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", nil, fmt.Errorf("request failed: %w", err)
+		return "", fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", nil, fmt.Errorf("failed to read response: %w", err)
+		return "", fmt.Errorf("failed to read response: %w", err)
 	}
-
-	slog.Info("received response from OpenRouter", "status", resp.StatusCode, "body_size", len(respBody))
 
 	if resp.StatusCode != http.StatusOK {
 		slog.Error("OpenRouter error", "status", resp.StatusCode, "body", string(respBody))
-		return "", nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(respBody))
+		return "", w.parseAPIError(resp.StatusCode, respBody)
 	}
 
 	var chatResp struct {
@@ -358,80 +453,19 @@ Respond with JSON in this exact format:
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(respBody, &chatResp); err != nil {
-		return "", nil, fmt.Errorf("failed to parse response: %w", err)
+		return "", fmt.Errorf("failed to parse response: %w", err)
 	}
 
 	if len(chatResp.Choices) == 0 {
-		return "", nil, fmt.Errorf("no choices in response")
+		return "", fmt.Errorf("no choices in response")
 	}
 
-	// Handle content which could be string or array
-	var content string
-	switch c := chatResp.Choices[0].Message.Content.(type) {
-	case string:
-		content = c
-	case []any:
-		// Multimodal response - find text block
-		for _, block := range c {
-			if m, ok := block.(map[string]any); ok {
-				if t, ok := m["type"].(string); ok && (t == "text" || t == "output_text") {
-					if text, ok := m["text"].(string); ok {
-						content = text
-						break
-					}
-				}
-			}
-		}
-	}
-
-	if content == "" {
-		return "", nil, fmt.Errorf("no content in response")
-	}
-
-	slog.Info("parsing response content", "content_len", len(content))
-
-	// Strip markdown code blocks if present
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	content = strings.TrimSpace(content)
-
-	// Parse combined response
-	var result struct {
-		Transcript string `json:"transcript"`
-		Metadata   struct {
-			Title          string   `json:"title"`
-			TitleGenerated bool     `json:"title_generated"`
-			Speaker        string   `json:"speaker"`
-			Scriptures     []string `json:"scriptures"`
-			Topics         []string `json:"topics"`
-		} `json:"metadata"`
-	}
-
-	if err := json.Unmarshal([]byte(content), &result); err != nil {
-		slog.Error("failed to parse JSON response", "error", err, "content_preview", content[:min(500, len(content))])
-		return "", nil, fmt.Errorf("failed to parse response JSON: %w", err)
-	}
-
-	metadata := &MetadataResponse{
-		Title:          result.Metadata.Title,
-		TitleGenerated: result.Metadata.TitleGenerated,
-		Speaker:        result.Metadata.Speaker,
-		Scriptures:     result.Metadata.Scriptures,
-		Topics:         result.Metadata.Topics,
-	}
-
-	slog.Info("transcription and extraction complete",
-		"transcript_len", len(result.Transcript),
-		"title", metadata.Title,
-		"speaker", metadata.Speaker)
-
-	return result.Transcript, metadata, nil
+	return w.extractTextContent(chatResp.Choices[0].Message.Content)
 }
 
-// extractMetadataOnly extracts metadata from an existing transcript (for checkpoint resume)
-func (w *Worker) extractMetadataOnly(ctx context.Context, transcript string) (*MetadataResponse, error) {
-	slog.Info("extracting metadata from transcript", "transcript_len", len(transcript))
+// extractMetadata calls OpenRouter to extract metadata from transcript
+func (w *Worker) extractMetadata(ctx context.Context, transcript string) (*MetadataResponse, error) {
+	slog.Info("extracting metadata", "transcript_len", len(transcript))
 
 	prompt := fmt.Sprintf(`You are analyzing a sermon transcript. Extract the following metadata and return as JSON:
 
@@ -480,9 +514,13 @@ Transcript:
 	}
 	defer resp.Body.Close()
 
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(body))
+		return nil, w.parseAPIError(resp.StatusCode, respBody)
 	}
 
 	var chatResp struct {
@@ -492,7 +530,7 @@ Transcript:
 			} `json:"message"`
 		} `json:"choices"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+	if err := json.Unmarshal(respBody, &chatResp); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 
@@ -511,5 +549,47 @@ Transcript:
 		return nil, fmt.Errorf("failed to parse metadata: %w", err)
 	}
 
+	slog.Info("metadata extracted", "title", metadata.Title, "speaker", metadata.Speaker)
 	return &metadata, nil
+}
+
+// parseAPIError extracts a clean error message from API responses
+func (w *Worker) parseAPIError(statusCode int, body []byte) error {
+	switch statusCode {
+	case 503:
+		return fmt.Errorf("service temporarily unavailable, please retry")
+	case 401:
+		return fmt.Errorf("authentication failed, check API key")
+	case 429:
+		return fmt.Errorf("rate limit exceeded, please wait and retry")
+	default:
+		var errResp struct {
+			Error struct {
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		if json.Unmarshal(body, &errResp) == nil && errResp.Error.Message != "" {
+			return fmt.Errorf("%s", errResp.Error.Message)
+		}
+		return fmt.Errorf("API error %d", statusCode)
+	}
+}
+
+// extractTextContent handles both string and array content formats from OpenRouter
+func (w *Worker) extractTextContent(content any) (string, error) {
+	switch c := content.(type) {
+	case string:
+		return c, nil
+	case []any:
+		for _, block := range c {
+			if m, ok := block.(map[string]any); ok {
+				if t, ok := m["type"].(string); ok && (t == "text" || t == "output_text") {
+					if text, ok := m["text"].(string); ok {
+						return text, nil
+					}
+				}
+			}
+		}
+	}
+	return "", fmt.Errorf("no text content found in response")
 }
