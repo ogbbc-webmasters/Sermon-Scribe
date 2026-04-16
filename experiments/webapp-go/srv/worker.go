@@ -471,11 +471,11 @@ func (w *Worker) extractMetadata(ctx context.Context, transcript string) (*Metad
 
 	prompt := fmt.Sprintf(`You are analyzing a sermon transcript. Extract the following metadata and return as JSON:
 
-1. **title**: The sermon title or main theme. If explicitly mentioned, use that. Otherwise, create a concise, descriptive title.
-2. **title_generated**: false if title was explicitly stated, true if you inferred it.
+1. **title**: The sermon title or main theme. If explicitly mentioned, use that. Otherwise, find an exact quote from the sermon that will serve well as a title. ONLY USE THE SPEAKER'S EXACT WORDS.
+2. **title_generated**: false if title was explicitly stated as being the title, true if you chose it from other wording.
 3. **title_reasoning**: Explain how the title was determined:
    - If found directly in the transcript, quote the exact phrase where it was stated (e.g., "The speaker said 'Today's sermon is titled Walking in Faith'")
-   - If generated, explain your reasoning (e.g., "Generated based on the main theme of forgiveness discussed throughout")
+   - If generated, explain your reasoning
 4. **speaker**: The pastor/preacher's name if mentioned.
 5. **scriptures**: All Bible references mentioned (e.g., "John 3:16", "Psalm 23:1-6").
    - Deduplicate: if both "Jeremiah 2" and "Jeremiah 2:1-37" appear, keep only the more specific one
