@@ -85,27 +85,24 @@ Python script using AssemblyAI for transcription.
 
 ## Specture System
 
-This project uses the Specture System for managing specifications and design documents. When the user asks about planned features, architectural decisions, or implementation details, refer to the `specs/` directory in the repository. Each spec file (specs/NNN-name.md) contains:
+This project uses the Specture System for managing specifications, design records, and implementation plans. When the user asks about planned features, architectural decisions, or implementation details, use `specture list` to find the relevant spec, then read its `SPEC.md` and any sibling `PLAN.md`.
 
-- Design rationale and decisions
-- Task lists for implementation
-- Requirements and acceptance criteria
+Specs live in numbered directories such as `specs/002-feature-name/SPEC.md`. `SPEC.md` contains durable design rationale, decisions, requirements, and acceptance criteria. Optional `PLAN.md` files contain disposable execution handoffs and temporary implementation notes.
 
 The `specs/` directory also contains `README.md` with complete guidelines on how the spec system works.
 
 ### Implementation Workflow
 
-**CRITICAL**: When implementing a spec, each task MUST be exactly one commit containing both the implementation AND the spec file update (change `- [ ]` to `- [x]`). Do NOT commit implementation changes without the corresponding spec update in the same commit.
-
-**Important**: Only edit spec files to mark tasks as complete during implementation. Do not retroactively update completed specs or modify design decisions without explicit user permission.
+Before implementing a spec, read its `SPEC.md` and any relevant `PLAN.md`. Commit each focused, verified implementation chunk before starting the next chunk. Keep implementation progress out of `SPEC.md`; update `PLAN.md` only when execution details need to change. Do not modify durable design decisions without explicit user permission.
 
 ### CLI Usage for AI Agents
 
-**IMPORTANT**: Always use non-interactive flags when running `specture` commands. The default interactive mode will hang waiting for user input and cause your workflow to fail.
+Use the Specture CLI for deterministic discovery, creation, and validation:
 
-Use these flags:
-- `specture new --title "Spec Title"` (non-interactive spec creation)
-- `specture setup --yes` (non-interactive setup)
-- Pipe spec content: `cat body.md | specture new --title "Spec Title"`
+- `specture list` (find active specs)
+- `specture list -d all` (include the full spec tree)
+- `specture new --title "Spec Title"` (create a top-level spec)
+- `specture new --title "Child Title" --parent 2` (create a child spec)
+- `specture validate` (validate the full tree after spec or plan edits)
 
-Run `specture --help` and `specture <command> --help` to learn about all available flags and options. See `specs/README.md` for complete non-interactive CLI examples.
+Run `specture --help` and `specture <command> --help` to learn about all available options. See `specs/README.md` for the repository workflow.

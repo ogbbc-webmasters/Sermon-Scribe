@@ -31,7 +31,7 @@ Add server-side audio normalization with a manual editing step:
 6. User uploads edited file back to same sermon → `final.mp3`
 7. Job resumes → transcription → metadata
 
-[Spec 001](001-automatic-audio-timeline.md) will later replace steps 4-6 with an in-browser timeline UI.
+[Automatic Audio Timeline](specs/001-automatic-audio-timeline/SPEC.md) will later replace steps 4-6 with an in-browser timeline UI.
 
 ## Normalization Pipeline
 
@@ -94,58 +94,3 @@ When job status is `awaiting_edit`, show:
 ## Authentication
 
 New endpoints use the existing exe.dev proxy auth (`X-Exedev-Userid` header), same as other protected endpoints.
-
-## Task List
-
-### Add New Job Statuses
-
-- [ ] Add `normalizing` status - FFmpeg processing in progress
-- [ ] Add `awaiting_edit` status - Paused for user input
-- [ ] Add `transcribing` status - OpenAI transcription in progress  
-- [ ] Add `extracting` status - Metadata extraction in progress
-- [ ] Update worker to use specific statuses instead of generic `processing`
-- [ ] Update frontend to display new status names
-
-### Add Normalization to Upload Pipeline
-
-- [ ] After saving `original.*`, run FFmpeg normalization pipeline
-- [ ] Save output as `normalized.mp3` (mono, 44100Hz, noise gate, normalize, 128kbps)
-- [ ] Update job status to `normalizing` during this step
-- [ ] Update job progress during normalization
-
-### Add `awaiting_edit` Job Stage
-
-- [ ] Worker pauses job after normalization completes
-- [ ] Set job status to `awaiting_edit`
-- [ ] Update checkpointing to handle new stage
-- [ ] Job stays in `awaiting_edit` until user uploads edited file
-
-### Add Download Endpoint
-
-- [ ] Create `GET /api/sermons/{id}/audio/{type}` endpoint
-- [ ] Support `type` values: `original`, `normalized`, `final`
-- [ ] Return appropriate file as download
-- [ ] Require auth (same as other protected endpoints)
-- [ ] Return 404 if file doesn't exist
-
-### Add Upload-Edited Endpoint
-
-- [ ] Create `POST /api/sermons/{id}/upload-edited` endpoint
-- [ ] Accept audio file upload
-- [ ] Validate job is in `awaiting_edit` status
-- [ ] Save as `final.mp3` (transcode to 32kbps mono if needed)
-- [ ] Set job status to `pending` to resume processing
-- [ ] Worker picks up job and continues to transcription
-
-### Update Frontend for Edit Workflow
-
-- [ ] Detect `awaiting_edit` status in sermon detail view
-- [ ] Show download button for normalized audio
-- [ ] Show upload form for edited file
-- [ ] Show brief instructions for the workflow
-- [ ] After upload, show transcription progress as before
-
-### Update Transcription to Use Final Audio
-
-- [ ] Modify worker to use `final.mp3` for transcription
-- [ ] Fall back to `original.*` if `final.mp3` doesn't exist (backward compatibility with old sermons)

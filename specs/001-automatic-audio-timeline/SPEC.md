@@ -8,7 +8,7 @@ creation_date: 2026-01-17
 
 ## Problem
 
-With [Spec 000](000-basic-audio-normalization.md), users still need Audacity to cut out singing, silence, and unwanted sections. This spec eliminates that manual step with an in-browser timeline editor.
+With [Basic Audio Normalization](specs/000-basic-audio-normalization/SPEC.md), users still need Audacity to cut out singing, silence, and unwanted sections. This spec eliminates that manual step with an in-browser timeline editor.
 
 ## Proposed Solution
 
@@ -26,7 +26,7 @@ Replace the download/edit/re-upload workflow with:
 
 3. **Apply edits** - Server applies cuts based on user selections, produces `final.mp3`
 
-Builds on [Spec 000](000-basic-audio-normalization.md) - job pauses at `awaiting_edit` with `normalized.mp3` ready.
+Builds on [Basic Audio Normalization](specs/000-basic-audio-normalization/SPEC.md) - job pauses at `awaiting_edit` with `normalized.mp3` ready.
 
 ## Region Data Structure
 
@@ -93,54 +93,3 @@ Consecutive windows matching singing characteristics are merged into singing reg
 **Audio preview after applying edits**: Server generates `final.mp3`, user previews before confirming transcription.
 
 **Edit persistence**: User adjustments saved to browser localStorage (keyed by sermon ID). On load, restore from localStorage if available, otherwise call analyze endpoint. Clear localStorage after "Apply Edits" succeeds. Multiple tabs editing the same sermon: last write wins (not worth adding complexity for this edge case).
-
-## Task List
-
-### Backend: Waveform Generation
-
-- [ ] Generate waveform amplitude data during normalization step (alongside `normalized.mp3`)
-- [ ] Save waveform data to `uploads/{sermon_id}/waveform.json`
-- [ ] Create `GET /api/sermons/{id}/waveform` endpoint to serve the pre-generated data
-
-### Backend: Region Detection
-
-- [ ] Implement silence detection using FFmpeg `silencedetect` or amplitude analysis
-- [ ] Implement singing detection via waveform characteristics
-- [ ] Create `POST /api/sermons/{id}/analyze` endpoint
-- [ ] Return regions as JSON with start, end, type
-
-### Backend: Apply Edits
-
-- [ ] Create `POST /api/sermons/{id}/apply-edits` endpoint
-- [ ] Accept regions with keep/delete flags
-- [ ] Apply cuts using FFmpeg (keep only "keep" regions)
-- [ ] Save result as `final.mp3` (32kbps)
-- [ ] Return success (does not start transcription yet)
-
-### Frontend: Timeline Component
-
-- [ ] Create timeline component with canvas waveform display
-- [ ] Fetch and render waveform data from server
-- [ ] Render color-coded region overlays (green/red/gray)
-- [ ] Add playhead indicator
-
-### Frontend: Region Editing
-
-- [ ] Implement boundary dragging to adjust regions
-- [ ] Add keep/delete toggle for each region
-- [ ] Sync changes to region data structure
-
-### Frontend: Audio Playback
-
-- [ ] Integrate HTML5 audio player with `normalized.mp3`
-- [ ] Sync playhead to audio position
-- [ ] Click on timeline to seek
-- [ ] Use Web Audio API to skip deleted regions during preview
-
-### Frontend: Workflow Integration
-
-- [ ] Replace download/upload UI with timeline when job is `awaiting_edit`
-- [ ] Call analyze endpoint on load to get regions
-- [ ] "Apply Edits" button calls apply-edits endpoint, then loads `final.mp3` for preview
-- [ ] "Confirm & Transcribe" button calls `POST /api/sermons/{id}/confirm` to resume job
-- [ ] Show transcription progress after confirmation
