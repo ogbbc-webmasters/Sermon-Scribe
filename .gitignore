@@ -1,3 +1,6 @@
-.env
-.venv
-example-data/
+/sermon-scribe
+web/elm.js
+*.db
+*.db-wal
+*.db-shm
+uploads/
