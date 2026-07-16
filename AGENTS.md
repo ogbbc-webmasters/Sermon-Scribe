@@ -1,21 +1,22 @@
-# AGENTS.md
+# Guidelines
 
-Guidance for AI agents working on this project.
+## Always Do (without asking)
 
-## Project Overview
+- Use conventional commits (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`)
+- Commit after each working change — keep commits small and focused
+- Push access is configured via `gh auth setup-git` with personal access token
 
-Sermon Scribe is a web app that turns raw sermon recordings into publish-ready audio with transcriptions and metadata — no external editing tools required.
+## Ask First (pause)
 
-## Repository
+- Modifying spec design decisions in `SPEC.md` files
+- Destructive operations (deleting files, dropping data)
 
-- **GitHub**: https://github.com/ogbbc-webmasters/Sermon-Scribe
-- **Branch**: `main`
-- **Commits**: Use conventional commits (e.g., `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`)
-- **Push access**: Configured via `gh auth setup-git` with personal access token
+## Never Do (hard stop)
 
-## Commit Guidelines
+- Commit API keys, secrets, or `.env` files
+- Batch unrelated changes into a single commit
 
-- **Commit frequently** — after each working change, not at the end of a session
-- Use conventional commits: `feat:`, `fix:`, `refactor:`, `docs:`, `chore:`
-- Keep commits small and focused
-- Don't wait until asked to commit
+## Long Term Memory
+
+- **Project**: Sermon Scribe — a web app that turns raw sermon recordings into publish-ready audio with transcriptions and metadata
+- **Repo**: https://github.com/ogbbc-webmasters/Sermon-Scribe (branch: `main`)
