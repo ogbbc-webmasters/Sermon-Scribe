@@ -10,6 +10,7 @@ import Iso8601
 import Json.Decode as Decode exposing (Decoder)
 import Task
 import Time
+import Ui
 
 
 main : Program () Model Msg
@@ -233,17 +234,17 @@ viewUpload upload =
     case upload of
         Uploading fraction ->
             div [ class "upload-box" ]
-                [ p [ class "upload-status" ]
+                [ p [ class "upload-box__status" ]
                     [ text ("Uploading\u{2026} " ++ percent fraction) ]
                 , viewProgressBar fraction
-                , p [ class "hint" ]
+                , p [ Ui.hint ]
                     [ text "Please keep this page open until the upload finishes." ]
                 ]
 
         _ ->
             div [ class "upload-box" ]
                 (List.concat
-                    [ [ label [ class "button primary", Html.Attributes.for "file-input" ]
+                    [ [ label [ Ui.primaryButton, Html.Attributes.for "file-input" ]
                             [ text "Upload a Sermon Recording" ]
                       , input
                             [ type_ "file"
@@ -253,12 +254,12 @@ viewUpload upload =
                             , style "display" "none"
                             ]
                             []
-                      , p [ class "hint" ]
+                      , p [ Ui.hint ]
                             [ text "Choose the audio file from your computer. The upload starts right away." ]
                       ]
                     , case upload of
                         UploadFailed message ->
-                            [ p [ class "error" ] [ text message ] ]
+                            [ p [ Ui.errorText ] [ text message ] ]
 
                         _ ->
                             []
@@ -274,9 +275,9 @@ fileChangeDecoder =
 
 viewProgressBar : Float -> Html Msg
 viewProgressBar fraction =
-    div [ class "progress-track" ]
+    div [ Ui.progress ]
         [ div
-            [ class "progress-fill"
+            [ Ui.progressFill
             , style "width" (percent fraction)
             ]
             []
@@ -292,14 +293,14 @@ viewSermons : Model -> Html Msg
 viewSermons model =
     case model.sermons of
         Loading ->
-            p [ class "hint" ] [ text "Loading\u{2026}" ]
+            p [ Ui.hint ] [ text "Loading\u{2026}" ]
 
         LoadFailed ->
-            p [ class "error" ]
+            p [ Ui.errorText ]
                 [ text "Could not load the sermon list. Please reload the page." ]
 
         Loaded [] ->
-            div [ class "empty-state" ]
+            div [ Ui.emptyState ]
                 [ text "No sermons yet. Upload one to get started." ]
 
         Loaded sermons ->
@@ -308,11 +309,11 @@ viewSermons model =
 
 viewSermon : Model -> Sermon -> Html Msg
 viewSermon model sermon =
-    div [ class "sermon-card" ]
-        [ div [ class "sermon-info" ]
-            [ p [ class "sermon-name" ] [ text sermon.originalFilename ]
-            , p [ class "sermon-meta" ]
-                [ span [ class (badgeClass sermon) ] [ text (describeStage sermon) ]
+    div [ Ui.card ]
+        [ div [ Ui.cardInfo ]
+            [ p [ Ui.cardName ] [ text sermon.originalFilename ]
+            , p [ Ui.cardMeta ]
+                [ span [ badgeAttribute sermon ] [ text (describeStage sermon) ]
                 , text (formatDate model.zone sermon.uploadedAt)
                 ]
             ]
@@ -325,15 +326,15 @@ viewSermonActions model sermon =
     case model.confirmingDelete of
         Just pending ->
             if pending.id == sermon.id then
-                div [ class "confirm-box" ]
-                    [ p [ class "confirm-question" ]
+                div [ Ui.confirmBox ]
+                    [ p [ Ui.confirmBoxQuestion ]
                         [ strong [] [ text "Delete this sermon and its audio files?" ] ]
-                    , div [ class "confirm-buttons" ]
+                    , div [ Ui.confirmBoxButtons ]
                         [ button
-                            [ class "button danger", onClick (ConfirmDelete sermon) ]
+                            [ Ui.dangerButton, onClick (ConfirmDelete sermon) ]
                             [ text "Yes, Delete" ]
                         , button
-                            [ class "button", onClick CancelDelete ]
+                            [ Ui.button, onClick CancelDelete ]
                             [ text "Cancel" ]
                         ]
                     ]
@@ -349,7 +350,7 @@ viewDeleteButton : Sermon -> Bool -> Html Msg
 viewDeleteButton sermon isDisabled =
     div [ class "sermon-actions" ]
         [ button
-            [ class "button", onClick (AskDelete sermon), disabled isDisabled ]
+            [ Ui.button, onClick (AskDelete sermon), disabled isDisabled ]
             [ text "Delete" ]
         ]
 
@@ -357,13 +358,13 @@ viewDeleteButton sermon isDisabled =
 {-| Render a stage/status pair in plain language. Later specs add more
 stages; unknown combinations fall back to a generic rendering.
 -}
-badgeClass : Sermon -> String
-badgeClass sermon =
+badgeAttribute : Sermon -> Html.Attribute Msg
+badgeAttribute sermon =
     if sermon.status == "failed" || sermon.status == "error" then
-        "badge failed"
+        Ui.badgeFailed
 
     else
-        "badge"
+        Ui.badge
 
 
 describeStage : Sermon -> String
