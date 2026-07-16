@@ -66,6 +66,14 @@ The normalization stage adds `normalized.flac` (lossless master) and `normalized
 - Chosen: a `sermons` table holding id, original filename, upload timestamp, stage, and status
 - Stage and status vocabulary is defined by the [Processing Pipeline](specs/000-basic-webapp/001-processing-pipeline/SPEC.md); later specs add metadata fields (title, scripture references, topics, transcript)
 
+### Sermon Identity
+
+- Chosen: sermons are identified in the list by original filename plus upload date; no title field at upload
+  - Keeps upload to a single step (pick a file), serving the minimal-steps UX goal
+  - Weekly cadence means the date alone usually identifies a sermon
+- Considered: an optional free-text title at upload
+  - Rejected: [Transcription and Metadata](specs/002-transcription-and-metadata/SPEC.md) extracts a real title from the transcript, so a manual field would be redundant shortly after
+
 ### Upload Mechanics
 
 - Chosen: a single `multipart/form-data` POST, streamed to disk by the upload handler
