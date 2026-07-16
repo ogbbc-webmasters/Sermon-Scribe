@@ -93,6 +93,15 @@ The normalization stage adds `normalized.flac` (lossless master) and `normalized
 - Considered: a migration library (goose, golang-migrate)
   - Rejected: same model as the hand-rolled approach but with a dependency; revisit only if a migration ever needs Go logic
 
+### Continuous Integration
+
+- Chosen: minimal GitHub Actions workflow as a PR check - install Go and Elm, run the `justfile` build, run `go test ./...`
+  - Keeps `main` always-green for collaborators in the `ogbbc-webmasters` org
+  - Proves the build works outside this VM, guarding against undocumented VM-local build dependencies
+  - Deployment stays manual on the VM; CI validates, it does not deploy
+- Considered: no CI
+  - Rejected: one ~20-line workflow file is cheap insurance once more than one person can push
+
 ### Upload Mechanics
 
 - Chosen: a single `multipart/form-data` POST, streamed to disk by the upload handler
