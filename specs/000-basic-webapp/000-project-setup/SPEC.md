@@ -59,8 +59,8 @@ Later pipeline stages add derived files (`normalized.mp3`, `final.mp3`, chunks) 
 
 ### Data Model
 
-- Chosen: a `sermons` table holding id, original filename, upload timestamp, status, and metadata fields (title, scripture references, topics, transcript) populated by later pipeline stages
-- Statuses are defined by the [Processing Pipeline](specs/000-basic-webapp/001-processing-pipeline/SPEC.md)
+- Chosen: a `sermons` table holding id, original filename, upload timestamp, stage, and metadata fields (title, scripture references, topics, transcript) populated by later pipeline stages
+- Stages are defined by the [Processing Pipeline](specs/000-basic-webapp/001-processing-pipeline/SPEC.md)
 
 ### Upload Constraints
 
@@ -69,5 +69,5 @@ Later pipeline stages add derived files (`normalized.mp3`, `final.mp3`, chunks) 
 
 ## UI
 
-- Single-page Elm app: upload form plus a list of sermons with their statuses
+- Single-page Elm app: upload form plus a list of sermons with their stage and any in-progress or failed job
 - Target audience is 50+ years old: large fonts, high contrast, minimal steps

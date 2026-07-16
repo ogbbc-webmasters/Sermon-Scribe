@@ -23,7 +23,16 @@ Two new job types extend the pipeline after the editing step:
 1. `transcribe` - transcription of `final.mp3`
 2. `extract_metadata` - title, scripture references, and topics from the transcript
 
-Sermon statuses extend from `edited` to: `... → transcribing → extracting → review → complete`. A human must accept the metadata to move from `review` to `complete`; the pipeline never auto-completes past review.
+Sermon stages (milestones, per the [Processing Pipeline](specs/000-basic-webapp/001-processing-pipeline/SPEC.md)) extend from `edited`:
+
+`edited` → `transcribed` → `extracted` → `complete`
+
+- `edited` - `final.mp3` exists; `transcribe` job enqueued
+- `transcribed` - transcript stored; `extract_metadata` job enqueued
+- `extracted` - metadata stored; awaiting human review
+- `complete` - a human accepted the metadata; publish-ready. The pipeline never auto-completes past `extracted`
+
+A Revise regeneration enqueues a new `extract_metadata` job on a sermon at `extracted`; the stage does not move backward.
 
 ## Design Decisions
 
@@ -80,9 +89,9 @@ The reasoning fields make the model's choices auditable by the person publishing
 
 ### Review and Regeneration
 
-The prior prototype wrote extracted metadata straight to the sermon record with no way to revise; correcting a bad result meant reprocessing from scratch. This spec makes human review a required pipeline stage.
+The prior prototype wrote extracted metadata straight to the sermon record with no way to revise; correcting a bad result meant reprocessing from scratch. This spec makes human review a required step before `complete`.
 
-- Chosen: after extraction, the sermon enters `review`; the UI presents the metadata with its reasoning fields and offers three actions:
+- Chosen: at the `extracted` stage, the UI presents the metadata with its reasoning fields and offers three actions:
   - **Accept** - required to move the sermon to `complete`
   - **Revise** - a free-text feedback box (e.g., "that's not the title, he stated it near the end"); the server enqueues a new `extract_metadata` job whose prompt includes the transcript, the previous metadata, and the user's feedback. Regeneration is text-only and cheap - no re-transcription - and can loop as many times as needed
   - **Edit** - inline manual edits to individual fields (fix the speaker's name, toggle a topic) for corrections that are simpler to make directly than to explain to a model

@@ -27,17 +27,33 @@ Event-based background processing for the [Basic Webapp](specs/000-basic-webapp/
 - Considered: external queue (Redis, etc.)
   - Rejected: another service to run; SQLite is already present and the load is tiny
 
-### Pipeline Stages
+### Sermon Stages and Job Status
 
-Within the scope of the Basic Webapp there is one job type:
+- Chosen: a sermon's `stage` records the last completed milestone (always past-tense); what is *currently happening* is derived from the job queue, never duplicated into the stage
+  - Stages only advance on job success, so there are no transient "-ing" stages to get stuck in, fewer writes, and restart recovery needs no stage repair
+  - The UI composes the two: stage `uploaded` + running normalize job displays as "Normalizing… 40%"
+- Considered: encoding in-progress states as stages (`normalizing`, `transcribing`, …)
+  - Rejected: duplicates what the job table already knows and mixes two kinds of state in one enum
 
-1. `normalize` - FFmpeg normalization (see [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md))
+Within the scope of the Basic Webapp there is one job type, `normalize` (see [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md)), and two stages:
 
-Sermon statuses: `pending` → `normalizing` → `normalized`, plus `failed` with an error message.
+`uploaded` → `normalized`
 
-`normalized` is this spec's terminal status: `normalized.mp3` exists and the manual edit round-trip (download, edit externally, upload `final.mp3`) is available and repeatable without a status change.
+- `uploaded` - original stored; `normalize` job enqueued
+- `normalized` - `normalized.mp3` exists; the manual edit round-trip (download, edit externally, upload `final.mp3`) is available and repeatable without a stage change
 
-Later specs append statuses rather than redefining these: the [Automatic Audio Timeline](specs/001-automatic-audio-timeline/SPEC.md) adds `edited` when its editor produces `final.mp3`, and [Transcription and Metadata](specs/002-transcription-and-metadata/SPEC.md) continues through `complete`.
+Later specs append stages rather than redefining these: the [Automatic Audio Timeline](specs/001-automatic-audio-timeline/SPEC.md) adds `edited` when its editor produces `final.mp3`, and [Transcription and Metadata](specs/002-transcription-and-metadata/SPEC.md) continues through `complete`.
+
+### Failure and Retry
+
+- Chosen: failure lives on the job, not the sermon - there is no failed stage. A job records its status (`queued`/`running`/`done`/`failed`), attempt count, error message, and checkpoint
+  - Transient errors auto-retry with backoff, up to 3 attempts, resuming from the checkpoint
+  - When attempts are exhausted the job is marked `failed`; the sermon stays at its last milestone and the UI shows the error with a Retry button that re-enqueues the job
+  - Retrying is uniform for every current and future job type: re-enqueue, resume from checkpoint
+- Considered: a generic `failed` sermon stage
+  - Rejected: it discards which stage failed and where to resume, and transitioning out of it on retry requires restoring the prior stage anyway
+- Considered: per-stage failure stages (`normalize_failed`, …)
+  - Rejected: doubles the stage vocabulary with every new spec to encode what the job row already knows
 
 ### Progress Streaming
 

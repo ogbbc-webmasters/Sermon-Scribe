@@ -55,7 +55,7 @@ Both require exe.dev proxy auth, as defined in [Project Setup](specs/000-basic-w
 
 ## UI
 
-When sermon status is `normalized`, show:
+When sermon stage is `normalized`, show:
 
 1. Download button for `normalized.mp3`
 2. Upload form for the edited file
