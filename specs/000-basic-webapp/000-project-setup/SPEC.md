@@ -74,6 +74,15 @@ The normalization stage adds `normalized.flac` (lossless master) and `normalized
 - Considered: an optional free-text title at upload
   - Rejected: [Transcription and Metadata](specs/002-transcription-and-metadata/SPEC.md) extracts a real title from the transcript, so a manual field would be redundant shortly after
 
+### Deletion
+
+- Chosen: hard delete, behind a confirmation dialog - removes the sermon row and its entire `uploads/{sermon_id}/` directory
+  - Wrong-file and duplicate uploads are the most likely user errors in a minimal upload flow
+  - Each sermon is ~1.5-2 GB across artifacts, so reclaiming disk matters on a VM
+  - Low-stakes: the source recording still exists on the uploader's device
+- Considered: soft delete
+  - Rejected: leaves disk usage growing and requires an eventual purge story
+
 ### Upload Mechanics
 
 - Chosen: a single `multipart/form-data` POST, streamed to disk by the upload handler
