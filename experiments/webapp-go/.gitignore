@@ -1,6 +1,0 @@
-.env
-sermon-scribe
-*.db
-*.db-shm
-*.db-wal
-uploads/
