@@ -52,12 +52,16 @@ func openDB(path string) (*sql.DB, error) {
 }
 
 type server struct {
-	db         *sql.DB
-	uploadsDir string
+	db             *sql.DB
+	uploadsDir     string
+	maxUploadBytes int64 // 0 means defaultMaxUploadBytes
 }
 
 func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/sermons", s.handleUploadSermon)
+	mux.HandleFunc("GET /api/sermons", s.handleListSermons)
+	mux.HandleFunc("DELETE /api/sermons/{id}", s.handleDeleteSermon)
 	web, err := fs.Sub(webFS, "web")
 	if err != nil {
 		panic(err)
