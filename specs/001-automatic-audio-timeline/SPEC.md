@@ -49,8 +49,8 @@ Regions are contiguous with no gaps or overlaps - the entire file is covered.
 
 - `GET /api/sermons/{id}/waveform` - Returns pre-rendered waveform data (JSON amplitude samples)
 - `POST /api/sermons/{id}/analyze` - Runs region detection, returns detected regions (async, may take 30s-2min for long audio)
-- `POST /api/sermons/{id}/apply-edits` - Accepts regions with keep/delete flags, applies cuts to the FLAC master, produces `final.mp3`
-- `POST /api/sermons/{id}/confirm` - Resumes job to start transcription
+- `POST /api/sermons/{id}/apply-edits` - Accepts regions with keep/delete flags, applies cuts to the FLAC master, produces `final.mp3`; repeatable - the user can adjust regions and re-apply until approval
+- `POST /api/sermons/{id}/approve-edit` - Irreversibly completes the `edit` stage (see Approval below)
 
 ## Timeline UI
 
@@ -60,8 +60,19 @@ Regions are contiguous with no gaps or overlaps - the entire file is covered.
 - Dragging a boundary adjusts both adjacent regions
 - HTML5 `<audio>` element for playback, synced to timeline position
 - Playhead indicator that follows audio position
-- "Apply Edits" button to generate `final.mp3`
-- "Confirm & Transcribe" button to proceed after preview
+- "Apply Edits" button to generate `final.mp3`; can be repeated after further adjustments
+- "Approve" button to finish editing after previewing the result (see Approval below)
+
+## Approval
+
+- Chosen: an explicit, irreversible **Approve** action ends the `edit` stage; on approval the server deletes the storage-hogging source files - `original.*` (up to ~1.3 GB), `normalized.flac` (~300 MB), and `normalized.mp3` - keeping only `final.mp3` (~20 MB)
+  - Raw sources exist only to produce `final.mp3`; once the user has previewed and approved the result, keeping ~1.6 GB per sermon serves no purpose - a season of sermons would otherwise fill the VM's disk
+  - Because the sources are gone, there is no going back: the sermon can never be re-edited or re-normalized. The UI shows a confirmation dialog stating exactly that ("This permanently deletes the raw recording. You won't be able to re-edit this sermon. Approve?") before proceeding
+  - Later stages need only `final.mp3` (transcription chunks derive from it), so nothing downstream is affected
+- Considered: keeping sources until the sermon completes the full pipeline (spec 2's `review`/`done`)
+  - Rejected: nothing after `edit` reads the sources, and several sermons in flight would hold gigabytes hostage to metadata review; the edit preview is the moment the user has the context to judge the audio
+- Considered: a grace period or trash bin before deletion
+  - Rejected: adds state and cleanup machinery for a case the confirmation dialog already covers; the original recording still exists wherever it was recorded if disaster strikes
 
 ## Default Region Actions
 
