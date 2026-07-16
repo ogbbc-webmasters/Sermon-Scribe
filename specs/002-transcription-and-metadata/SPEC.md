@@ -44,7 +44,7 @@ A Revise regeneration enqueues a new `extract_metadata` job on a sermon at `revi
 - Considered: `qwen/qwen3-asr-flash` - strong benchmarks and contextual biasing
   - Rejected: avoiding Alibaba as a provider
 - Considered: `openai/whisper-large-v3-turbo` - 9x cheaper ($0.04/hr), portable
-  - Rejected as primary: two generations older, weaker on far-field audio, known hallucination on silence/music; kept as configured fallback
+  - Rejected: two generations older, weaker on far-field audio, known hallucination on silence/music; its 25 MB file cap can't even hold a long sermon's base64-encoded final.mp3 without chunking
 - Considered: single multimodal chat model doing transcription + metadata in one call (prior prototype used `google/gemini-3-flash-preview` via chat completions)
   - Rejected: fights the per-stage job design; base64 chat plumbing; one failure loses both outputs
 
@@ -56,7 +56,7 @@ A Revise regeneration enqueues a new `extract_metadata` job on a sermon at `revi
   - A failed request retries whole; at ~$0.36/hr a full re-transcription costs well under $1, so per-chunk checkpoint machinery isn't worth its complexity
   - Verify at implementation time that OpenRouter itself imposes no request body limit below ~30 MB on the transcriptions endpoint
 - Considered: splitting into fixed-duration chunks and joining transcripts
-  - Rejected: the constraints that would justify it (provider timeouts, the Whisper fallback's 25 MB cap) don't apply to the chosen model and workload; if a future model switch requires it, a separate `chunk` stage can be appended to the pipeline then
+  - Rejected: the constraints that would justify it (provider timeouts, smaller models' file caps) don't apply to the chosen model and workload; if a future model switch requires it, a separate `chunk` stage can be appended to the pipeline then
 
 ### Metadata Extraction
 
