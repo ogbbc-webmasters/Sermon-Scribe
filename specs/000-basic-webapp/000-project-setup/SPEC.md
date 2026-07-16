@@ -83,6 +83,13 @@ The normalization stage adds `normalized.flac` (lossless master) and `normalized
 - Considered: soft delete
   - Rejected: leaves disk usage growing and requires an eventual purge story
 
+### Schema Migrations
+
+- Chosen: hand-rolled sequential migrations - numbered `.sql` files embedded via `go:embed`, applied in order at startup, tracked in a `schema_version` table
+  - ~30 lines of Go, zero dependencies; later specs add columns and tables with plain `ALTER TABLE` / `CREATE TABLE` files
+- Considered: a migration library (goose, golang-migrate)
+  - Rejected: same model as the hand-rolled approach but with a dependency; revisit only if a migration ever needs Go logic
+
 ### Upload Mechanics
 
 - Chosen: a single `multipart/form-data` POST, streamed to disk by the upload handler
