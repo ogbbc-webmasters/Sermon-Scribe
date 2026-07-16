@@ -68,5 +68,6 @@ Later specs append stages rather than redefining these: the [Automatic Audio Tim
 
 ### Rate Limiting
 
-- Chosen: 20 sermons/day site-wide, enforced at upload
-  - Bounds worst-case processing and (in later specs) API spend; trivial to raise
+- Chosen: none - access is limited to trusted users behind the exe.dev proxy, so upload volume is self-limiting
+- Considered: a site-wide sermons/day cap
+  - Rejected: adds a failure mode for legitimate use (e.g., backfilling a sermon archive) to defend against abuse that authentication already prevents
