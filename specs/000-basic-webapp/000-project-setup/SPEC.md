@@ -55,7 +55,7 @@ uploads/{sermon_id}/
   original.*          # Raw upload, extension preserved (wav, mp3, m4a, etc.)
 ```
 
-The normalization stage adds `normalized.mp3` alongside the original; later specs add further derived files. See [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md).
+The normalization stage adds `normalized.flac` (lossless master) and `normalized.mp3` (browser proxy) alongside the original; later specs add further derived files. See [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md).
 
 ### Data Model
 

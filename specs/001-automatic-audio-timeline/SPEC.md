@@ -24,9 +24,9 @@ Replace the download/edit/re-upload workflow with:
    - Mark regions as keep/delete
    - Preview audio playback synced to timeline
 
-3. **Apply edits** - Server applies cuts based on user selections, produces `final.mp3`
+3. **Apply edits** - Server applies cuts to `normalized.flac` (the lossless master) and encodes `final.mp3`
 
-Builds on [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md) - sermon reaches `normalization`/`done` with `normalized.mp3` ready. This spec adds the `edit` stage, completed when the timeline editor produces `final.mp3`; it also introduces `final.mp3` itself (32kbps mono, for transcription and publishing), which does not exist before this spec.
+Builds on [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md) - sermon reaches `normalization`/`done` with the lossless `normalized.flac` master and its timing-identical `normalized.mp3` proxy ready. The editor previews and selects cuts against the proxy; applying edits renders `final.mp3` (32kbps mono, for transcription and publishing) from the FLAC master, so published audio goes through exactly one lossy encode. This spec adds the `edit` stage, completed when `final.mp3` is produced; `final.mp3` does not exist before this spec.
 
 ## Region Data Structure
 
@@ -49,7 +49,7 @@ Regions are contiguous with no gaps or overlaps - the entire file is covered.
 
 - `GET /api/sermons/{id}/waveform` - Returns pre-rendered waveform data (JSON amplitude samples)
 - `POST /api/sermons/{id}/analyze` - Runs region detection, returns detected regions (async, may take 30s-2min for long audio)
-- `POST /api/sermons/{id}/apply-edits` - Accepts regions with keep/delete flags, applies cuts, produces `final.mp3`
+- `POST /api/sermons/{id}/apply-edits` - Accepts regions with keep/delete flags, applies cuts to the FLAC master, produces `final.mp3`
 - `POST /api/sermons/{id}/confirm` - Resumes job to start transcription
 
 ## Timeline UI

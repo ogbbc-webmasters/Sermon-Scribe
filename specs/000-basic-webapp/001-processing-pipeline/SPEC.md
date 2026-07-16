@@ -40,7 +40,7 @@ Event-based background processing for the [Basic Webapp](specs/000-basic-webapp/
 Within the scope of the Basic Webapp there are two stages and one job type:
 
 - `upload` - `pending` when the record is created, `running` while receiving, `done` when `original.*` is stored, which enqueues the `normalize` job
-- `normalization` - mirrors the `normalize` job (see [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md)); at `done`, `normalized.mp3` is available for download - the terminal state of this spec
+- `normalization` - mirrors the `normalize` job (see [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md)); at `done`, the normalized master and proxy exist and can be played back - the terminal state of this spec
 
 Later specs append stages rather than redefining these: the [Automatic Audio Timeline](specs/001-automatic-audio-timeline/SPEC.md) adds `edit`, and [Transcription and Metadata](specs/002-transcription-and-metadata/SPEC.md) adds `transcription`, `extraction`, and `review`.
 
