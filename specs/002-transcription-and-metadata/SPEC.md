@@ -51,9 +51,13 @@ A Revise regeneration enqueues a new `extract_metadata` job on a sermon at `revi
 ### Chunking
 
 - Chosen: split `final.mp3` into fixed-duration chunks (`uploads/{sermon_id}/chunks/chunk_N.mp3`), transcribe each as its own resumable unit, join in order
-  - Per-request audio duration limits vary by model and are not documented on OpenRouter; chunking makes limits a non-issue
-  - Chunk duration in config; verify MAI-Transcribe's actual limit at implementation time - if it accepts full-length files, chunk count is simply 1
-  - Checkpoint state records which chunks are transcribed; a restart resumes at the first untranscribed chunk
+  - Chunking is internal to the `transcribe` job - not a pipeline stage; the user just sees determinate progress ("chunk 4 of 9")
+  - OpenRouter's upstream providers time out at 60 seconds per request and its docs advise splitting long audio; a full sermon (up to ~2 h) in one request would work on a fast model on a good day and fail unpredictably otherwise
+  - The Whisper fallback also caps files at 25 MB, which a long sermon's `final.mp3` (up to ~20 MB, +33% as base64) can exceed
+  - Chunk duration in config (~10 min keeps every request comfortably inside the timeout on any model)
+  - Checkpoint state records which chunks are transcribed; a restart or retry resumes at the first untranscribed chunk instead of re-paying for the whole sermon
+- Considered: single request for the whole file
+  - Rejected: fragile against the 60 s upstream timeout and fallback size limits, and provides no resumability or real progress
 
 ### Metadata Extraction
 

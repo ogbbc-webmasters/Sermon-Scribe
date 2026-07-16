@@ -65,7 +65,7 @@ The normalization stage adds `normalized.mp3` alongside the original; later spec
 ### Upload Constraints
 
 - Accept any format FFmpeg can decode; validation happens at normalization time, not upload time
-- Max upload size: 2 GB (raw WAV of a long service can approach 1 GB)
+- Max upload size: 2 GB - recordings are at most 2 hours, and 2 h of 44.1 kHz/16-bit stereo WAV is ~1.27 GB, leaving comfortable headroom (even 24-bit stereo fits); the cap is a disk/memory guardrail on the upload handler, not a quota
 
 ## UI
 
