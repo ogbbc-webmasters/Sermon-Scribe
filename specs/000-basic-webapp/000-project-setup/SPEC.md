@@ -66,6 +66,14 @@ The normalization stage adds `normalized.flac` (lossless master) and `normalized
 - Chosen: a `sermons` table holding id, original filename, upload timestamp, stage, and status
 - Stage and status vocabulary is defined by the [Processing Pipeline](specs/000-basic-webapp/001-processing-pipeline/SPEC.md); later specs add metadata fields (title, scripture references, topics, transcript)
 
+### Upload Mechanics
+
+- Chosen: a single `multipart/form-data` POST, streamed to disk by the upload handler
+  - Simplest possible flow on both ends; a dropped connection means re-uploading, which is acceptable for trusted users on stable connections
+  - Verify before relying on it that the exe.dev proxy tolerates a ~1-2 GB request body (test with a real large upload)
+- Considered: chunked/resumable upload
+  - Rejected: substantially more code on both ends (and fiddly file slicing in Elm) to solve a problem our users rarely have
+
 ### Upload Constraints
 
 - Accept any format FFmpeg can decode; validation happens at normalization time, not upload time
