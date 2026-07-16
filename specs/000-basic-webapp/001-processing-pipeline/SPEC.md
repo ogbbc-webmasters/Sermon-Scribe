@@ -10,10 +10,11 @@ Event-based background processing for the [Basic Webapp](specs/000-basic-webapp/
 
 ## Goals
 
-- Each pipeline stage (normalize, transcribe, extract metadata) is an independent, resumable job
+- Each pipeline stage is an independent, resumable job
 - Jobs from different sermons can process concurrently
 - Progress streams live to the frontend without polling
 - Jobs survive server restarts; no stage re-runs work it already completed
+- New stage types can be added without changing the queue machinery (later specs add transcription and metadata stages)
 
 ## Design Decisions
 
@@ -28,38 +29,13 @@ Event-based background processing for the [Basic Webapp](specs/000-basic-webapp/
 
 ### Pipeline Stages
 
-Each stage is a job type. A sermon flows through:
+Within the scope of the Basic Webapp there is one job type:
 
-1. `normalize` - FFmpeg normalization (see [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md)); pipeline pauses at `awaiting_edit` until the user uploads an edited file
-2. `transcribe` - transcription of `final.mp3`
-3. `extract_metadata` - title, scripture references, and topics from the transcript
+1. `normalize` - FFmpeg normalization (see [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md)); the pipeline then pauses at `awaiting_edit` until the user uploads an edited file, which completes the pipeline
 
-Sermon statuses mirror the stages: `pending` → `normalizing` → `awaiting_edit` → `transcribing` → `extracting` → `complete`, plus `failed` with an error message.
+Sermon statuses: `pending` → `normalizing` → `awaiting_edit` → `complete`, plus `failed` with an error message.
 
-### Transcription
-
-- Chosen: OpenRouter dedicated transcription endpoint (`/api/v1/audio/transcriptions`) with `microsoft/mai-transcribe-1.5`; model slug in config
-  - Dedicated endpoint is purpose-built for speech-to-text: faster and cheaper than routing audio through chat completions
-  - MAI-Transcribe 1.5 (June 2026): ~2.4% WER (top-3 on Artificial Analysis), strong on noisy/far-field real-world audio, automatic punctuation, ~276x real-time on long files, duration-based billing (~$0.36/hr)
-  - Supports keyword biasing (up to 200 keywords) - feed it biblical book names and congregation-specific vocabulary, pending verification that OpenRouter passes the parameter through
-- Considered: `qwen/qwen3-asr-flash` - strong benchmarks and contextual biasing
-  - Rejected: avoiding Alibaba as a provider
-- Considered: `openai/whisper-large-v3-turbo` - 9x cheaper ($0.04/hr), portable
-  - Rejected as primary: two generations older, weaker on far-field audio, known hallucination on silence/music; kept as configured fallback
-- Considered: single multimodal chat model doing transcription + metadata in one call (prior prototype used `google/gemini-3-flash-preview` via chat completions)
-  - Rejected: fights the per-stage job design; base64 chat plumbing; one failure loses both outputs
-
-### Chunking
-
-- Chosen: split `final.mp3` into fixed-duration chunks, transcribe each as its own resumable unit, join in order
-  - Per-request audio duration limits vary by model and are not documented on OpenRouter; chunking makes limits a non-issue
-  - Chunk duration in config; verify MAI-Transcribe's actual limit at implementation time - if it accepts full-length files, chunk count is simply 1
-
-### Metadata Extraction
-
-- Chosen: separate job calling a text model (Gemini Flash, current stable slug, via OpenRouter chat completions) with the full transcript, returning structured JSON: title, scripture references, topics
-  - Separate stage means improved prompts can re-run without re-transcribing
-  - Also responsible for normalizing scripture references the transcription may have misheard
+Later specs extend the pipeline with more stages after the editing step: [Automatic Audio Timeline](specs/001-automatic-audio-timeline/SPEC.md) and [Transcription and Metadata](specs/002-transcription-and-metadata/SPEC.md). The stage/status vocabulary is designed to be extended, not replaced.
 
 ### Progress Streaming
 
@@ -70,10 +46,11 @@ Sermon statuses mirror the stages: `pending` → `normalizing` → `awaiting_edi
 
 ### Checkpointing
 
-- Chosen: per-job checkpoint state in SQLite (e.g., which chunks are already transcribed, partial transcripts)
-  - A restart mid-transcription resumes at the first untranscribed chunk
+- Chosen: per-job checkpoint state in SQLite
+  - A restart mid-stage resumes from the last checkpoint rather than restarting the stage from scratch
+  - For `normalize` the checkpoint is coarse (re-run FFmpeg); the mechanism exists so later multi-part stages (e.g., chunked transcription) can resume mid-stage
 
 ### Rate Limiting
 
 - Chosen: 20 sermons/day site-wide, enforced at upload
-  - Bounds worst-case API spend; trivial to raise
+  - Bounds worst-case processing and (in later specs) API spend; trivial to raise
