@@ -220,7 +220,11 @@ uploadErrorMessage err =
 view : Model -> Html Msg
 view model =
     div [ class "page" ]
-        [ h1 [] [ text "Sermon Scribe" ]
+        [ div [ class "masthead" ]
+            [ div [ class "mark" ] [ text "\u{266B}" ]
+            , h1 [] [ text "Sermon Scribe" ]
+            , p [ class "tagline" ] [ text "From recording to ready-to-share" ]
+            ]
         , viewUpload model.upload
         , h2 [] [ text "Sermons" ]
         , viewSermons model
@@ -298,7 +302,8 @@ viewSermons model =
                 [ text "Could not load the sermon list. Please reload the page." ]
 
         Loaded [] ->
-            p [ class "hint" ] [ text "No sermons yet. Upload one to get started." ]
+            div [ class "empty-state" ]
+                [ text "No sermons yet. Upload one to get started." ]
 
         Loaded sermons ->
             div [] (List.map (viewSermon model) sermons)
@@ -310,9 +315,9 @@ viewSermon model sermon =
         [ div [ class "sermon-info" ]
             [ p [ class "sermon-name" ] [ text sermon.originalFilename ]
             , p [ class "sermon-meta" ]
-                [ text ("Uploaded " ++ formatDate model.zone sermon.uploadedAt) ]
-            , p [ class "sermon-meta" ]
-                [ span [ class "badge" ] [ text (describeStage sermon) ] ]
+                [ span [ class (badgeClass sermon) ] [ text (describeStage sermon) ]
+                , text (formatDate model.zone sermon.uploadedAt)
+                ]
             ]
         , viewSermonActions model sermon
         ]
@@ -355,6 +360,15 @@ viewDeleteButton sermon isDisabled =
 {-| Render a stage/status pair in plain language. Later specs add more
 stages; unknown combinations fall back to a generic rendering.
 -}
+badgeClass : Sermon -> String
+badgeClass sermon =
+    if sermon.status == "failed" || sermon.status == "error" then
+        "badge failed"
+
+    else
+        "badge"
+
+
 describeStage : Sermon -> String
 describeStage sermon =
     case ( sermon.stage, sermon.status ) of

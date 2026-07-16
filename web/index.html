@@ -5,134 +5,221 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sermon Scribe</title>
   <style>
+    :root {
+      --ink: #2b2820;
+      --ink-soft: #6b6455;
+      --paper: #f4f1ea;
+      --card: #fffdf8;
+      --line: #e2dccd;
+      --green: #2e6b3f;
+      --green-dark: #245332;
+      --green-soft: #e5efe7;
+      --gold: #b98a2e;
+      --red: #a8342a;
+      --red-soft: #fbf0ef;
+      --shadow: 0 1px 2px rgba(43, 40, 32, 0.06), 0 4px 16px rgba(43, 40, 32, 0.07);
+    }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: Georgia, "Times New Roman", serif;
-      font-size: 20px;
-      line-height: 1.5;
-      color: #1a1a1a;
-      background: #faf8f4;
+      font-family: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
+      font-size: 19px;
+      line-height: 1.55;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 400px at 50% -100px, #fdfbf5 0%, var(--paper) 70%);
+      min-height: 100vh;
     }
     .page {
-      max-width: 720px;
+      max-width: 680px;
       margin: 0 auto;
-      padding: 24px 20px 60px;
+      padding: 40px 20px 80px;
+    }
+    .masthead {
+      text-align: center;
+      margin-bottom: 36px;
+    }
+    .masthead .mark {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 58px;
+      height: 58px;
+      border-radius: 16px;
+      background: linear-gradient(160deg, var(--green) 0%, var(--green-dark) 100%);
+      color: #f2ead6;
+      font-size: 30px;
+      box-shadow: var(--shadow);
+      margin-bottom: 10px;
     }
     h1 {
-      font-size: 2.2rem;
-      margin: 0.5em 0;
-      color: #2c3e50;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 2.1rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin: 0;
+      color: var(--ink);
+    }
+    .tagline {
+      margin: 4px 0 0;
+      color: var(--ink-soft);
+      font-size: 1rem;
     }
     h2 {
-      font-size: 1.6rem;
-      margin: 1.4em 0 0.6em;
-      color: #2c3e50;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.35rem;
+      margin: 2.2em 0 0.8em;
+      color: var(--ink);
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+    }
+    h2::after {
+      content: "";
+      flex: 1;
+      border-bottom: 1px solid var(--line);
+      transform: translateY(-6px);
     }
     .button {
       display: inline-block;
       font-family: inherit;
-      font-size: 1.1rem;
-      font-weight: bold;
-      padding: 14px 28px;
-      border: 2px solid #2c3e50;
-      border-radius: 8px;
-      background: #ffffff;
-      color: #2c3e50;
+      font-size: 1.05rem;
+      font-weight: 600;
+      padding: 13px 26px;
+      border: 1.5px solid var(--line);
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--ink);
       cursor: pointer;
       text-align: center;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
     }
-    .button:hover:not(:disabled) { background: #eef2f6; }
+    .button:hover:not(:disabled) { background: #f6f2e8; border-color: #cfc7b4; }
+    .button:active:not(:disabled) { transform: translateY(1px); }
     .button:disabled { opacity: 0.45; cursor: default; }
     .button.primary {
-      background: #1d5c2e;
-      border-color: #1d5c2e;
+      background: linear-gradient(160deg, var(--green) 0%, var(--green-dark) 100%);
+      border-color: var(--green-dark);
       color: #ffffff;
-    }
-    .button.primary:hover { background: #17471f; }
-    .button.danger {
-      background: #a8342a;
-      border-color: #a8342a;
-      color: #ffffff;
-    }
-    .button.danger:hover:not(:disabled) { background: #8a2a22; }
-    .upload-box {
-      background: #ffffff;
-      border: 2px solid #d5cfc2;
+      font-size: 1.15rem;
+      padding: 16px 34px;
       border-radius: 12px;
-      padding: 24px;
+      box-shadow: 0 2px 6px rgba(36, 83, 50, 0.3);
+    }
+    .button.primary:hover { filter: brightness(1.07); }
+    .button.danger {
+      background: var(--red);
+      border-color: var(--red);
+      color: #ffffff;
+    }
+    .button.danger:hover:not(:disabled) { background: #8a2a22; filter: none; }
+    .upload-box {
+      background: var(--card);
+      border: 1.5px dashed #c9c0aa;
+      border-radius: 16px;
+      padding: 34px 24px;
       text-align: center;
+      box-shadow: var(--shadow);
     }
     .upload-status {
-      font-size: 1.3rem;
-      font-weight: bold;
-      margin: 0 0 12px;
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0 0 14px;
     }
     .progress-track {
-      height: 28px;
-      background: #e6e1d6;
-      border-radius: 14px;
+      height: 26px;
+      background: #ece7da;
+      border-radius: 13px;
       overflow: hidden;
+      box-shadow: inset 0 1px 3px rgba(43, 40, 32, 0.12);
     }
     .progress-fill {
       height: 100%;
-      background: #1d5c2e;
+      background: linear-gradient(90deg, var(--green) 0%, #3d8a52 100%);
       transition: width 0.2s ease;
+      border-radius: 13px;
     }
     .hint {
-      color: #555555;
-      font-size: 1rem;
-      margin: 12px 0 0;
+      color: var(--ink-soft);
+      font-size: 0.95rem;
+      margin: 14px 0 0;
     }
     .error {
-      color: #a8342a;
-      font-weight: bold;
-      margin: 12px 0 0;
+      color: var(--red);
+      font-weight: 600;
+      margin: 14px 0 0;
+    }
+    .empty-state {
+      text-align: center;
+      color: var(--ink-soft);
+      background: transparent;
+      border: 1.5px solid var(--line);
+      border-radius: 16px;
+      padding: 36px 24px;
+      font-size: 1rem;
     }
     .sermon-card {
-      background: #ffffff;
-      border: 2px solid #d5cfc2;
-      border-radius: 12px;
-      padding: 18px 22px;
-      margin-bottom: 16px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 20px 24px;
+      margin-bottom: 14px;
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
+      box-shadow: var(--shadow);
     }
     .sermon-info { min-width: 0; }
     .sermon-name {
+      font-family: Georgia, "Times New Roman", serif;
       font-size: 1.2rem;
-      font-weight: bold;
+      font-weight: 700;
       margin: 0;
       overflow-wrap: anywhere;
     }
     .sermon-meta {
-      margin: 4px 0 0;
-      color: #444444;
-      font-size: 1rem;
+      margin: 6px 0 0;
+      color: var(--ink-soft);
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
     }
     .badge {
       display: inline-block;
-      background: #e8f0e9;
-      color: #1d5c2e;
-      border-radius: 6px;
-      padding: 2px 10px;
-      font-weight: bold;
+      background: var(--green-soft);
+      color: var(--green-dark);
+      border: 1px solid #cfe0d3;
+      border-radius: 999px;
+      padding: 1px 12px;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    .badge.failed {
+      background: var(--red-soft);
+      color: var(--red);
+      border-color: #ecd2cf;
     }
     .confirm-box {
-      background: #fdf3f2;
-      border: 2px solid #a8342a;
-      border-radius: 8px;
-      padding: 14px;
+      background: var(--red-soft);
+      border: 1.5px solid #dfb5b0;
+      border-radius: 12px;
+      padding: 16px 18px;
       flex-basis: 100%;
     }
-    .confirm-question { margin: 0 0 12px; }
+    .confirm-question { margin: 0 0 14px; }
     .confirm-buttons {
       display: flex;
       gap: 12px;
       flex-wrap: wrap;
+    }
+    @media (max-width: 520px) {
+      body { font-size: 18px; }
+      .page { padding-top: 28px; }
+      .sermon-card { padding: 16px 18px; }
     }
   </style>
 </head>
