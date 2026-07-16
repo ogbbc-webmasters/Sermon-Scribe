@@ -20,7 +20,7 @@ Server-side audio normalization for the [Basic Webapp](specs/000-basic-webapp/SP
 ### Normalization Pipeline
 
 - Chosen: one FFmpeg pass over the original producing two outputs - a lossless FLAC master and a 128 kbps MP3 proxy
-  - Every derived artifact (spec 1's `final.mp3`, transcription chunks) renders from the FLAC master, so the published audio goes through exactly **one** lossy encode
+  - Every derived artifact (notably spec 1's `final.mp3`) renders from the FLAC master, so the published audio goes through exactly **one** lossy encode
   - The proxy exists for the browser: fast-loading playback now, and waveform/scrubbing in spec 1's editor (~86 MB for 90 min vs ~300 MB FLAC)
   - Both outputs come from the same render, so the proxy is timing-identical to the master: cut timestamps chosen against the proxy apply 1:1 to the FLAC
   - FLAC is ~50-60% of WAV size and decodes anywhere FFmpeg runs
@@ -62,7 +62,7 @@ uploads/{sermon_id}/
   normalized.mp3      # 128 kbps mono proxy - browser playback and editor preview
 ```
 
-Later specs add derived files alongside these (e.g., `final.mp3` rendered from the FLAC master by the timeline editor, transcription chunks).
+Later specs add derived files alongside these (e.g., `final.mp3` rendered from the FLAC master by the timeline editor).
 
 ## API
 

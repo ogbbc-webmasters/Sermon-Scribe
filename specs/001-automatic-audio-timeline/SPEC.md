@@ -68,7 +68,7 @@ Regions are contiguous with no gaps or overlaps - the entire file is covered.
 - Chosen: an explicit, irreversible **Approve** action ends the `edit` stage; on approval the server deletes the storage-hogging source files - `original.*` (up to ~1.3 GB), `normalized.flac` (~300 MB), and `normalized.mp3` - keeping only `final.mp3` (~20 MB)
   - Raw sources exist only to produce `final.mp3`; once the user has previewed and approved the result, keeping ~1.6 GB per sermon serves no purpose - a season of sermons would otherwise fill the VM's disk
   - Because the sources are gone, there is no going back: the sermon can never be re-edited or re-normalized. The UI shows a confirmation dialog stating exactly that ("This permanently deletes the raw recording. You won't be able to re-edit this sermon. Approve?") before proceeding
-  - Later stages need only `final.mp3` (transcription chunks derive from it), so nothing downstream is affected
+  - Later stages need only `final.mp3` (transcription reads it directly), so nothing downstream is affected
 - Considered: keeping sources until the sermon completes the full pipeline (spec 2's `review`/`done`)
   - Rejected: nothing after `edit` reads the sources, and several sermons in flight would hold gigabytes hostage to metadata review; the edit preview is the moment the user has the context to judge the audio
 - Considered: a grace period or trash bin before deletion

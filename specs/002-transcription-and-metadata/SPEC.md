@@ -48,16 +48,15 @@ A Revise regeneration enqueues a new `extract_metadata` job on a sermon at `revi
 - Considered: single multimodal chat model doing transcription + metadata in one call (prior prototype used `google/gemini-3-flash-preview` via chat completions)
   - Rejected: fights the per-stage job design; base64 chat plumbing; one failure loses both outputs
 
-### Chunking
+### No Chunking
 
-- Chosen: split `final.mp3` into fixed-duration chunks (`uploads/{sermon_id}/chunks/chunk_N.mp3`), transcribe each as its own resumable unit, join in order
-  - Chunking is internal to the `transcribe` job - not a pipeline stage; the user just sees determinate progress ("chunk 4 of 9")
-  - OpenRouter's upstream providers time out at 60 seconds per request and its docs advise splitting long audio; a full sermon (up to ~2 h) in one request would work on a fast model on a good day and fail unpredictably otherwise
-  - The Whisper fallback also caps files at 25 MB, which a long sermon's `final.mp3` (up to ~20 MB, +33% as base64) can exceed
-  - Chunk duration in config (~10 min keeps every request comfortably inside the timeout on any model)
-  - Checkpoint state records which chunks are transcribed; a restart or retry resumes at the first untranscribed chunk instead of re-paying for the whole sermon
-- Considered: single request for the whole file
-  - Rejected: fragile against the 60 s upstream timeout and fallback size limits, and provides no resumability or real progress
+- Chosen: the `transcribe` job sends `final.mp3` in a single request - no audio splitting
+  - MAI-Transcribe 1.5 accepts up to 300 MB / 2 hours per request; `final.mp3` is ~20 MB for the longest sermon (~27 MB base64), 10x under the cap, and recordings never exceed 2 hours
+  - Processing speed (~1 hour of audio in under 15 seconds) keeps a full sermon well inside OpenRouter's 60-second upstream provider timeout
+  - A failed request retries whole; at ~$0.36/hr a full re-transcription costs well under $1, so per-chunk checkpoint machinery isn't worth its complexity
+  - Verify at implementation time that OpenRouter itself imposes no request body limit below ~30 MB on the transcriptions endpoint
+- Considered: splitting into fixed-duration chunks and joining transcripts
+  - Rejected: the constraints that would justify it (provider timeouts, the Whisper fallback's 25 MB cap) don't apply to the chosen model and workload; if a future model switch requires it, a separate `chunk` stage can be appended to the pipeline then
 
 ### Metadata Extraction
 

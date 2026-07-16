@@ -64,7 +64,7 @@ Later specs append stages rather than redefining these: the [Automatic Audio Tim
 
 - Chosen: per-job checkpoint state in SQLite
   - A restart mid-stage resumes from the last checkpoint rather than restarting the stage from scratch
-  - For `normalize` the checkpoint is coarse (re-run FFmpeg); the mechanism exists so later multi-part stages (e.g., chunked transcription) can resume mid-stage
+  - For `normalize` the checkpoint is coarse (re-run FFmpeg); the mechanism exists so any later multi-part stage can resume mid-stage
 
 ### Rate Limiting
 
