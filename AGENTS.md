@@ -4,6 +4,7 @@
 
 - Use conventional commits (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`)
 - Commit after each working change — keep commits small and focused
+- Follow `docs/styling.md` for any CSS/UI changes (tokens, BEM-lite, state ownership, Ui.elm)
 
 ## Ask First (pause)
 
