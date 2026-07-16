@@ -12,7 +12,7 @@ Server-side audio normalization with a manual editing step, for the [Basic Webap
 
 1. Upload raw audio → creates sermon (see [Project Setup](specs/000-basic-webapp/000-project-setup/SPEC.md))
 2. `normalize` job converts and normalizes → `normalized.mp3`
-3. Pipeline pauses at `awaiting_edit`
+3. Sermon reaches `normalized`
 4. User downloads `normalized.mp3`, edits in Audacity (cuts singing, silence, etc.)
 5. User uploads edited file back to the same sermon → `final.mp3`
 6. Pipeline resumes → transcription → metadata (see [Processing Pipeline](specs/000-basic-webapp/001-processing-pipeline/SPEC.md))
@@ -49,13 +49,13 @@ uploads/{sermon_id}/
 ## API
 
 - `GET /api/sermons/{id}/audio/{type}` - Download audio file where `type` is `original`, `normalized`, or `final`
-- `POST /api/sermons/{id}/upload-edited` - Upload edited file; server re-encodes to `final.mp3` (mono, 32kbps) and resumes the pipeline
+- `POST /api/sermons/{id}/upload-edited` - Upload edited file; server re-encodes to `final.mp3` (mono, 32kbps); repeatable to replace a previous upload
 
 Both require exe.dev proxy auth, as defined in [Project Setup](specs/000-basic-webapp/000-project-setup/SPEC.md).
 
 ## UI
 
-When sermon status is `awaiting_edit`, show:
+When sermon status is `normalized`, show:
 
 1. Download button for `normalized.mp3`
 2. Upload form for the edited file

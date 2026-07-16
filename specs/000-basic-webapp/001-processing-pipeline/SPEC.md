@@ -31,11 +31,13 @@ Event-based background processing for the [Basic Webapp](specs/000-basic-webapp/
 
 Within the scope of the Basic Webapp there is one job type:
 
-1. `normalize` - FFmpeg normalization (see [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md)); the pipeline then pauses at `awaiting_edit` until the user uploads an edited file, which completes the pipeline
+1. `normalize` - FFmpeg normalization (see [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md))
 
-Sermon statuses: `pending` → `normalizing` → `awaiting_edit` → `complete`, plus `failed` with an error message.
+Sermon statuses: `pending` → `normalizing` → `normalized`, plus `failed` with an error message.
 
-Later specs extend the pipeline with more stages after the editing step: [Automatic Audio Timeline](specs/001-automatic-audio-timeline/SPEC.md) and [Transcription and Metadata](specs/002-transcription-and-metadata/SPEC.md). The stage/status vocabulary is designed to be extended, not replaced.
+`normalized` is this spec's terminal status: `normalized.mp3` exists and the manual edit round-trip (download, edit externally, upload `final.mp3`) is available and repeatable without a status change.
+
+Later specs append statuses rather than redefining these: the [Automatic Audio Timeline](specs/001-automatic-audio-timeline/SPEC.md) adds `edited` when its editor produces `final.mp3`, and [Transcription and Metadata](specs/002-transcription-and-metadata/SPEC.md) continues through `complete`.
 
 ### Progress Streaming
 

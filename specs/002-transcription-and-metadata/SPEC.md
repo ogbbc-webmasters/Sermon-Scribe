@@ -23,7 +23,7 @@ Two new job types extend the pipeline after the editing step:
 1. `transcribe` - transcription of `final.mp3`
 2. `extract_metadata` - title, scripture references, and topics from the transcript
 
-Sermon statuses extend to: `... → transcribing → extracting → review → complete`. A human must accept the metadata to move from `review` to `complete`; the pipeline never auto-completes past review.
+Sermon statuses extend from `edited` to: `... → transcribing → extracting → review → complete`. A human must accept the metadata to move from `review` to `complete`; the pipeline never auto-completes past review.
 
 ## Design Decisions
 

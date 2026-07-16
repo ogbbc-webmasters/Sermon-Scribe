@@ -26,7 +26,7 @@ Replace the download/edit/re-upload workflow with:
 
 3. **Apply edits** - Server applies cuts based on user selections, produces `final.mp3`
 
-Builds on [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md) - job pauses at `awaiting_edit` with `normalized.mp3` ready.
+Builds on [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md) - sermon reaches `normalized` with `normalized.mp3` ready. This spec adds the `edited` status when the timeline editor produces `final.mp3`.
 
 ## Region Data Structure
 
