@@ -18,7 +18,7 @@ test: elm
 # /home/exedev/sermon-scribe-data; binary installed to /usr/local/bin).
 deploy: build
     mkdir -p /home/exedev/sermon-scribe-data
-    sudo cp sermon-scribe /usr/local/bin/sermon-scribe
+    sudo install -T sermon-scribe /usr/local/bin/sermon-scribe
     sudo cp deploy/sermon-scribe.service /etc/systemd/system/sermon-scribe.service
     sudo systemctl daemon-reload
     sudo systemctl enable sermon-scribe
