@@ -30,6 +30,9 @@ Scaffolding for the [Basic Webapp](specs/000-basic-webapp/SPEC.md): tech stack, 
 - Chosen: Elm 0.19.2, compiled to a single `elm.js` embedded in the Go binary via `//go:embed`
   - Recently released Elm version; strong static guarantees for an event-heavy UI (SSE-driven state updates)
   - `elm make` only - no bundler, preserving the one-binary deployment
+  - Built at build time: a Makefile runs `elm make --optimize` to produce `web/elm.js`, then `go build`; `elm.js` is gitignored and the Elm compiler is required in the build environment (this VM)
+- Considered: committing the compiled `elm.js` to the repo
+  - Rejected: generated artifact in git that is easy to forget to rebuild
 - Considered: single hand-written HTML/JS file (prior prototype approach)
   - Rejected: the event-based UI (live job progress across multiple sermons) benefits from Elm's architecture
 - Considered: JS framework (React/Vite)
