@@ -4,3 +4,4 @@ web/elm.js
 *.db-wal
 *.db-shm
 uploads/
+elm-stuff/

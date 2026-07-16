@@ -4,9 +4,143 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sermon Scribe</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 20px;
+      line-height: 1.5;
+      color: #1a1a1a;
+      background: #faf8f4;
+    }
+    .page {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 24px 20px 60px;
+    }
+    h1 {
+      font-size: 2.2rem;
+      margin: 0.5em 0;
+      color: #2c3e50;
+    }
+    h2 {
+      font-size: 1.6rem;
+      margin: 1.4em 0 0.6em;
+      color: #2c3e50;
+    }
+    .button {
+      display: inline-block;
+      font-family: inherit;
+      font-size: 1.1rem;
+      font-weight: bold;
+      padding: 14px 28px;
+      border: 2px solid #2c3e50;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #2c3e50;
+      cursor: pointer;
+      text-align: center;
+    }
+    .button:hover:not(:disabled) { background: #eef2f6; }
+    .button:disabled { opacity: 0.45; cursor: default; }
+    .button.primary {
+      background: #1d5c2e;
+      border-color: #1d5c2e;
+      color: #ffffff;
+    }
+    .button.primary:hover { background: #17471f; }
+    .button.danger {
+      background: #a8342a;
+      border-color: #a8342a;
+      color: #ffffff;
+    }
+    .button.danger:hover:not(:disabled) { background: #8a2a22; }
+    .upload-box {
+      background: #ffffff;
+      border: 2px solid #d5cfc2;
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+    }
+    .upload-status {
+      font-size: 1.3rem;
+      font-weight: bold;
+      margin: 0 0 12px;
+    }
+    .progress-track {
+      height: 28px;
+      background: #e6e1d6;
+      border-radius: 14px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: #1d5c2e;
+      transition: width 0.2s ease;
+    }
+    .hint {
+      color: #555555;
+      font-size: 1rem;
+      margin: 12px 0 0;
+    }
+    .error {
+      color: #a8342a;
+      font-weight: bold;
+      margin: 12px 0 0;
+    }
+    .sermon-card {
+      background: #ffffff;
+      border: 2px solid #d5cfc2;
+      border-radius: 12px;
+      padding: 18px 22px;
+      margin-bottom: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .sermon-info { min-width: 0; }
+    .sermon-name {
+      font-size: 1.2rem;
+      font-weight: bold;
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+    .sermon-meta {
+      margin: 4px 0 0;
+      color: #444444;
+      font-size: 1rem;
+    }
+    .badge {
+      display: inline-block;
+      background: #e8f0e9;
+      color: #1d5c2e;
+      border-radius: 6px;
+      padding: 2px 10px;
+      font-weight: bold;
+    }
+    .confirm-box {
+      background: #fdf3f2;
+      border: 2px solid #a8342a;
+      border-radius: 8px;
+      padding: 14px;
+      flex-basis: 100%;
+    }
+    .confirm-question { margin: 0 0 12px; }
+    .confirm-buttons {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+  </style>
 </head>
 <body>
-  <h1>Sermon Scribe</h1>
-  <p>Frontend coming soon.</p>
+  <div id="app"></div>
+  <script src="/elm.js"></script>
+  <script>
+    Elm.Main.init({ node: document.getElementById("app") });
+  </script>
 </body>
 </html>
