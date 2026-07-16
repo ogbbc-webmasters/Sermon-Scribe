@@ -99,8 +99,11 @@ Consecutive windows matching singing characteristics are merged into singing reg
 
 **Waveform resolution**: Fixed samples per second (e.g., 10-20 samples/sec). Consistent detail regardless of duration. Frontend scales to canvas width.
 
-**Audio preview during editing**: Client-side via Web Audio API, skipping deleted regions. Instant feedback without server round-trip.
+**Audio preview during editing**: The HTML5 `<audio>` element plays `normalized.mp3` while a playback loop watches `currentTime`; on entering a deleted region it seeks to the region's end. No audio is modified - deleted regions are simply skipped during playback. Boundary precision is a frame tick plus seek latency (tens of milliseconds), sufficient for iterating on cuts; the exact result is auditioned via Apply Edits.
 
-**Audio preview after applying edits**: Server generates `final.mp3`, user previews before confirming transcription.
+- Considered: sample-accurate preview via the Web Audio API (`decodeAudioData` + scheduled buffer segments)
+  - Rejected: decoding a 90-minute file to PCM needs ~1 GB of tab memory; the seek-skipping approach costs nothing and its imprecision is covered by the server-render preview
+
+**Audio preview after applying edits**: Apply Edits renders `final.mp3` from the FLAC master; the user listens to this actual artifact before approving. Apply is repeatable and non-destructive (each run overwrites `final.mp3`), so the loop is: skip-preview to iterate → Apply Edits → audition the real render → adjust and re-apply, or Approve.
 
 **Edit persistence**: User adjustments saved to browser localStorage (keyed by sermon ID). On load, restore from localStorage if available, otherwise call analyze endpoint. Clear localStorage after "Apply Edits" succeeds. Multiple tabs editing the same sermon: last write wins (not worth adding complexity for this edge case).
