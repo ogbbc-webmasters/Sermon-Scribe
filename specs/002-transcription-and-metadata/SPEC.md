@@ -14,6 +14,7 @@ Once the [Basic Webapp](specs/000-basic-webapp/SPEC.md) produces an edited `fina
 - Extracted metadata: title, scripture references, topics
 - Stages run as resumable jobs on the queue from the [Processing Pipeline](specs/000-basic-webapp/001-processing-pipeline/SPEC.md)
 - Re-running metadata extraction (e.g., after a prompt improvement) must not require re-transcription
+- A human reviews the metadata and can push back and regenerate before anything is final
 
 ## Pipeline Stages
 
@@ -22,7 +23,7 @@ Two new job types extend the pipeline after the editing step:
 1. `transcribe` - transcription of `final.mp3`
 2. `extract_metadata` - title, scripture references, and topics from the transcript
 
-Sermon statuses extend to: `... → transcribing → extracting → complete`.
+Sermon statuses extend to: `... → transcribing → extracting → review → complete`. A human must accept the metadata to move from `review` to `complete`; the pipeline never auto-completes past review.
 
 ## Design Decisions
 
@@ -76,3 +77,21 @@ The reasoning fields make the model's choices auditable by the person publishing
 - Chosen: topics come from the curated list in [topics.md](specs/002-transcription-and-metadata/topics.md) (79 topics with descriptions, carried over from the prior prototype); the model selects from this list only, and the server rejects any topic not on it
   - The descriptions are congregation-specific domain knowledge and are included in the extraction prompt
   - Versioned in the repo as a data file the application loads, so the list can be edited without touching code
+
+### Review and Regeneration
+
+The prior prototype wrote extracted metadata straight to the sermon record with no way to revise; correcting a bad result meant reprocessing from scratch. This spec makes human review a required pipeline stage.
+
+- Chosen: after extraction, the sermon enters `review`; the UI presents the metadata with its reasoning fields and offers three actions:
+  - **Accept** - required to move the sermon to `complete`
+  - **Revise** - a free-text feedback box (e.g., "that's not the title, he stated it near the end"); the server enqueues a new `extract_metadata` job whose prompt includes the transcript, the previous metadata, and the user's feedback. Regeneration is text-only and cheap - no re-transcription - and can loop as many times as needed
+  - **Edit** - inline manual edits to individual fields (fix the speaker's name, toggle a topic) for corrections that are simpler to make directly than to explain to a model
+- Chosen: keep a full revision history - each generation's metadata, the feedback that prompted it, who gave it, and when - stored with the sermon and visible in the review UI
+  - Multiple people may edit the same sermon; the history lets any editor see what feedback was already given and how the metadata evolved before adding their own
+  - Also aids debugging prompt quality over time
+- Considered: last-write-wins with no history
+  - Rejected: invisible prior feedback would cause editors to repeat or contradict each other
+- Considered: auto-accepting metadata with revision available after the fact
+  - Rejected: publishing correct metadata is the point of the app; requiring an explicit accept builds trust and catches errors before they are published
+- Considered: per-field regeneration (regenerate only the title or only the topics)
+  - Rejected: a single feedback box plus inline manual edits covers the same cases with much less UI
