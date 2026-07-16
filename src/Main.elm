@@ -221,8 +221,7 @@ view : Model -> Html Msg
 view model =
     div [ class "page" ]
         [ div [ class "masthead" ]
-            [ div [ class "mark" ] [ text "\u{266B}" ]
-            , h1 [] [ text "Sermon Scribe" ]
+            [ h1 [] [ text "Sermon Scribe" ]
             , p [ class "tagline" ] [ text "From recording to ready-to-share" ]
             ]
         , viewUpload model.upload
