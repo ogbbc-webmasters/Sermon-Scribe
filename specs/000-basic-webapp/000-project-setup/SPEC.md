@@ -37,10 +37,14 @@ Scaffolding for the [Basic Webapp](specs/000-basic-webapp/SPEC.md): tech stack, 
 
 ### Authentication
 
-- Chosen: exe.dev proxy auth via the `X-Exedev-Userid` header; all routes require it
-  - Zero auth code to maintain; the proxy authenticates users
+- Chosen: authentication and authorization are provided entirely by the exe.dev private proxy; the app trusts all requests it receives
+  - The VM's share list is the authorization boundary (`ssh exe.dev share add/remove`); unauthenticated visitors are redirected to exe.dev login by the proxy and never reach the app
+  - No in-app auth checks and no login/logout UI; zero auth code to maintain, and local dev needs no header injection
+  - Optionally, the `X-Exedev-Email` header (present on all proxied requests) may be recorded as a nullable `uploaded_by` on the sermon record for attribution - display only, never enforcement
 - Considered: application-level accounts
   - Rejected: unnecessary for a small trusted user base
+- Considered: in-app presence check on the `X-Exedev-Userid` header as defense-in-depth
+  - Rejected: only guards against an accidental `share set-public`, whose blast radius here is small; not worth complicating local development
 
 ### Deployment
 
