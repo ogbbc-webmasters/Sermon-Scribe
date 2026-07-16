@@ -48,6 +48,31 @@ Sermon statuses extend to: `... → transcribing → extracting → complete`.
 
 ### Metadata Extraction
 
-- Chosen: separate job calling a text model (Gemini Flash, current stable slug, via OpenRouter chat completions) with the full transcript, returning structured JSON: title, scripture references, topics
+- Chosen: separate job calling a text model (Gemini Flash, current stable slug, via OpenRouter chat completions) with the full transcript, returning structured JSON
   - Separate stage means improved prompts can re-run without re-transcribing
   - Also responsible for normalizing scripture references the transcription may have misheard
+
+Extracted fields:
+
+- `title` - see Title Selection below
+- `title_reasoning` - where in the sermon the quote came from and why it was chosen
+- `speaker` - the preacher's name, if mentioned
+- `scriptures` - all Bible references mentioned, with normalization rules: deduplicate (keep the more specific of "Jeremiah 2" vs "Jeremiah 2:1-37"), combine contiguous verses ("Revelation 2:1, 2:2, 2:3" → "Revelation 2:1-3"), ordered by first mention
+- `topics` - 2 to 5 entries from the topics taxonomy
+- `topics_reasoning` - per-topic explanation of what sermon content led to the selection
+
+The reasoning fields make the model's choices auditable by the person publishing the sermon.
+
+### Title Selection
+
+- Chosen: the title must be a verbatim quote from the sermon, enforced programmatically - after extraction, the server verifies the title appears in the transcript (normalized for case, punctuation, and whitespace); on failure, retry the extraction, and if it still fails, flag the title for user attention rather than accepting it
+  - The prior prototype instructed the model to use only the speaker's exact words, but prompt instructions alone were insufficient: it regularly hallucinated titles. Verbatim quotes are mechanically checkable, so enforcement belongs in code, not the prompt
+  - If the speaker explicitly states a title, use that; otherwise select a quote that serves well as a title
+- Considered: allowing the model to compose a title freely
+  - Rejected: hallucinated titles were a recurring failure in the prior prototype, and a composed title cannot be validated against the transcript
+
+### Topics Taxonomy
+
+- Chosen: topics come from the curated list in [topics.md](specs/002-transcription-and-metadata/topics.md) (79 topics with descriptions, carried over from the prior prototype); the model selects from this list only, and the server rejects any topic not on it
+  - The descriptions are congregation-specific domain knowledge and are included in the extraction prompt
+  - Versioned in the repo as a data file the application loads, so the list can be edited without touching code
