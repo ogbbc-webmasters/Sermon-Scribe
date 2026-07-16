@@ -1,7 +1,9 @@
 ---
-status: draft
+status: approved
 author: Addison Emig
 creation_date: 2026-07-16
+approved_by: Addison Emig
+approval_date: 2026-07-16
 ---
 
 # Project Setup
