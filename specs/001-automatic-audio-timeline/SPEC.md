@@ -8,7 +8,7 @@ creation_date: 2026-01-17
 
 ## Problem
 
-With [Basic Audio Normalization](specs/000-basic-audio-normalization/SPEC.md), users still need Audacity to cut out singing, silence, and unwanted sections. This spec eliminates that manual step with an in-browser timeline editor.
+With [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md), users still need Audacity to cut out singing, silence, and unwanted sections. This spec eliminates that manual step with an in-browser timeline editor.
 
 ## Proposed Solution
 
@@ -26,7 +26,7 @@ Replace the download/edit/re-upload workflow with:
 
 3. **Apply edits** - Server applies cuts based on user selections, produces `final.mp3`
 
-Builds on [Basic Audio Normalization](specs/000-basic-audio-normalization/SPEC.md) - job pauses at `awaiting_edit` with `normalized.mp3` ready.
+Builds on [Audio Normalization](specs/000-basic-webapp/002-audio-normalization/SPEC.md) - job pauses at `awaiting_edit` with `normalized.mp3` ready.
 
 ## Region Data Structure
 
