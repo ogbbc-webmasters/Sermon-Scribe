@@ -1,0 +1,13 @@
+[Unit]
+Description=Sermon Scribe web app
+After=network.target
+
+[Service]
+Type=simple
+User=exedev
+WorkingDirectory=/home/exedev/sermon-scribe-data
+ExecStart=/usr/local/bin/sermon-scribe -addr :8000 -db sermons.db -uploads uploads
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
