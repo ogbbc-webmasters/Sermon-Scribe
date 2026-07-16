@@ -221,9 +221,7 @@ view : Model -> Html Msg
 view model =
     div [ class "page" ]
         [ div [ class "masthead" ]
-            [ h1 [] [ text "Sermon Scribe" ]
-            , p [ class "tagline" ] [ text "From recording to ready-to-share" ]
-            ]
+            [ h1 [] [ text "Sermon Scribe" ] ]
         , viewUpload model.upload
         , h2 [] [ text "Sermons" ]
         , viewSermons model

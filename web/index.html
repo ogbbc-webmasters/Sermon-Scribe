@@ -47,11 +47,6 @@
       margin: 0;
       color: var(--ink);
     }
-    .tagline {
-      margin: 4px 0 0;
-      color: var(--ink-soft);
-      font-size: 1rem;
-    }
     h2 {
       font-family: Georgia, "Times New Roman", serif;
       font-size: 1.35rem;
@@ -81,7 +76,7 @@
       text-align: center;
       transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
     }
-    .button:hover:not(:disabled) { background: #f6f2e8; border-color: #cfc7b4; }
+    .button:hover:not(:disabled):not(.primary):not(.danger) { background: #f6f2e8; border-color: #cfc7b4; }
     .button:active:not(:disabled) { transform: translateY(1px); }
     .button:disabled { opacity: 0.45; cursor: default; }
     .button.primary {
