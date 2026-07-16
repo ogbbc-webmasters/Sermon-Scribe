@@ -4,7 +4,6 @@
 
 - Use conventional commits (`feat:`, `fix:`, `refactor:`, `docs:`, `chore:`)
 - Commit after each working change — keep commits small and focused
-- Push access is configured via `gh auth setup-git` with personal access token
 
 ## Ask First (pause)
 
