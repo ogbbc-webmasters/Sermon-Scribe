@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"bytes"
@@ -10,18 +10,21 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"testing/fstest"
+
+	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 )
 
-func newTestServer(t *testing.T) (*server, *httptest.Server) {
+func newTestServer(t *testing.T) (*Server, *httptest.Server) {
 	t.Helper()
 	dir := t.TempDir()
-	db, err := openDB(filepath.Join(dir, "test.db"))
+	st, err := store.Open(filepath.Join(dir, "test.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
-	srv := &server{db: db, uploadsDir: filepath.Join(dir, "uploads")}
-	ts := httptest.NewServer(srv.routes())
+	t.Cleanup(func() { st.Close() })
+	srv := &Server{Store: st, UploadsDir: filepath.Join(dir, "uploads")}
+	ts := httptest.NewServer(srv.Routes(fstest.MapFS{}))
 	t.Cleanup(ts.Close)
 	return srv, ts
 }
@@ -39,7 +42,7 @@ func multipartBody(t *testing.T, filename string, content []byte) (io.Reader, st
 	return &buf, mw.FormDataContentType()
 }
 
-func uploadFile(t *testing.T, ts *httptest.Server, filename string, content []byte, headers map[string]string) (*http.Response, sermon) {
+func uploadFile(t *testing.T, ts *httptest.Server, filename string, content []byte, headers map[string]string) (*http.Response, store.Sermon) {
 	t.Helper()
 	body, ctype := multipartBody(t, filename, content)
 	req, err := http.NewRequest("POST", ts.URL+"/api/sermons", body)
@@ -55,7 +58,7 @@ func uploadFile(t *testing.T, ts *httptest.Server, filename string, content []by
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	var sm sermon
+	var sm store.Sermon
 	if resp.StatusCode == http.StatusCreated {
 		if err := json.NewDecoder(resp.Body).Decode(&sm); err != nil {
 			t.Fatalf("decode upload response: %v", err)
@@ -87,7 +90,7 @@ func TestUpload(t *testing.T) {
 	}
 
 	// File on disk, extension sanitized to lowercase.
-	got, err := os.ReadFile(filepath.Join(srv.uploadsDir, sm.ID, "original.mp3"))
+	got, err := os.ReadFile(filepath.Join(srv.UploadsDir, sm.ID, "original.mp3"))
 	if err != nil {
 		t.Fatalf("read stored file: %v", err)
 	}
@@ -96,12 +99,8 @@ func TestUpload(t *testing.T) {
 	}
 
 	// Row in DB.
-	var count int
-	if err := srv.db.QueryRow(`SELECT COUNT(*) FROM sermons WHERE id = ?`, sm.ID).Scan(&count); err != nil {
-		t.Fatal(err)
-	}
-	if count != 1 {
-		t.Errorf("rows for id = %d, want 1", count)
+	if _, err := srv.Store.GetSermon(sm.ID); err != nil {
+		t.Errorf("GetSermon after upload: %v", err)
 	}
 }
 
@@ -132,7 +131,7 @@ func TestListNewestFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer resp.Body.Close()
-	var list []sermon
+	var list []store.Sermon
 	if err := json.NewDecoder(resp.Body).Decode(&list); err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +150,7 @@ func TestDelete(t *testing.T) {
 	srv, ts := newTestServer(t)
 
 	_, sm := uploadFile(t, ts, "gone.mp3", []byte("x"), nil)
-	dir := filepath.Join(srv.uploadsDir, sm.ID)
+	dir := filepath.Join(srv.UploadsDir, sm.ID)
 	if _, err := os.Stat(dir); err != nil {
 		t.Fatalf("uploads dir missing before delete: %v", err)
 	}
@@ -166,12 +165,8 @@ func TestDelete(t *testing.T) {
 		t.Fatalf("status = %d, want 204", resp.StatusCode)
 	}
 
-	var count int
-	if err := srv.db.QueryRow(`SELECT COUNT(*) FROM sermons WHERE id = ?`, sm.ID).Scan(&count); err != nil {
-		t.Fatal(err)
-	}
-	if count != 0 {
-		t.Error("row still present after delete")
+	if _, err := srv.Store.GetSermon(sm.ID); err != store.ErrNotFound {
+		t.Errorf("GetSermon after delete: err = %v, want ErrNotFound", err)
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Errorf("uploads dir still present after delete (err=%v)", err)
@@ -193,7 +188,7 @@ func TestDeleteNotFound(t *testing.T) {
 
 func TestUploadSizeCap(t *testing.T) {
 	srv, ts := newTestServer(t)
-	srv.maxUploadBytes = 1024 // small cap for the test
+	srv.MaxUploadBytes = 1024 // small cap for the test
 
 	resp, _ := uploadFile(t, ts, "big.wav", bytes.Repeat([]byte("a"), 4096), nil)
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
@@ -201,14 +196,14 @@ func TestUploadSizeCap(t *testing.T) {
 	}
 
 	// Nothing left behind: no rows, no upload dirs.
-	var count int
-	if err := srv.db.QueryRow(`SELECT COUNT(*) FROM sermons`).Scan(&count); err != nil {
+	sermons, err := srv.Store.ListSermons()
+	if err != nil {
 		t.Fatal(err)
 	}
-	if count != 0 {
-		t.Errorf("sermon rows = %d, want 0", count)
+	if len(sermons) != 0 {
+		t.Errorf("sermon rows = %d, want 0", len(sermons))
 	}
-	entries, err := os.ReadDir(srv.uploadsDir)
+	entries, err := os.ReadDir(srv.UploadsDir)
 	if err == nil && len(entries) > 0 {
 		t.Errorf("uploads dir has %d entries, want 0", len(entries))
 	}

@@ -1,27 +1,41 @@
-package main
+// Package server implements the HTTP API and serves the embedded frontend.
+// All persistence goes through the store package.
+package server
 
 import (
 	"encoding/json"
 	"errors"
-	"github.com/google/uuid"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+
+	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 )
 
 const defaultMaxUploadBytes = 2 << 30 // 2 GB
 
-type sermon struct {
-	ID               string  `json:"id"`
-	OriginalFilename string  `json:"original_filename"`
-	UploadedAt       string  `json:"uploaded_at"`
-	UploadedBy       *string `json:"uploaded_by"`
-	Stage            string  `json:"stage"`
-	Status           string  `json:"status"`
+// Server holds the HTTP handlers' dependencies.
+type Server struct {
+	Store          *store.Store
+	UploadsDir     string
+	MaxUploadBytes int64 // 0 means defaultMaxUploadBytes
+}
+
+// Routes returns the full handler: the JSON API plus the embedded frontend.
+func (s *Server) Routes(webFS fs.FS) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/sermons", s.handleUploadSermon)
+	mux.HandleFunc("GET /api/sermons", s.handleListSermons)
+	mux.HandleFunc("DELETE /api/sermons/{id}", s.handleDeleteSermon)
+	mux.Handle("/", http.FileServerFS(webFS))
+	return mux
 }
 
 // newUUID returns a time-ordered (version 7) UUID string.
@@ -58,8 +72,8 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
 }
 
-func (s *server) handleUploadSermon(w http.ResponseWriter, r *http.Request) {
-	maxBytes := s.maxUploadBytes
+func (s *Server) handleUploadSermon(w http.ResponseWriter, r *http.Request) {
+	maxBytes := s.MaxUploadBytes
 	if maxBytes == 0 {
 		maxBytes = defaultMaxUploadBytes
 	}
@@ -99,7 +113,7 @@ func (s *server) handleUploadSermon(w http.ResponseWriter, r *http.Request) {
 	filename = filepath.Base(filename)
 
 	id := newUUID()
-	dir := filepath.Join(s.uploadsDir, id)
+	dir := filepath.Join(s.UploadsDir, id)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		log.Printf("upload: mkdir %s: %v", dir, err)
 		writeError(w, http.StatusInternalServerError, "could not store upload")
@@ -124,7 +138,7 @@ func (s *server) handleUploadSermon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sm := sermon{
+	sm := store.Sermon{
 		ID:               id,
 		OriginalFilename: filename,
 		UploadedAt:       time.Now().UTC().Format(time.RFC3339Nano),
@@ -135,12 +149,7 @@ func (s *server) handleUploadSermon(w http.ResponseWriter, r *http.Request) {
 		sm.UploadedBy = &email
 	}
 
-	_, err = s.db.Exec(
-		`INSERT INTO sermons (id, original_filename, uploaded_at, uploaded_by, stage, status)
-		 VALUES (?, ?, ?, ?, ?, ?)`,
-		sm.ID, sm.OriginalFilename, sm.UploadedAt, sm.UploadedBy, sm.Stage, sm.Status,
-	)
-	if err != nil {
+	if err := s.Store.CreateSermon(sm); err != nil {
 		log.Printf("upload: insert sermon: %v", err)
 		os.RemoveAll(dir)
 		writeError(w, http.StatusInternalServerError, "could not record upload")
@@ -152,7 +161,7 @@ func (s *server) handleUploadSermon(w http.ResponseWriter, r *http.Request) {
 
 // uploadReadError reports a body-read failure, distinguishing the
 // MaxBytesReader size cap from other errors.
-func (s *server) uploadReadError(w http.ResponseWriter, err error) {
+func (s *Server) uploadReadError(w http.ResponseWriter, err error) {
 	var mbe *http.MaxBytesError
 	if errors.As(err, &mbe) {
 		writeError(w, http.StatusRequestEntityTooLarge, "upload exceeds size limit")
@@ -162,51 +171,31 @@ func (s *server) uploadReadError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusBadRequest, "error reading upload")
 }
 
-func (s *server) handleListSermons(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.db.Query(
-		`SELECT id, original_filename, uploaded_at, uploaded_by, stage, status
-		 FROM sermons ORDER BY uploaded_at DESC, id`)
+func (s *Server) handleListSermons(w http.ResponseWriter, r *http.Request) {
+	sermons, err := s.Store.ListSermons()
 	if err != nil {
 		log.Printf("list sermons: %v", err)
-		writeError(w, http.StatusInternalServerError, "could not list sermons")
-		return
-	}
-	defer rows.Close()
-
-	sermons := []sermon{}
-	for rows.Next() {
-		var sm sermon
-		if err := rows.Scan(&sm.ID, &sm.OriginalFilename, &sm.UploadedAt, &sm.UploadedBy, &sm.Stage, &sm.Status); err != nil {
-			log.Printf("list sermons: scan: %v", err)
-			writeError(w, http.StatusInternalServerError, "could not list sermons")
-			return
-		}
-		sermons = append(sermons, sm)
-	}
-	if err := rows.Err(); err != nil {
-		log.Printf("list sermons: rows: %v", err)
 		writeError(w, http.StatusInternalServerError, "could not list sermons")
 		return
 	}
 	writeJSON(w, http.StatusOK, sermons)
 }
 
-func (s *server) handleDeleteSermon(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleDeleteSermon(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	res, err := s.db.Exec(`DELETE FROM sermons WHERE id = ?`, id)
+	deleted, err := s.Store.DeleteSermon(id)
 	if err != nil {
 		log.Printf("delete sermon %s: %v", id, err)
 		writeError(w, http.StatusInternalServerError, "could not delete sermon")
 		return
 	}
-	n, _ := res.RowsAffected()
-	if n == 0 {
+	if !deleted {
 		writeError(w, http.StatusNotFound, "sermon not found")
 		return
 	}
 
-	if err := os.RemoveAll(filepath.Join(s.uploadsDir, id)); err != nil {
+	if err := os.RemoveAll(filepath.Join(s.UploadsDir, id)); err != nil {
 		log.Printf("delete sermon %s: remove uploads dir: %v", id, err)
 	}
 

@@ -4,7 +4,7 @@ build-elm:
 
 # Build the server binary (embeds web/, so the Elm build runs first).
 build: build-elm
-    go build -o sermon-scribe .
+    go build -o sermon-scribe ./cmd/sermon-scribe
 
 # Run the server locally.
 run: build
