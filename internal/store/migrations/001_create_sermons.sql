@@ -5,4 +5,4 @@ CREATE TABLE sermons (
     uploaded_by       TEXT,
     stage             TEXT NOT NULL,
     status            TEXT NOT NULL
-);
+) STRICT;
