@@ -211,7 +211,7 @@ viewUpload upload =
                             ]
                             []
                       , p [ Ui.hint ]
-                            [ text "Choose the audio file from your computer. The upload starts right away." ]
+                            [ text "Click the button to choose the audio file from your computer." ]
                       ]
                     , case upload of
                         UploadFailed message ->
