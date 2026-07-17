@@ -53,6 +53,7 @@ type alias Model =
     { sermons : SermonList
     , upload : UploadState
     , confirmingDelete : Maybe Sermon
+    , deleteError : Maybe String
     , zone : Time.Zone
     }
 
@@ -62,6 +63,7 @@ init _ =
     ( { sermons = Loading
       , upload = Idle
       , confirmingDelete = Nothing
+      , deleteError = Nothing
       , zone = Time.utc
       }
     , Cmd.batch [ fetchSermons, Task.perform GotZone Time.here ]
@@ -112,7 +114,7 @@ update msg model =
                     ( model, Cmd.none )
 
         UploadFinished (Ok ()) ->
-            ( { model | upload = Idle }, fetchSermons )
+            ( { model | upload = Idle, deleteError = Nothing }, fetchSermons )
 
         UploadFinished (Err err) ->
             ( { model | upload = UploadFailed (uploadErrorMessage err) }
@@ -126,12 +128,19 @@ update msg model =
             ( { model | confirmingDelete = Nothing }, Cmd.none )
 
         ConfirmDelete sermon ->
-            ( { model | confirmingDelete = Nothing }
+            ( { model | confirmingDelete = Nothing, deleteError = Nothing }
             , deleteSermon sermon.id
             )
 
-        DeleteFinished _ ->
-            ( model, fetchSermons )
+        DeleteFinished (Ok ()) ->
+            ( { model | deleteError = Nothing }, fetchSermons )
+
+        DeleteFinished (Err _) ->
+            -- Refresh anyway so the list matches the server; the sermon
+            -- reappears, and the error explains why.
+            ( { model | deleteError = Just "Could not delete. Please try again." }
+            , fetchSermons
+            )
 
 
 subscriptions : Model -> Sub Msg
@@ -225,6 +234,12 @@ view model =
             [ h1 [] [ text "Sermon Scribe" ] ]
         , viewUpload model.upload
         , h2 [] [ text "Sermons" ]
+        , case model.deleteError of
+            Just message ->
+                p [ Ui.errorText ] [ text message ]
+
+            Nothing ->
+                text ""
         , viewSermons model
         ]
 
