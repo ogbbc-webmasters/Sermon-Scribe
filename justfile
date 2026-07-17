@@ -1,9 +1,9 @@
 # Compile the Elm frontend to web/elm.js.
-elm:
+build-elm:
     elm make src/Main.elm --optimize --output=web/elm.js
 
 # Build the server binary (embeds web/, so the Elm build runs first).
-build: elm
+build: build-elm
     go build -o sermon-scribe .
 
 # Run the server locally.
@@ -11,7 +11,7 @@ run: build
     ./sermon-scribe
 
 # Run the test suite (go:embed of web/ needs elm.js to exist).
-test: elm
+test: build-elm
     go test ./...
 
 # Build and deploy as a systemd service on this VM (data lives in
