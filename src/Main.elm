@@ -1,5 +1,6 @@
 module Main exposing (main)
 
+import Api exposing (Sermon)
 import Browser
 import File exposing (File)
 import Html exposing (Html, button, div, h1, h2, input, label, p, span, strong, text)
@@ -25,16 +26,6 @@ main =
 
 
 -- MODEL
-
-
-type alias Sermon =
-    { id : String
-    , originalFilename : String
-    , uploadedAt : String
-    , uploadedBy : Maybe String
-    , stage : String
-    , status : String
-    }
 
 
 type SermonList
@@ -66,7 +57,7 @@ init _ =
       , deleteError = Nothing
       , zone = Time.utc
       }
-    , Cmd.batch [ fetchSermons, Task.perform GotZone Time.here ]
+    , Cmd.batch [ Api.fetchSermons GotSermons, Task.perform GotZone Time.here ]
     )
 
 
@@ -100,7 +91,7 @@ update msg model =
 
         FilePicked file ->
             ( { model | upload = Uploading 0 }
-            , uploadFile file
+            , Api.uploadSermon UploadFinished file
             )
 
         UploadProgress progress ->
@@ -114,7 +105,7 @@ update msg model =
                     ( model, Cmd.none )
 
         UploadFinished (Ok ()) ->
-            ( { model | upload = Idle, deleteError = Nothing }, fetchSermons )
+            ( { model | upload = Idle, deleteError = Nothing }, Api.fetchSermons GotSermons )
 
         UploadFinished (Err err) ->
             ( { model | upload = UploadFailed (uploadErrorMessage err) }
@@ -129,17 +120,17 @@ update msg model =
 
         ConfirmDelete sermon ->
             ( { model | confirmingDelete = Nothing, deleteError = Nothing }
-            , deleteSermon sermon.id
+            , Api.deleteSermon DeleteFinished sermon.id
             )
 
         DeleteFinished (Ok ()) ->
-            ( { model | deleteError = Nothing }, fetchSermons )
+            ( { model | deleteError = Nothing }, Api.fetchSermons GotSermons )
 
         DeleteFinished (Err _) ->
             -- Refresh anyway so the list matches the server; the sermon
             -- reappears, and the error explains why.
             ( { model | deleteError = Just "Could not delete. Please try again." }
-            , fetchSermons
+            , Api.fetchSermons GotSermons
             )
 
 
@@ -147,7 +138,7 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     case model.upload of
         Uploading _ ->
-            Http.track uploadTracker UploadProgress
+            Http.track Api.uploadTracker UploadProgress
 
         _ ->
             Sub.none
@@ -155,56 +146,6 @@ subscriptions model =
 
 
 -- HTTP
-
-
-uploadTracker : String
-uploadTracker =
-    "sermon-upload"
-
-
-fetchSermons : Cmd Msg
-fetchSermons =
-    Http.get
-        { url = "/api/sermons"
-        , expect = Http.expectJson GotSermons (Decode.list sermonDecoder)
-        }
-
-
-uploadFile : File -> Cmd Msg
-uploadFile file =
-    Http.request
-        { method = "POST"
-        , headers = []
-        , url = "/api/sermons"
-        , body = Http.multipartBody [ Http.filePart "file" file ]
-        , expect = Http.expectWhatever UploadFinished
-        , timeout = Nothing
-        , tracker = Just uploadTracker
-        }
-
-
-deleteSermon : String -> Cmd Msg
-deleteSermon id =
-    Http.request
-        { method = "DELETE"
-        , headers = []
-        , url = "/api/sermons/" ++ id
-        , body = Http.emptyBody
-        , expect = Http.expectWhatever DeleteFinished
-        , timeout = Nothing
-        , tracker = Nothing
-        }
-
-
-sermonDecoder : Decoder Sermon
-sermonDecoder =
-    Decode.map6 Sermon
-        (Decode.field "id" Decode.string)
-        (Decode.field "original_filename" Decode.string)
-        (Decode.field "uploaded_at" Decode.string)
-        (Decode.field "uploaded_by" (Decode.nullable Decode.string))
-        (Decode.field "stage" Decode.string)
-        (Decode.field "status" Decode.string)
 
 
 uploadErrorMessage : Http.Error -> String
