@@ -1,3 +1,8 @@
+# Installed by `just deploy`: the binary goes to /usr/local/bin/sermon-scribe,
+# this unit to /etc/systemd/system/, then the service is enabled and restarted.
+# Data (sermons.db and uploads/) lives in /home/exedev/sermon-scribe-data,
+# the WorkingDirectory below. Server flags: -addr (default :8000),
+# -db (default sermons.db), -uploads (default uploads).
 [Unit]
 Description=Sermon Scribe web app
 After=network.target
