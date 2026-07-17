@@ -184,7 +184,12 @@ func (s *Server) handleListSermons(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDeleteSermon(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 
-	deleted, err := s.Store.DeleteSermon(id)
+	// The uploads dir is removed before the row deletion commits: if the
+	// removal fails, the transaction rolls back so the row survives and
+	// the delete can be retried instead of orphaning files on disk.
+	deleted, err := s.Store.DeleteSermon(id, func() error {
+		return os.RemoveAll(filepath.Join(s.UploadsDir, id))
+	})
 	if err != nil {
 		log.Printf("delete sermon %s: %v", id, err)
 		writeError(w, http.StatusInternalServerError, "could not delete sermon")
@@ -193,10 +198,6 @@ func (s *Server) handleDeleteSermon(w http.ResponseWriter, r *http.Request) {
 	if !deleted {
 		writeError(w, http.StatusNotFound, "sermon not found")
 		return
-	}
-
-	if err := os.RemoveAll(filepath.Join(s.UploadsDir, id)); err != nil {
-		log.Printf("delete sermon %s: remove uploads dir: %v", id, err)
 	}
 
 	w.WriteHeader(http.StatusNoContent)

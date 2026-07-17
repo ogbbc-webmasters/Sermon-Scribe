@@ -92,12 +92,31 @@ func (s *Store) GetSermon(id string) (Sermon, error) {
 }
 
 // DeleteSermon removes the sermon row with the given id. It reports whether
-// a row was deleted.
-func (s *Store) DeleteSermon(id string) (bool, error) {
-	res, err := s.db.Exec(`DELETE FROM sermons WHERE id = ?`, id)
+// a row was deleted. If cleanup is non-nil it runs after the row deletion
+// but before the transaction commits; if cleanup fails, the deletion is
+// rolled back so the row is preserved for a retry.
+func (s *Store) DeleteSermon(id string, cleanup func() error) (bool, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return false, err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec(`DELETE FROM sermons WHERE id = ?`, id)
 	if err != nil {
 		return false, err
 	}
 	n, err := res.RowsAffected()
-	return n > 0, err
+	if err != nil {
+		return false, err
+	}
+	if n == 0 {
+		return false, nil
+	}
+	if cleanup != nil {
+		if err := cleanup(); err != nil {
+			return false, err
+		}
+	}
+	return true, tx.Commit()
 }

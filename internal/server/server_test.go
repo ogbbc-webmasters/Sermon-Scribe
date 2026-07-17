@@ -225,3 +225,55 @@ func TestSanitizeExt(t *testing.T) {
 		}
 	}
 }
+
+func TestDeleteCleanupFailureKeepsRow(t *testing.T) {
+	srv, ts := newTestServer(t)
+
+	_, sm := uploadFile(t, ts, "sticky.mp3", []byte("x"), nil)
+	dir := filepath.Join(srv.UploadsDir, sm.ID)
+
+	// Make os.RemoveAll fail: a file inside a non-writable subdirectory
+	// cannot be unlinked.
+	sub := filepath.Join(dir, "locked")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub, "f"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(sub, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(sub, 0o755) })
+
+	req, _ := http.NewRequest("DELETE", ts.URL+"/api/sermons/"+sm.ID, nil)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", resp.StatusCode)
+	}
+
+	// Row must survive so the delete can be retried.
+	if _, err := srv.Store.GetSermon(sm.ID); err != nil {
+		t.Errorf("row missing after failed cleanup: %v", err)
+	}
+
+	// Retry succeeds once the directory is removable again.
+	if err := os.Chmod(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	resp2, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp2.Body.Close()
+	if resp2.StatusCode != http.StatusNoContent {
+		t.Fatalf("retry status = %d, want 204", resp2.StatusCode)
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Errorf("uploads dir still present after retry (err=%v)", err)
+	}
+}
