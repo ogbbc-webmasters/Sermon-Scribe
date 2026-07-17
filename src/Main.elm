@@ -360,7 +360,7 @@ stages; unknown combinations fall back to a generic rendering.
 -}
 badgeAttribute : Sermon -> Html.Attribute Msg
 badgeAttribute sermon =
-    if sermon.status == "failed" || sermon.status == "error" then
+    if sermon.status == "failed" then
         Ui.badgeFailed
 
     else
@@ -379,7 +379,10 @@ describeStage sermon =
         ( stage, "running" ) ->
             capitalize stage ++ " in progress"
 
-        ( stage, "error" ) ->
+        ( stage, "pending" ) ->
+            capitalize stage ++ " waiting"
+
+        ( stage, "failed" ) ->
             capitalize stage ++ " failed"
 
         ( stage, status ) ->
