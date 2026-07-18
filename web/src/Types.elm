@@ -42,7 +42,7 @@ type Msg
     | UploadProgress Http.Progress
     | UploadFinished (Result Http.Error Sermon)
     | RetrySermon Sermon
-    | RetryFinished String (Result Http.Error Sermon)
+    | RetryFinished Sermon (Result Http.Error Sermon)
     | AskDelete Sermon
     | CancelDelete
     | ConfirmDelete Sermon

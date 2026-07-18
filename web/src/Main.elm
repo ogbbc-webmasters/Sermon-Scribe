@@ -122,7 +122,7 @@ update msg model =
             ( { model
                 | upload = Idle
                 , deleteError = Nothing
-                , sermons = upsertSermon sermon model.sermons
+                , sermons = insertSermonIfMissing sermon model.sermons
               }
             , Cmd.none
             )
@@ -137,26 +137,26 @@ update msg model =
                 | retrying = Set.insert sermon.id model.retrying
                 , retryError = Nothing
               }
-            , Api.retrySermon (RetryFinished sermon.id) sermon.id
+            , Api.retrySermon (RetryFinished sermon) sermon.id
             )
 
-        RetryFinished id (Ok sermon) ->
+        RetryFinished original (Ok sermon) ->
             ( { model
-                | retrying = Set.remove id model.retrying
+                | retrying = Set.remove original.id model.retrying
                 , retryError = Nothing
                 , sermons =
-                    if Set.member id model.deletedSermons then
+                    if Set.member original.id model.deletedSermons then
                         model.sermons
 
                     else
-                        upsertSermon sermon model.sermons
+                        replaceSermonIfUnchanged original sermon model.sermons
               }
             , Cmd.none
             )
 
-        RetryFinished id (Err _) ->
+        RetryFinished original (Err _) ->
             ( { model
-                | retrying = Set.remove id model.retrying
+                | retrying = Set.remove original.id model.retrying
                 , retryError = Just "Could not retry. Please try again."
               }
             , Cmd.none
@@ -245,6 +245,40 @@ upsertSermon sermon sermonList =
 
         _ ->
             Loaded [ sermon ]
+
+
+insertSermonIfMissing : Api.Sermon -> SermonList -> SermonList
+insertSermonIfMissing sermon sermonList =
+    case sermonList of
+        Loaded sermons ->
+            if List.any (\existing -> existing.id == sermon.id) sermons then
+                sermonList
+
+            else
+                Loaded (sermon :: sermons)
+
+        _ ->
+            Loaded [ sermon ]
+
+
+replaceSermonIfUnchanged : Api.Sermon -> Api.Sermon -> SermonList -> SermonList
+replaceSermonIfUnchanged original replacement sermonList =
+    case sermonList of
+        Loaded sermons ->
+            Loaded
+                (List.map
+                    (\existing ->
+                        if existing == original then
+                            replacement
+
+                        else
+                            existing
+                    )
+                    sermons
+                )
+
+        _ ->
+            sermonList
 
 
 removeSermon : String -> SermonList -> SermonList
