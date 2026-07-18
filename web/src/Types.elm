@@ -30,6 +30,8 @@ type alias Model =
     , deleteError : Maybe String
     , retrying : Set String
     , retryError : Maybe String
+    , rerunning : Set String
+    , normalizationError : Maybe String
     , zone : Time.Zone
     }
 
@@ -43,6 +45,8 @@ type Msg
     | UploadFinished (Result Http.Error Sermon)
     | RetrySermon Sermon
     | RetryFinished Sermon (Result Http.Error Sermon)
+    | RerunNormalization Sermon String
+    | RerunNormalizationFinished Sermon (Result Http.Error Sermon)
     | AskDelete Sermon
     | CancelDelete
     | ConfirmDelete Sermon

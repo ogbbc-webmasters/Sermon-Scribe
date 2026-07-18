@@ -112,6 +112,32 @@ h2::after {
 
 /* ------------------------------------------------- components (A → Z) */
 
+/* audio-review — normalized playback and preset controls */
+
+.audio-review {
+  flex-basis: 100%;
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-xl);
+  margin-top: var(--space-xs);
+}
+
+.audio-review__player {
+  display: block;
+  width: 100%;
+}
+
+.audio-review__label {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  margin: var(--space-sm) 0;
+}
+
+.audio-review__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
 /* badge — pill-shaped status label. Base owns shape + default (green)
    colors; each modifier fully owns its own colors. */
 

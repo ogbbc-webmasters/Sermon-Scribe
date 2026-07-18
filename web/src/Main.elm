@@ -35,6 +35,8 @@ init _ =
       , deleteError = Nothing
       , retrying = Set.empty
       , retryError = Nothing
+      , rerunning = Set.empty
+      , normalizationError = Nothing
       , zone = Time.utc
       }
     , Cmd.batch [ Api.fetchSermons GotSermons, Task.perform GotZone Time.here ]
@@ -158,6 +160,36 @@ update msg model =
             ( { model
                 | retrying = Set.remove original.id model.retrying
                 , retryError = Just "Could not retry. Please try again."
+              }
+            , Cmd.none
+            )
+
+        RerunNormalization sermon preset ->
+            ( { model
+                | rerunning = Set.insert sermon.id model.rerunning
+                , normalizationError = Nothing
+              }
+            , Api.rerunNormalization (RerunNormalizationFinished sermon) sermon.id preset
+            )
+
+        RerunNormalizationFinished original (Ok sermon) ->
+            ( { model
+                | rerunning = Set.remove original.id model.rerunning
+                , normalizationError = Nothing
+                , sermons =
+                    if Set.member original.id model.deletedSermons then
+                        model.sermons
+
+                    else
+                        replaceSermonIfUnchanged original sermon model.sermons
+              }
+            , Cmd.none
+            )
+
+        RerunNormalizationFinished original (Err _) ->
+            ( { model
+                | rerunning = Set.remove original.id model.rerunning
+                , normalizationError = Just "Could not re-run normalization. Please try again."
               }
             , Cmd.none
             )

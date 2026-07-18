@@ -3,8 +3,8 @@ module View exposing (view)
 import Api exposing (Sermon)
 import DateFormat exposing (formatDate)
 import File
-import Html exposing (Html, button, div, h1, h2, input, label, p, span, strong, text)
-import Html.Attributes exposing (accept, class, disabled, id, style, type_)
+import Html exposing (Html, a, audio, button, div, h1, h2, input, label, p, span, strong, text)
+import Html.Attributes exposing (accept, class, controls, disabled, download, href, id, src, style, type_)
 import Html.Events exposing (on, onClick)
 import Json.Decode as Decode exposing (Decoder)
 import Set
@@ -21,6 +21,7 @@ view model =
         , h2 [] [ text "Sermons" ]
         , viewOptionalError model.deleteError
         , viewOptionalError model.retryError
+        , viewOptionalError model.normalizationError
         , viewSermons model
         ]
 
@@ -129,8 +130,89 @@ viewSermon model sermon =
                 _ ->
                     text ""
             ]
+        , viewNormalizedAudio model sermon
         , viewSermonActions model sermon
         ]
+
+
+viewNormalizedAudio : Model -> Sermon -> Html Msg
+viewNormalizedAudio model sermon =
+    if sermon.stage == "normalization" && sermon.status == "done" then
+        let
+            isBusy =
+                Set.member sermon.id model.rerunning
+                    || Set.member sermon.id model.deleting
+                    || Set.member sermon.id model.retrying
+
+            presetButtons =
+                normalizationPresets
+                    |> List.filter (\( preset, _ ) -> preset /= sermon.normalizationPreset)
+                    |> List.map
+                        (\( preset, labelText ) ->
+                            button
+                                [ Ui.button
+                                , onClick (RerunNormalization sermon preset)
+                                , disabled isBusy
+                                ]
+                                [ text labelText ]
+                        )
+        in
+        div [ Ui.audioReview ]
+            [ audio
+                [ Ui.audioReviewPlayer
+                , controls True
+                , src (audioUrl sermon.id "proxy")
+                ]
+                []
+            , p [ Ui.audioReviewLabel ]
+                [ text ("Current preset: " ++ presetLabel sermon.normalizationPreset) ]
+            , div [ Ui.audioReviewControls ]
+                (presetButtons
+                    ++ [ a
+                            [ Ui.button
+                            , href (audioUrl sermon.id "proxy" ++ "?download=1")
+                            , download "normalized.mp3"
+                            ]
+                            [ text "Download MP3" ]
+                       ]
+                )
+            ]
+
+    else
+        text ""
+
+
+normalizationPresets : List ( String, String )
+normalizationPresets =
+    [ ( "standard", "Use Standard" )
+    , ( "stronger-gate", "Reduce More Noise" )
+    , ( "no-gate", "Keep Quiet Passages" )
+    , ( "louder", "Make Louder" )
+    ]
+
+
+presetLabel : String -> String
+presetLabel preset =
+    case preset of
+        "standard" ->
+            "Standard"
+
+        "stronger-gate" ->
+            "Stronger noise gate"
+
+        "no-gate" ->
+            "No noise gate"
+
+        "louder" ->
+            "Louder"
+
+        _ ->
+            capitalize preset
+
+
+audioUrl : String -> String -> String
+audioUrl id audioType =
+    "/api/sermons/" ++ id ++ "/audio/" ++ audioType
 
 
 viewSermonActions : Model -> Sermon -> Html Msg

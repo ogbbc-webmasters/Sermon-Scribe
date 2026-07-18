@@ -5,6 +5,7 @@ module Api exposing
     , fetchSermons
     , pipelineEventDecoder
     , retrySermon
+    , rerunNormalization
     , sermonDecoder
     , uploadSermon
     , uploadTracker
@@ -16,6 +17,7 @@ module Api exposing
 import File exposing (File)
 import Http
 import Json.Decode as Decode exposing (Decoder)
+import Json.Encode as Encode
 
 
 type alias Sermon =
@@ -27,6 +29,7 @@ type alias Sermon =
     , status : String
     , progress : Int
     , error : Maybe String
+    , normalizationPreset : String
     }
 
 
@@ -38,15 +41,22 @@ type PipelineEvent
 
 sermonDecoder : Decoder Sermon
 sermonDecoder =
-    Decode.map8 Sermon
-        (Decode.field "id" Decode.string)
-        (Decode.field "original_filename" Decode.string)
-        (Decode.field "uploaded_at" Decode.string)
-        (Decode.field "uploaded_by" (Decode.nullable Decode.string))
-        (Decode.field "stage" Decode.string)
-        (Decode.field "status" Decode.string)
-        (Decode.field "progress" Decode.int)
-        (Decode.field "error" (Decode.nullable Decode.string))
+    Decode.map2
+        (\sermon preset -> { sermon | normalizationPreset = preset })
+        (Decode.map8
+            (\id originalFilename uploadedAt uploadedBy stage status progress error ->
+                Sermon id originalFilename uploadedAt uploadedBy stage status progress error "standard"
+            )
+            (Decode.field "id" Decode.string)
+            (Decode.field "original_filename" Decode.string)
+            (Decode.field "uploaded_at" Decode.string)
+            (Decode.field "uploaded_by" (Decode.nullable Decode.string))
+            (Decode.field "stage" Decode.string)
+            (Decode.field "status" Decode.string)
+            (Decode.field "progress" Decode.int)
+            (Decode.field "error" (Decode.nullable Decode.string))
+        )
+        (Decode.field "normalization_preset" Decode.string)
 
 
 pipelineEventDecoder : Decoder PipelineEvent
@@ -137,4 +147,15 @@ retrySermon toMsg id =
         , expect = Http.expectJson toMsg sermonDecoder
         , timeout = Nothing
         , tracker = Nothing
+        }
+
+
+rerunNormalization : (Result Http.Error Sermon -> msg) -> String -> String -> Cmd msg
+rerunNormalization toMsg id preset =
+    Http.post
+        { url = "/api/sermons/" ++ id ++ "/normalize"
+        , body =
+            Http.jsonBody
+                (Encode.object [ ( "preset", Encode.string preset ) ])
+        , expect = Http.expectJson toMsg sermonDecoder
         }
