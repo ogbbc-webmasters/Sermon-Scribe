@@ -144,15 +144,14 @@ viewNormalizedAudio model sermon =
                     || Set.member sermon.id model.deleting
                     || Set.member sermon.id model.retrying
 
-            presetButtons =
-                normalizationPresets
-                    |> List.filter (\( preset, _ ) -> preset /= sermon.normalizationPreset)
+            adjustmentButtons =
+                normalizationAdjustments
                     |> List.map
                         (\( preset, labelText ) ->
                             button
                                 [ Ui.button
                                 , onClick (RerunNormalization sermon preset)
-                                , disabled isBusy
+                                , disabled (isBusy || preset == sermon.normalizationPreset)
                                 ]
                                 [ text labelText ]
                         )
@@ -167,27 +166,27 @@ viewNormalizedAudio model sermon =
             , p [ Ui.audioReviewLabel ]
                 [ text ("Current preset: " ++ presetLabel sermon.normalizationPreset) ]
             , div [ Ui.audioReviewControls ]
-                (presetButtons
-                    ++ [ a
-                            [ Ui.button
-                            , href (audioUrl sermon.id "proxy" ++ "?download=1")
-                            , download "normalized.mp3"
-                            ]
-                            [ text "Download MP3" ]
-                       ]
+                (a
+                    [ Ui.primaryButton
+                    , href (audioUrl sermon.id "proxy" ++ "?download=1")
+                    , download "normalized.mp3"
+                    ]
+                    [ text "Continue" ]
+                    :: adjustmentButtons
                 )
+            , p [ Ui.hint ] [ text "Continue downloads the normalized MP3." ]
             ]
 
     else
         text ""
 
 
-normalizationPresets : List ( String, String )
-normalizationPresets =
-    [ ( "standard", "Use Standard" )
-    , ( "stronger-gate", "Reduce More Noise" )
-    , ( "no-gate", "Keep Quiet Passages" )
-    , ( "louder", "Make Louder" )
+normalizationAdjustments : List ( String, String )
+normalizationAdjustments =
+    [ ( "stronger-gate", "I hear too much background noise" )
+    , ( "no-gate", "Some words sound cut off" )
+    , ( "louder", "The recording is too quiet" )
+    , ( "quieter", "The recording is too loud" )
     ]
 
 
@@ -205,6 +204,9 @@ presetLabel preset =
 
         "louder" ->
             "Louder"
+
+        "quieter" ->
+            "Quieter"
 
         _ ->
             capitalize preset
