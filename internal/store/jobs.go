@@ -382,6 +382,15 @@ func (s *Store) GetJob(id string) (Job, error) {
 		 FROM jobs WHERE id = ?`, id))
 }
 
+// GetCurrentJob returns the newest job for the sermon's current stage.
+func (s *Store) GetCurrentJob(sermonID string) (Job, error) {
+	return scanJob(s.db.QueryRow(
+		`SELECT j.id, j.sermon_id, j.type, j.stage, j.state, j.attempts, j.progress,
+		        j.checkpoint, j.parameters, j.last_error, j.available_at, j.created_at, j.updated_at
+		 FROM jobs j JOIN sermons s ON s.id = j.sermon_id AND s.stage = j.stage
+		 WHERE s.id = ? ORDER BY j.created_at DESC, j.id DESC LIMIT 1`, sermonID))
+}
+
 // ListJobErrors returns retained failures oldest first.
 func (s *Store) ListJobErrors(jobID string) ([]JobError, error) {
 	rows, err := s.db.Query(

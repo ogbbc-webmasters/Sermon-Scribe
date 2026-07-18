@@ -23,7 +23,7 @@ func newTestServer(t *testing.T) (*Server, *httptest.Server) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	srv := &Server{Store: st, UploadsDir: filepath.Join(dir, "uploads")}
+	srv := &Server{Store: st, UploadsDir: filepath.Join(dir, "uploads"), Events: NewEventHub()}
 	ts := httptest.NewServer(srv.Routes(fstest.MapFS{}))
 	t.Cleanup(ts.Close)
 	return srv, ts
@@ -82,8 +82,8 @@ func TestUpload(t *testing.T) {
 	if sm.OriginalFilename != "Sunday Sermon.MP3" {
 		t.Errorf("original_filename = %q", sm.OriginalFilename)
 	}
-	if sm.Stage != "upload" || sm.Status != "done" {
-		t.Errorf("stage/status = %q/%q, want upload/done", sm.Stage, sm.Status)
+	if sm.Stage != "normalization" || sm.Status != "pending" || sm.Progress != 0 {
+		t.Errorf("stage/status/progress = %q/%q/%d, want normalization/pending/0", sm.Stage, sm.Status, sm.Progress)
 	}
 	if sm.UploadedBy == nil || *sm.UploadedBy != "pastor@example.com" {
 		t.Errorf("uploaded_by = %v, want pastor@example.com", sm.UploadedBy)
@@ -98,9 +98,16 @@ func TestUpload(t *testing.T) {
 		t.Error("stored file content mismatch")
 	}
 
-	// Row in DB.
+	// Row and normalize job in DB.
 	if _, err := srv.Store.GetSermon(sm.ID); err != nil {
 		t.Errorf("GetSermon after upload: %v", err)
+	}
+	job, err := srv.Store.GetCurrentJob(sm.ID)
+	if err != nil {
+		t.Fatalf("GetCurrentJob after upload: %v", err)
+	}
+	if job.Type != "normalize" || job.State != "queued" || job.Attempts != 0 {
+		t.Errorf("normalize job = %+v", job)
 	}
 }
 
