@@ -161,6 +161,13 @@ h2::after {
   padding: var(--space-3xl);
 }
 
+.editor__load-error {
+  background: var(--red-soft);
+  border: 1px solid var(--red-line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-3xl);
+}
+
 .editor__status {
   background: var(--green-soft);
   border: 1px solid var(--green-line);

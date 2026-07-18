@@ -118,7 +118,7 @@ update msg model =
                                             ( Just next, editorEffect )
 
                                         Nothing ->
-                                            ( Nothing, Editor.None )
+                                            ( Just editor, Editor.Close )
 
                                 Nothing ->
                                     ( Nothing, Editor.None )
@@ -158,6 +158,11 @@ update msg model =
 
                 Ok (Api.PipelineDeleted id) ->
                     let
+                        closesEditor =
+                            model.editing
+                                |> Maybe.map (\editor -> editor.sermon.id == id)
+                                |> Maybe.withDefault False
+
                         remainingEditor =
                             case model.editing of
                                 Just editor ->
@@ -176,7 +181,11 @@ update msg model =
                         , sermons = removeSermon id model.sermons
                         , editing = remainingEditor
                       }
-                    , Cmd.none
+                    , if closesEditor then
+                        Cmd.batch [ configurePreview Encode.null, clearTimelineDraft id ]
+
+                      else
+                        Cmd.none
                     )
 
                 Err _ ->

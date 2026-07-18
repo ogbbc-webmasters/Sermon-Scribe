@@ -224,3 +224,49 @@ func TestApprovalReconcilesStaleStaging(t *testing.T) {
 		t.Fatalf("staging directory remains: %v", err)
 	}
 }
+
+func TestTimelineArtifactReconciliationAtStartup(t *testing.T) {
+	srv, ts := newTestServer(t)
+	id := readyTimelineSermon(t, srv, ts)
+	dir := filepath.Join(srv.UploadsDir, id)
+	staged := filepath.Join(dir, ".approval-staged")
+	if err := os.Mkdir(staged, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(dir, "waveform.json"), filepath.Join(staged, "waveform.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.ReconcileTimelineArtifacts(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "waveform.json")); err != nil {
+		t.Fatalf("unapproved staged source was not restored: %v", err)
+	}
+
+	regions, _ := json.Marshal([]processing.Region{{Start: 0, End: 2, Type: "speaking", Keep: true}})
+	if err := srv.Store.SetAppliedRegions(id, regions); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.Store.EnqueueApplyEdits(id, "approval-job", `{"duration":2,"regions":[{"start":0,"end":2,"type":"speaking","keep":true}]}`, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	job, err := srv.Store.ClaimNextJob(context.Background(), []string{"apply_edits"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.Store.CompleteJob(job, nil, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "final.mp3"), []byte("final"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.Store.ApproveEdit(id); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.ReconcileTimelineArtifacts(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "normalized.flac")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("approved source remains after startup reconciliation: %v", err)
+	}
+}

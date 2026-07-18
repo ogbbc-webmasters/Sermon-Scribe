@@ -12,7 +12,21 @@ import Ui
 
 
 type alias Model =
-    { sermon : Sermon, waveform : Maybe Waveform, analysis : Maybe Timeline, draft : Maybe Timeline, draftReceived : Bool, regions : List Region, selected : Int, dirty : Bool, applying : Bool, finalReady : Bool, confirmingApproval : Bool, error : Maybe String, backWarning : Bool, playhead : Float }
+    { sermon : Sermon
+    , waveform : Maybe Waveform
+    , analysis : Maybe Timeline
+    , draft : Maybe Timeline
+    , draftReceived : Bool
+    , regions : List Region
+    , selected : Int
+    , dirty : Bool
+    , applying : Bool
+    , finalReady : Bool
+    , confirmingApproval : Bool
+    , error : Maybe String
+    , backWarning : Bool
+    , playhead : Float
+    }
 
 
 type Msg
@@ -113,10 +127,15 @@ update msg model =
                     ( { model | error = Just "Could not analyze this recording. Please try again." }, Cmd.none, None )
 
         GotDraft value ->
-            case Decode.decodeValue (Decode.map2 Tuple.pair (Decode.field "id" Decode.string) (Decode.field "draft" (Decode.nullable Timeline.decoder))) value of
-                Ok ( id, draft ) ->
+            case Decode.decodeValue (Decode.map2 Tuple.pair (Decode.field "id" Decode.string) (Decode.field "draft" Decode.value)) value of
+                Ok ( id, draftValue ) ->
                     if id == model.sermon.id then
-                        finish { model | draftReceived = True, draft = draft }
+                        case Decode.decodeValue (Decode.nullable Timeline.decoder) draftValue of
+                            Ok draft ->
+                                finish { model | draftReceived = True, draft = draft }
+
+                            Err _ ->
+                                finishDiscardDraft { model | draftReceived = True, draft = Nothing }
 
                     else
                         ( model, Cmd.none, None )
@@ -190,16 +209,14 @@ update msg model =
                 ( { model | applying = True, error = Nothing }, Api.applyEdits Applied model.sermon.id model.regions, None )
 
         Applied result ->
-            if model.finalReady then
-                ( model, Cmd.none, None )
+            case result of
+                Ok _ ->
+                    -- SSE snapshots and updates are authoritative. The queue can
+                    -- finish before this older HTTP acknowledgement arrives.
+                    ( model, Cmd.none, None )
 
-            else
-                case result of
-                    Ok sermon ->
-                        ( { model | sermon = sermon, applying = True }, Cmd.none, None )
-
-                    Err _ ->
-                        ( { model | applying = False, error = Just "Could not queue the edit. Check the regions and try again." }, Cmd.none, None )
+                Err _ ->
+                    ( { model | applying = False, error = Just "Could not queue the edit. Check the regions and try again." }, Cmd.none, None )
 
         ConfirmApproval ->
             ( { model | confirmingApproval = True }, Cmd.none, None )
@@ -250,6 +267,19 @@ finish model =
     )
 
 
+finishDiscardDraft model =
+    let
+        ( ready, command, effect ) =
+            finish model
+    in
+    case effect of
+        Render render preview ->
+            ( ready, command, Complete model.sermon.id render preview )
+
+        _ ->
+            ( ready, command, ClearDraft model.sermon.id )
+
+
 changed model =
     let
         next =
@@ -277,16 +307,22 @@ pipeline sermon model =
     else if sermon.stage == "edit" && sermon.status == "done" then
         case sermon.appliedRegions of
             Just regions ->
-                let
-                    next =
-                        { model | sermon = sermon, regions = regions, applying = False, finalReady = True, dirty = False, error = Nothing }
-                in
-                case renderEffect next of
-                    Render render preview ->
-                        ( next, Complete sermon.id render preview )
+                if model.dirty && model.regions /= regions then
+                    -- A reconnect snapshot describes the last successful render,
+                    -- not necessarily the user's newer local draft.
+                    ( { model | sermon = sermon, applying = False }, None )
 
-                    _ ->
-                        ( next, ClearDraft sermon.id )
+                else
+                    let
+                        next =
+                            { model | sermon = sermon, regions = regions, applying = False, finalReady = True, dirty = False, error = Nothing }
+                    in
+                    case renderEffect next of
+                        Render render preview ->
+                            ( next, Complete sermon.id render preview )
+
+                        _ ->
+                            ( next, ClearDraft sermon.id )
 
             Nothing ->
                 ( { model | sermon = sermon, applying = False, error = Just "The completed edit did not include its persisted regions." }, None )
@@ -343,7 +379,13 @@ view model =
 
 
 viewBody model =
-    if model.waveform == Nothing || model.analysis == Nothing || not model.draftReceived then
+    if loadFailed model then
+        div [ class "editor__load-error" ]
+            [ viewError model.error
+            , button [ Ui.button, onClick Back ] [ text "Back to Sermons" ]
+            ]
+
+    else if model.waveform == Nothing || model.analysis == Nothing || not model.draftReceived then
         p [ class "editor__loading" ] [ text "Loading waveform and finding sections…" ]
 
     else
@@ -495,3 +537,7 @@ nudgeControls model boundary =
 
 busy model =
     model.applying || (model.sermon.stage == "edit" && (model.sermon.status == "pending" || model.sermon.status == "running"))
+
+
+loadFailed model =
+    model.error /= Nothing && (model.waveform == Nothing || model.analysis == Nothing)

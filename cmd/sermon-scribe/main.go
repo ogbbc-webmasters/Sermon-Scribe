@@ -40,6 +40,10 @@ func main() {
 			log.Printf("remove interrupted upload %s: %v", id, err)
 		}
 	}
+	app := &server.Server{Store: st, UploadsDir: *uploadsDir}
+	if err := app.ReconcileTimelineArtifacts(); err != nil {
+		log.Fatal(err)
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -54,9 +58,8 @@ func main() {
 	queue.Start(ctx)
 	defer queue.Stop()
 
-	app := &server.Server{
-		Store: st, UploadsDir: *uploadsDir, Events: events, Queue: queue,
-	}
+	app.Events = events
+	app.Queue = queue
 	httpServer := &http.Server{Addr: *addr, Handler: app.Routes(web.WebFS())}
 	go func() {
 		<-ctx.Done()

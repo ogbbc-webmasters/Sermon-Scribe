@@ -32,6 +32,32 @@ type Server struct {
 	Queue          interface{ Notify() }
 }
 
+// ReconcileTimelineArtifacts repairs interrupted legacy approval staging and
+// finishes source cleanup for approvals committed before a process stopped.
+// It runs before workers so an unapproved edit never starts without sources
+// that can still be restored safely.
+func (s *Server) ReconcileTimelineArtifacts() error {
+	sermons, err := s.Store.ListSermons()
+	if err != nil {
+		return fmt.Errorf("list sermons for timeline reconciliation: %w", err)
+	}
+	for _, sermon := range sermons {
+		dir := filepath.Join(s.UploadsDir, sermon.ID)
+		if err := reconcileApprovalStaging(dir, sermon.EditApproved); err != nil {
+			return fmt.Errorf("reconcile approval artifacts for sermon %s: %w", sermon.ID, err)
+		}
+		if sermon.EditApproved {
+			if _, err := os.Stat(filepath.Join(dir, "final.mp3")); err != nil {
+				return fmt.Errorf("verify final audio for approved sermon %s: %w", sermon.ID, err)
+			}
+			if err := cleanupApprovedSources(dir); err != nil {
+				return fmt.Errorf("clean approved sources for sermon %s: %w", sermon.ID, err)
+			}
+		}
+	}
+	return nil
+}
+
 // Routes returns the full handler: the JSON API plus the embedded frontend.
 func (s *Server) Routes(webFS fs.FS) http.Handler {
 	mux := http.NewServeMux()
