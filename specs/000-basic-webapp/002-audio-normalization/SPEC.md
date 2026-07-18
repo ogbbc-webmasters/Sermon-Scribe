@@ -49,7 +49,7 @@ Converts to mono, resamples to 44100 Hz, applies noise gate then loudness normal
 ### Re-running with Different Parameters
 
 - Chosen: normalization can be re-run on demand with a different parameter preset; each run overwrites both normalized outputs and the sermon's stored preset is updated
-  - Presets are a small fixed set of named variations of the FFmpeg filter chain, e.g. **Standard** (default), **Stronger noise gate** (noisier recordings), **No noise gate** (quiet speakers whose soft passages get clipped by the gate), **Louder** (higher loudnorm target)
+  - Presets are a small fixed set of named variations of the FFmpeg filter chain: **Standard** (default), **Stronger noise gate** (noisier recordings), **No noise gate** (quiet speakers whose soft passages get clipped by the gate), **Louder** (higher loudnorm target), and **Quieter** (lower loudnorm target)
   - Exact preset parameters TBD alongside the gate threshold, from testing on real recordings
   - A re-run is an ordinary `normalize` job carrying the preset, so queueing, progress, and retry come for free
 - Considered: exposing raw FFmpeg parameters in the UI
@@ -77,5 +77,11 @@ Requires exe.dev proxy auth, as defined in [Project Setup](specs/000-basic-webap
 When sermon stage is `normalization`/`done`, show:
 
 1. An audio player streaming `normalized.mp3` to check the result
-2. Re-run buttons for the other normalization presets, for when the output isn't satisfying
-3. A download button (proxy by default) - an escape hatch until the in-browser editor arrives, not the primary flow; specs 0-2 are built as one continuous effort
+2. Five plain-language outcome actions:
+   - **Continue** - downloads the MP3 proxy until the in-browser editor arrives
+   - **I hear too much background noise** - re-run with Stronger noise gate
+   - **Some words sound cut off** - re-run with No noise gate
+   - **The recording is too quiet** - re-run with Louder
+   - **The recording is too loud** - re-run with Quieter
+
+Continue is the escape hatch until the in-browser editor arrives, not the primary long-term flow; specs 0-2 are built as one continuous effort.
