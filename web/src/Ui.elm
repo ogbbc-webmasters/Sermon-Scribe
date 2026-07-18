@@ -16,6 +16,7 @@ module Ui exposing
     , primaryButton
     , progress
     , progressFill
+    , sermonActions
     )
 
 {-| Shared visual vocabulary for Sermon Scribe.
@@ -95,6 +96,11 @@ cardName =
 cardMeta : Html.Attribute msg
 cardMeta =
     class "sermon-card__meta"
+
+
+sermonActions : Html.Attribute msg
+sermonActions =
+    class "sermon-actions"
 
 
 

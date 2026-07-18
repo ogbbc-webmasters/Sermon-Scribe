@@ -2,10 +2,18 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
+	"time"
 
+	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/processing"
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/server"
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 	"github.com/ogbbc-webmasters/Sermon-Scribe/web"
@@ -23,10 +31,41 @@ func main() {
 	}
 	defer st.Close()
 
-	srv := &server.Server{Store: st, UploadsDir: *uploadsDir}
+	interruptedUploads, err := st.DiscardInterruptedUploads()
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, id := range interruptedUploads {
+		if err := os.RemoveAll(filepath.Join(*uploadsDir, id)); err != nil {
+			log.Printf("remove interrupted upload %s: %v", id, err)
+		}
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	events := server.NewEventHub()
+	// Stage implementations register handlers here. Spec 0.2 adds the
+	// production normalize handler; unknown job types remain safely queued.
+	queue := processing.NewQueue(st, map[string]processing.Handler{}, processing.Config{Events: events})
+	queue.Start(ctx)
+	defer queue.Stop()
+
+	app := &server.Server{
+		Store: st, UploadsDir: *uploadsDir, Events: events, Queue: queue,
+	}
+	httpServer := &http.Server{Addr: *addr, Handler: app.Routes(web.WebFS())}
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			log.Printf("server shutdown: %v", err)
+		}
+	}()
 
 	log.Printf("listening on %s", *addr)
-	if err := http.ListenAndServe(*addr, srv.Routes(web.WebFS())); err != nil {
+	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
 }

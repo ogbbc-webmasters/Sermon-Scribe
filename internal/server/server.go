@@ -17,6 +17,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/processing"
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 )
 
@@ -27,6 +28,8 @@ type Server struct {
 	Store          *store.Store
 	UploadsDir     string
 	MaxUploadBytes int64 // 0 means defaultMaxUploadBytes
+	Events         *EventHub
+	Queue          interface{ Notify() }
 }
 
 // Routes returns the full handler: the JSON API plus the embedded frontend.
@@ -35,6 +38,8 @@ func (s *Server) Routes(webFS fs.FS) http.Handler {
 	mux.HandleFunc("POST /api/sermons", s.handleUploadSermon)
 	mux.HandleFunc("GET /api/sermons", s.handleListSermons)
 	mux.HandleFunc("DELETE /api/sermons/{id}", s.handleDeleteSermon)
+	mux.HandleFunc("POST /api/sermons/{id}/retry", s.handleRetrySermon)
+	mux.HandleFunc("GET /api/events", s.handleEvents)
 	mux.Handle("/", http.FileServerFS(webFS))
 	return mux
 }
@@ -120,12 +125,35 @@ func (s *Server) handleUploadSermon(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not store upload")
 		return
 	}
-	dst := filepath.Join(dir, "original"+sanitizeExt(filename))
 
+	sm := store.Sermon{
+		ID:               id,
+		OriginalFilename: filename,
+		UploadedAt:       time.Now().UTC().Format(time.RFC3339Nano),
+		Stage:            "upload",
+		Status:           "pending",
+	}
+	if email := r.Header.Get("X-Exedev-Email"); email != "" {
+		sm.UploadedBy = &email
+	}
+	if err := s.Store.CreateSermon(sm); err != nil {
+		log.Printf("upload: insert sermon: %v", err)
+		os.RemoveAll(dir)
+		writeError(w, http.StatusInternalServerError, "could not record upload")
+		return
+	}
+	if err := s.Store.StartUpload(id); err != nil {
+		log.Printf("upload: start sermon: %v", err)
+		s.abandonUpload(id, dir)
+		writeError(w, http.StatusInternalServerError, "could not record upload")
+		return
+	}
+
+	dst := filepath.Join(dir, "original"+sanitizeExt(filename))
 	f, err := os.Create(dst)
 	if err != nil {
 		log.Printf("upload: create %s: %v", dst, err)
-		os.RemoveAll(dir)
+		s.abandonUpload(id, dir)
 		writeError(w, http.StatusInternalServerError, "could not store upload")
 		return
 	}
@@ -134,30 +162,39 @@ func (s *Server) handleUploadSermon(w http.ResponseWriter, r *http.Request) {
 		err = cerr
 	}
 	if err != nil {
-		os.RemoveAll(dir)
+		s.abandonUpload(id, dir)
 		s.uploadReadError(w, err)
 		return
 	}
 
-	sm := store.Sermon{
-		ID:               id,
-		OriginalFilename: filename,
-		UploadedAt:       time.Now().UTC().Format(time.RFC3339Nano),
-		Stage:            "upload",
-		Status:           "done",
-	}
-	if email := r.Header.Get("X-Exedev-Email"); email != "" {
-		sm.UploadedBy = &email
-	}
-
-	if err := s.Store.CreateSermon(sm); err != nil {
-		log.Printf("upload: insert sermon: %v", err)
-		os.RemoveAll(dir)
+	sm, err = s.Store.CompleteUpload(id, newUUID(), time.Now())
+	if err != nil {
+		log.Printf("upload: complete sermon: %v", err)
+		s.abandonUpload(id, dir)
 		writeError(w, http.StatusInternalServerError, "could not record upload")
 		return
 	}
-
+	if s.Events != nil {
+		s.Events.Publish(processing.Event{Name: processing.EventStageCompleted, Sermon: sm})
+	}
+	if s.Queue != nil {
+		s.Queue.Notify()
+	}
 	writeJSON(w, http.StatusCreated, sm)
+}
+
+func (s *Server) abandonUpload(id, dir string) {
+	deleted, err := s.Store.DeleteSermon(id, nil)
+	if err != nil {
+		log.Printf("upload: remove abandoned sermon %s: %v", id, err)
+		return
+	}
+	if deleted && s.Events != nil {
+		s.Events.PublishDeleted(id)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		log.Printf("upload: remove abandoned files %s: %v", id, err)
+	}
 }
 
 // uploadReadError reports a body-read failure, distinguishing the
@@ -180,6 +217,36 @@ func (s *Server) handleListSermons(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, sermons)
+}
+
+func (s *Server) handleRetrySermon(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if _, err := s.Store.GetSermon(id); errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "sermon not found")
+		return
+	} else if err != nil {
+		log.Printf("retry sermon %s: %v", id, err)
+		writeError(w, http.StatusInternalServerError, "could not retry sermon")
+		return
+	}
+
+	_, sm, err := s.Store.RetryFailedJob(id, time.Now())
+	if errors.Is(err, store.ErrNotRetryable) {
+		writeError(w, http.StatusConflict, "sermon has no failed job to retry")
+		return
+	}
+	if err != nil {
+		log.Printf("retry sermon %s: %v", id, err)
+		writeError(w, http.StatusInternalServerError, "could not retry sermon")
+		return
+	}
+	if s.Events != nil {
+		s.Events.Publish(processing.Event{Name: processing.EventProgress, Sermon: sm})
+	}
+	if s.Queue != nil {
+		s.Queue.Notify()
+	}
+	writeJSON(w, http.StatusAccepted, sm)
 }
 
 func (s *Server) handleDeleteSermon(w http.ResponseWriter, r *http.Request) {
@@ -216,6 +283,9 @@ func (s *Server) handleDeleteSermon(w http.ResponseWriter, r *http.Request) {
 	// may leave staged files for manual cleanup, but cannot corrupt a live row.
 	if err := os.RemoveAll(stagedDir); err != nil {
 		log.Printf("delete sermon %s: remove staged uploads: %v", id, err)
+	}
+	if s.Events != nil {
+		s.Events.PublishDeleted(id)
 	}
 
 	w.WriteHeader(http.StatusNoContent)

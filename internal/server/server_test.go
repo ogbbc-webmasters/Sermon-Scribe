@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 )
@@ -23,7 +25,7 @@ func newTestServer(t *testing.T) (*Server, *httptest.Server) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { st.Close() })
-	srv := &Server{Store: st, UploadsDir: filepath.Join(dir, "uploads")}
+	srv := &Server{Store: st, UploadsDir: filepath.Join(dir, "uploads"), Events: NewEventHub()}
 	ts := httptest.NewServer(srv.Routes(fstest.MapFS{}))
 	t.Cleanup(ts.Close)
 	return srv, ts
@@ -82,8 +84,8 @@ func TestUpload(t *testing.T) {
 	if sm.OriginalFilename != "Sunday Sermon.MP3" {
 		t.Errorf("original_filename = %q", sm.OriginalFilename)
 	}
-	if sm.Stage != "upload" || sm.Status != "done" {
-		t.Errorf("stage/status = %q/%q, want upload/done", sm.Stage, sm.Status)
+	if sm.Stage != "normalization" || sm.Status != "pending" || sm.Progress != 0 {
+		t.Errorf("stage/status/progress = %q/%q/%d, want normalization/pending/0", sm.Stage, sm.Status, sm.Progress)
 	}
 	if sm.UploadedBy == nil || *sm.UploadedBy != "pastor@example.com" {
 		t.Errorf("uploaded_by = %v, want pastor@example.com", sm.UploadedBy)
@@ -98,9 +100,16 @@ func TestUpload(t *testing.T) {
 		t.Error("stored file content mismatch")
 	}
 
-	// Row in DB.
+	// Row and normalize job in DB.
 	if _, err := srv.Store.GetSermon(sm.ID); err != nil {
 		t.Errorf("GetSermon after upload: %v", err)
+	}
+	job, err := srv.Store.GetCurrentJob(sm.ID)
+	if err != nil {
+		t.Fatalf("GetCurrentJob after upload: %v", err)
+	}
+	if job.Type != "normalize" || job.State != "queued" || job.Attempts != 0 {
+		t.Errorf("normalize job = %+v", job)
 	}
 }
 
@@ -112,6 +121,59 @@ func TestUploadWithoutEmail(t *testing.T) {
 	}
 	if sm.UploadedBy != nil {
 		t.Errorf("uploaded_by = %v, want nil", *sm.UploadedBy)
+	}
+}
+
+func TestAbandonUploadPublishesDeletion(t *testing.T) {
+	srv, ts := newTestServer(t)
+	_, sm := uploadFile(t, ts, "abandoned.wav", []byte("audio"), nil)
+	events, unsubscribe := srv.Events.subscribe()
+	defer unsubscribe()
+	dir := filepath.Join(srv.UploadsDir, sm.ID)
+
+	srv.abandonUpload(sm.ID, dir)
+
+	if _, err := srv.Store.GetSermon(sm.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("GetSermon after abandonment = %v, want not found", err)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stat abandoned upload directory = %v, want not exist", err)
+	}
+	select {
+	case event := <-events:
+		if event.Name != "deleted" {
+			t.Fatalf("abandonment event = %q, want deleted", event.Name)
+		}
+		data, ok := event.Data.(map[string]string)
+		if !ok || data["id"] != sm.ID {
+			t.Fatalf("abandonment event data = %#v, want id %q", event.Data, sm.ID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for abandonment event")
+	}
+}
+
+func TestAbandonUploadPreservesFilesWhenRowDeletionFails(t *testing.T) {
+	srv, ts := newTestServer(t)
+	_, sm := uploadFile(t, ts, "preserved.wav", []byte("audio"), nil)
+	dir := filepath.Join(srv.UploadsDir, sm.ID)
+	dbPath := filepath.Join(filepath.Dir(srv.UploadsDir), "test.db")
+	if err := srv.Store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	srv.abandonUpload(sm.ID, dir)
+
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("stat preserved upload directory: %v", err)
+	}
+	reopened, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if _, err := reopened.GetSermon(sm.ID); err != nil {
+		t.Fatalf("GetSermon after failed deletion: %v", err)
 	}
 }
 

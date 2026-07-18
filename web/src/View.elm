@@ -7,6 +7,7 @@ import Html exposing (Html, button, div, h1, h2, input, label, p, span, strong, 
 import Html.Attributes exposing (accept, class, disabled, id, style, type_)
 import Html.Events exposing (on, onClick)
 import Json.Decode as Decode exposing (Decoder)
+import Set
 import Types exposing (Model, Msg(..), SermonList(..), UploadState(..))
 import Ui
 
@@ -18,14 +19,20 @@ view model =
             [ h1 [] [ text "Sermon Scribe" ] ]
         , viewUpload model.upload
         , h2 [] [ text "Sermons" ]
-        , case model.deleteError of
-            Just message ->
-                p [ Ui.errorText ] [ text message ]
-
-            Nothing ->
-                text ""
+        , viewOptionalError model.deleteError
+        , viewOptionalError model.retryError
         , viewSermons model
         ]
+
+
+viewOptionalError : Maybe String -> Html Msg
+viewOptionalError maybeMessage =
+    case maybeMessage of
+        Just message ->
+            p [ Ui.errorText ] [ text message ]
+
+        Nothing ->
+            text ""
 
 
 viewUpload : UploadState -> Html Msg
@@ -115,6 +122,12 @@ viewSermon model sermon =
                 [ span [ badgeAttribute sermon ] [ text (describeStage sermon) ]
                 , text (formatDate model.zone sermon.uploadedAt)
                 ]
+            , case ( sermon.status, sermon.error ) of
+                ( "failed", Just message ) ->
+                    p [ Ui.errorText ] [ text message ]
+
+                _ ->
+                    text ""
             ]
         , viewSermonActions model sermon
         ]
@@ -139,19 +152,57 @@ viewSermonActions model sermon =
                     ]
 
             else
-                viewDeleteButton sermon True
+                viewActionButtons model sermon True
 
         Nothing ->
-            viewDeleteButton sermon False
+            viewActionButtons model sermon False
 
 
-viewDeleteButton : Sermon -> Bool -> Html Msg
-viewDeleteButton sermon isDisabled =
-    div [ class "sermon-actions" ]
-        [ button
-            [ Ui.button, onClick (AskDelete sermon), disabled isDisabled ]
-            [ text "Delete" ]
-        ]
+viewActionButtons : Model -> Sermon -> Bool -> Html Msg
+viewActionButtons model sermon confirmationOpen =
+    let
+        isRetrying =
+            Set.member sermon.id model.retrying
+
+        isDeleting =
+            Set.member sermon.id model.deleting
+    in
+    div [ Ui.sermonActions ]
+        (List.concat
+            [ if sermon.status == "failed" then
+                [ button
+                    [ Ui.button
+                    , onClick (RetrySermon sermon)
+                    , disabled (confirmationOpen || isRetrying || isDeleting)
+                    ]
+                    [ text
+                        (if isRetrying then
+                            "Retrying\u{2026}"
+
+                         else
+                            "Retry"
+                        )
+                    ]
+                ]
+
+              else
+                []
+            , [ button
+                    [ Ui.button
+                    , onClick (AskDelete sermon)
+                    , disabled (confirmationOpen || isRetrying || isDeleting)
+                    ]
+                    [ text
+                        (if isDeleting then
+                            "Deleting\u{2026}"
+
+                         else
+                            "Delete"
+                        )
+                    ]
+              ]
+            ]
+        )
 
 
 {-| Render a stage/status pair in plain language. Later specs add more
@@ -169,8 +220,30 @@ badgeAttribute sermon =
 describeStage : Sermon -> String
 describeStage sermon =
     case ( sermon.stage, sermon.status ) of
+        ( "upload", "pending" ) ->
+            "Waiting to upload"
+
+        ( "upload", "running" ) ->
+            "Uploading\u{2026}"
+
         ( "upload", "done" ) ->
             "Uploaded"
+
+        ( "normalization", "pending" ) ->
+            "Waiting to normalize"
+
+        ( "normalization", "running" ) ->
+            if sermon.progress < 0 then
+                "Normalizing\u{2026}"
+
+            else
+                "Normalizing\u{2026} " ++ String.fromInt sermon.progress ++ "%"
+
+        ( "normalization", "done" ) ->
+            "Normalization finished"
+
+        ( "normalization", "failed" ) ->
+            "Normalization failed"
 
         ( stage, "done" ) ->
             capitalize stage ++ " finished"

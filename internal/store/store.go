@@ -17,6 +17,8 @@ type Sermon struct {
 	UploadedBy       *string `json:"uploaded_by"`
 	Stage            string  `json:"stage"`
 	Status           string  `json:"status"`
+	Progress         int     `json:"progress"`
+	Error            *string `json:"error"`
 }
 
 // Store wraps the SQLite database.
@@ -31,7 +33,10 @@ func Open(path string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
-	if _, err := db.Exec(`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;`); err != nil {
+	// One connection keeps SQLite connection-level PRAGMAs consistent while
+	// still allowing worker handlers themselves to run concurrently.
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;`); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("configure database: %w", err)
 	}
@@ -39,7 +44,12 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
-	return &Store{db: db}, nil
+	s := &Store{db: db}
+	if err := s.RecoverRunningJobs(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("recover running jobs: %w", err)
+	}
+	return s, nil
 }
 
 // Close closes the underlying database.
@@ -57,11 +67,19 @@ func (s *Store) CreateSermon(sm Sermon) error {
 	return err
 }
 
+const sermonViewSQL = `
+	SELECT s.id, s.original_filename, s.uploaded_at, s.uploaded_by,
+	       s.stage, s.status, COALESCE(j.progress, 0), j.last_error
+	FROM sermons s
+	LEFT JOIN jobs j ON j.id = (
+		SELECT id FROM jobs
+		WHERE sermon_id = s.id AND stage = s.stage
+		ORDER BY created_at DESC, id DESC LIMIT 1
+	)`
+
 // ListSermons returns all sermons, newest first.
 func (s *Store) ListSermons() ([]Sermon, error) {
-	rows, err := s.db.Query(
-		`SELECT id, original_filename, uploaded_at, uploaded_by, stage, status
-		 FROM sermons ORDER BY uploaded_at DESC, id`)
+	rows, err := s.db.Query(sermonViewSQL + ` ORDER BY s.uploaded_at DESC, s.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +88,7 @@ func (s *Store) ListSermons() ([]Sermon, error) {
 	sermons := []Sermon{}
 	for rows.Next() {
 		var sm Sermon
-		if err := rows.Scan(&sm.ID, &sm.OriginalFilename, &sm.UploadedAt, &sm.UploadedBy, &sm.Stage, &sm.Status); err != nil {
+		if err := scanSermon(rows, &sm); err != nil {
 			return nil, err
 		}
 		sermons = append(sermons, sm)
@@ -78,17 +96,31 @@ func (s *Store) ListSermons() ([]Sermon, error) {
 	return sermons, rows.Err()
 }
 
-// ErrNotFound is returned when a sermon id does not exist.
+// ErrNotFound is returned when a sermon or job does not exist.
 var ErrNotFound = sql.ErrNoRows
 
 // GetSermon returns the sermon with the given id, or ErrNotFound.
 func (s *Store) GetSermon(id string) (Sermon, error) {
+	return getSermon(s.db, id)
+}
+
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+func getSermon(q interface {
+	QueryRow(query string, args ...any) *sql.Row
+}, id string) (Sermon, error) {
 	var sm Sermon
-	err := s.db.QueryRow(
-		`SELECT id, original_filename, uploaded_at, uploaded_by, stage, status
-		 FROM sermons WHERE id = ?`, id).
-		Scan(&sm.ID, &sm.OriginalFilename, &sm.UploadedAt, &sm.UploadedBy, &sm.Stage, &sm.Status)
+	err := scanSermon(q.QueryRow(sermonViewSQL+` WHERE s.id = ?`, id), &sm)
 	return sm, err
+}
+
+func scanSermon(row rowScanner, sm *Sermon) error {
+	return row.Scan(
+		&sm.ID, &sm.OriginalFilename, &sm.UploadedAt, &sm.UploadedBy,
+		&sm.Stage, &sm.Status, &sm.Progress, &sm.Error,
+	)
 }
 
 // DeleteSermon removes the sermon row with the given id. It reports whether

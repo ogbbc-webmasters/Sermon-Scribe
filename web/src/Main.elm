@@ -1,12 +1,17 @@
-module Main exposing (main)
+port module Main exposing (main)
 
 import Api
 import Browser
 import Http
+import Json.Decode as Decode
+import Set
 import Task
 import Time
 import Types exposing (Model, Msg(..), SermonList(..), UploadState(..))
 import View
+
+
+port pipelineEvents : (Decode.Value -> msg) -> Sub msg
 
 
 main : Program () Model Msg
@@ -22,9 +27,14 @@ main =
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( { sermons = Loading
+      , hasPipelineSnapshot = False
       , upload = Idle
       , confirmingDelete = Nothing
+      , deleting = Set.empty
+      , deletedSermons = Set.empty
       , deleteError = Nothing
+      , retrying = Set.empty
+      , retryError = Nothing
       , zone = Time.utc
       }
     , Cmd.batch [ Api.fetchSermons GotSermons, Task.perform GotZone Time.here ]
@@ -42,10 +52,56 @@ update msg model =
             ( { model | zone = zone }, Cmd.none )
 
         GotSermons (Ok sermons) ->
-            ( { model | sermons = Loaded sermons }, Cmd.none )
+            if model.hasPipelineSnapshot then
+                ( model, Cmd.none )
+
+            else
+                ( { model | sermons = mergeFetchedSermons model.deletedSermons sermons model.sermons }
+                , Cmd.none
+                )
 
         GotSermons (Err _) ->
-            ( { model | sermons = LoadFailed }, Cmd.none )
+            if model.hasPipelineSnapshot then
+                ( model, Cmd.none )
+
+            else
+                ( { model | sermons = LoadFailed }, Cmd.none )
+
+        PipelineEventReceived value ->
+            case Decode.decodeValue Api.pipelineEventDecoder value of
+                Ok (Api.PipelineSnapshot sermons) ->
+                    ( { model
+                        | sermons =
+                            Loaded
+                                (List.filter
+                                    (\sermon -> not (Set.member sermon.id model.deletedSermons))
+                                    sermons
+                                )
+                        , hasPipelineSnapshot = True
+                      }
+                    , Cmd.none
+                    )
+
+                Ok (Api.PipelineUpdate sermon) ->
+                    if Set.member sermon.id model.deletedSermons then
+                        ( model, Cmd.none )
+
+                    else
+                        ( { model | sermons = upsertSermon sermon model.sermons }
+                        , Cmd.none
+                        )
+
+                Ok (Api.PipelineDeleted id) ->
+                    ( { model
+                        | deleting = Set.remove id model.deleting
+                        , deletedSermons = Set.insert id model.deletedSermons
+                        , sermons = removeSermon id model.sermons
+                      }
+                    , Cmd.none
+                    )
+
+                Err _ ->
+                    ( model, Cmd.none )
 
         FilePicked file ->
             ( { model | upload = Uploading 0 }
@@ -62,11 +118,47 @@ update msg model =
                 Http.Receiving _ ->
                     ( model, Cmd.none )
 
-        UploadFinished (Ok ()) ->
-            ( { model | upload = Idle, deleteError = Nothing }, Api.fetchSermons GotSermons )
+        UploadFinished (Ok sermon) ->
+            ( { model
+                | upload = Idle
+                , deleteError = Nothing
+                , sermons = insertSermonIfMissing sermon model.sermons
+              }
+            , Cmd.none
+            )
 
         UploadFinished (Err err) ->
             ( { model | upload = UploadFailed (uploadErrorMessage err) }
+            , Cmd.none
+            )
+
+        RetrySermon sermon ->
+            ( { model
+                | retrying = Set.insert sermon.id model.retrying
+                , retryError = Nothing
+              }
+            , Api.retrySermon (RetryFinished sermon) sermon.id
+            )
+
+        RetryFinished original (Ok sermon) ->
+            ( { model
+                | retrying = Set.remove original.id model.retrying
+                , retryError = Nothing
+                , sermons =
+                    if Set.member original.id model.deletedSermons then
+                        model.sermons
+
+                    else
+                        replaceSermonIfUnchanged original sermon model.sermons
+              }
+            , Cmd.none
+            )
+
+        RetryFinished original (Err _) ->
+            ( { model
+                | retrying = Set.remove original.id model.retrying
+                , retryError = Just "Could not retry. Please try again."
+              }
             , Cmd.none
             )
 
@@ -77,29 +169,126 @@ update msg model =
             ( { model | confirmingDelete = Nothing }, Cmd.none )
 
         ConfirmDelete sermon ->
-            ( { model | confirmingDelete = Nothing, deleteError = Nothing }
-            , Api.deleteSermon DeleteFinished sermon.id
+            ( { model
+                | confirmingDelete = Nothing
+                , deleting = Set.insert sermon.id model.deleting
+                , deleteError = Nothing
+              }
+            , Api.deleteSermon (DeleteFinished sermon.id) sermon.id
             )
 
-        DeleteFinished (Ok ()) ->
-            ( { model | deleteError = Nothing }, Api.fetchSermons GotSermons )
+        DeleteFinished id (Ok ()) ->
+            ( { model
+                | deleting = Set.remove id model.deleting
+                , deletedSermons = Set.insert id model.deletedSermons
+                , deleteError = Nothing
+                , sermons = removeSermon id model.sermons
+              }
+            , Cmd.none
+            )
 
-        DeleteFinished (Err _) ->
-            -- Refresh anyway so the list matches the server; the sermon
-            -- reappears, and the error explains why.
-            ( { model | deleteError = Just "Could not delete. Please try again." }
-            , Api.fetchSermons GotSermons
+        DeleteFinished id (Err _) ->
+            ( { model
+                | deleting = Set.remove id model.deleting
+                , deleteError = Just "Could not delete. Please try again."
+              }
+            , Cmd.none
             )
 
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-    case model.upload of
-        Uploading _ ->
-            Http.track Api.uploadTracker UploadProgress
+    Sub.batch
+        [ pipelineEvents PipelineEventReceived
+        , case model.upload of
+            Uploading _ ->
+                Http.track Api.uploadTracker UploadProgress
+
+            _ ->
+                Sub.none
+        ]
+
+
+mergeFetchedSermons : Set.Set String -> List Api.Sermon -> SermonList -> SermonList
+mergeFetchedSermons deleted fetched current =
+    let
+        visibleFetched =
+            List.filter (\sermon -> not (Set.member sermon.id deleted)) fetched
+    in
+    case current of
+        Loaded currentSermons ->
+            List.foldl upsertSermon (Loaded visibleFetched) currentSermons
 
         _ ->
-            Sub.none
+            Loaded visibleFetched
+
+
+upsertSermon : Api.Sermon -> SermonList -> SermonList
+upsertSermon sermon sermonList =
+    case sermonList of
+        Loaded sermons ->
+            if List.any (\existing -> existing.id == sermon.id) sermons then
+                Loaded
+                    (List.map
+                        (\existing ->
+                            if existing.id == sermon.id then
+                                sermon
+
+                            else
+                                existing
+                        )
+                        sermons
+                    )
+
+            else
+                Loaded (sermon :: sermons)
+
+        _ ->
+            Loaded [ sermon ]
+
+
+insertSermonIfMissing : Api.Sermon -> SermonList -> SermonList
+insertSermonIfMissing sermon sermonList =
+    case sermonList of
+        Loaded sermons ->
+            if List.any (\existing -> existing.id == sermon.id) sermons then
+                sermonList
+
+            else
+                Loaded (sermon :: sermons)
+
+        _ ->
+            Loaded [ sermon ]
+
+
+replaceSermonIfUnchanged : Api.Sermon -> Api.Sermon -> SermonList -> SermonList
+replaceSermonIfUnchanged original replacement sermonList =
+    case sermonList of
+        Loaded sermons ->
+            Loaded
+                (List.map
+                    (\existing ->
+                        if existing == original then
+                            replacement
+
+                        else
+                            existing
+                    )
+                    sermons
+                )
+
+        _ ->
+            sermonList
+
+
+removeSermon : String -> SermonList -> SermonList
+removeSermon id sermonList =
+    case sermonList of
+        Loaded sermons ->
+            Loaded (List.filter (\sermon -> sermon.id /= id) sermons)
+
+        _ ->
+            sermonList
 
 
 uploadErrorMessage : Http.Error -> String
