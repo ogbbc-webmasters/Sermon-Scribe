@@ -146,10 +146,14 @@ func AnalyzeWaveform(w Waveform) ([]Region, error) {
 		withGaps = append(withGaps, region)
 	}
 	regions = withGaps
-	return regions, ValidateRegions(regions, w.Duration)
+	return regions, validateRegions(regions, w.Duration, false)
 }
 
 func ValidateRegions(regions []Region, duration float64) error {
+	return validateRegions(regions, duration, true)
+}
+
+func validateRegions(regions []Region, duration float64, requireKept bool) error {
 	if !finite(duration) || duration <= 0 || len(regions) == 0 {
 		return errors.New("regions must cover a positive duration")
 	}
@@ -171,7 +175,7 @@ func ValidateRegions(regions []Region, duration float64) error {
 	if math.Abs(position-duration) > 1e-6 {
 		return errors.New("regions do not cover waveform duration")
 	}
-	if !kept {
+	if requireKept && !kept {
 		return errors.New("at least one region must be kept")
 	}
 	return nil
