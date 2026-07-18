@@ -184,8 +184,13 @@ func (s *Server) handleUploadSermon(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) abandonUpload(id, dir string) {
-	if _, err := s.Store.DeleteSermon(id, nil); err != nil {
+	deleted, err := s.Store.DeleteSermon(id, nil)
+	if err != nil {
 		log.Printf("upload: remove abandoned sermon %s: %v", id, err)
+		return
+	}
+	if deleted && s.Events != nil {
+		s.Events.PublishDeleted(id)
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		log.Printf("upload: remove abandoned files %s: %v", id, err)

@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 )
@@ -119,6 +121,59 @@ func TestUploadWithoutEmail(t *testing.T) {
 	}
 	if sm.UploadedBy != nil {
 		t.Errorf("uploaded_by = %v, want nil", *sm.UploadedBy)
+	}
+}
+
+func TestAbandonUploadPublishesDeletion(t *testing.T) {
+	srv, ts := newTestServer(t)
+	_, sm := uploadFile(t, ts, "abandoned.wav", []byte("audio"), nil)
+	events, unsubscribe := srv.Events.subscribe()
+	defer unsubscribe()
+	dir := filepath.Join(srv.UploadsDir, sm.ID)
+
+	srv.abandonUpload(sm.ID, dir)
+
+	if _, err := srv.Store.GetSermon(sm.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("GetSermon after abandonment = %v, want not found", err)
+	}
+	if _, err := os.Stat(dir); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("stat abandoned upload directory = %v, want not exist", err)
+	}
+	select {
+	case event := <-events:
+		if event.Name != "deleted" {
+			t.Fatalf("abandonment event = %q, want deleted", event.Name)
+		}
+		data, ok := event.Data.(map[string]string)
+		if !ok || data["id"] != sm.ID {
+			t.Fatalf("abandonment event data = %#v, want id %q", event.Data, sm.ID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for abandonment event")
+	}
+}
+
+func TestAbandonUploadPreservesFilesWhenRowDeletionFails(t *testing.T) {
+	srv, ts := newTestServer(t)
+	_, sm := uploadFile(t, ts, "preserved.wav", []byte("audio"), nil)
+	dir := filepath.Join(srv.UploadsDir, sm.ID)
+	dbPath := filepath.Join(filepath.Dir(srv.UploadsDir), "test.db")
+	if err := srv.Store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	srv.abandonUpload(sm.ID, dir)
+
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("stat preserved upload directory: %v", err)
+	}
+	reopened, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	if _, err := reopened.GetSermon(sm.ID); err != nil {
+		t.Fatalf("GetSermon after failed deletion: %v", err)
 	}
 }
 
