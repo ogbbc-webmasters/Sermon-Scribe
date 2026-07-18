@@ -15,31 +15,32 @@
     app.ports.loadTimelineDraft?.subscribe((id) => {
       let value = null;
       try { value = JSON.parse(localStorage.getItem(draftKey(String(id)))); } catch (_) {}
-      app.ports.timelineDraftLoaded?.send(value);
+      app.ports.timelineDraftLoaded?.send({ id: String(id), draft: value });
     });
     app.ports.saveTimelineDraft?.subscribe((value) => {
       try { if (value && typeof value.id === "string") localStorage.setItem(draftKey(value.id), JSON.stringify(value.draft)); } catch (_) {}
     });
     app.ports.clearTimelineDraft?.subscribe((id) => { try { localStorage.removeItem(draftKey(String(id))); } catch (_) {} });
 
-    let renderModel = null, observer = null, preview = null, frame = 0, lastReport = 0, stopAt = null;
+    let renderModel = null, observer = null, preview = null, frame = 0, lastReport = 0, stopAt = null, drag = null;
     const audio = () => document.getElementById("timeline-audio");
-    function cleanupCanvas() { observer?.disconnect(); observer = null; }
+    function cleanupCanvas() { observer?.disconnect(); observer = null; if (drag) drag.cleanup(); }
     function draw() {
       const canvas = document.getElementById("timeline-canvas");
       if (!canvas || !renderModel || !Array.isArray(renderModel.samples)) { cleanupCanvas(); return; }
       const rect = canvas.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
       canvas.width = Math.max(1, Math.round(rect.width * dpr)); canvas.height = Math.round(220 * dpr);
       const ctx = canvas.getContext("2d"); ctx.scale(dpr, dpr); const w = rect.width, h = 220, duration = renderModel.duration || 1;
-      ctx.fillStyle = "#fffdf8"; ctx.fillRect(0, 0, w, h);
-      (renderModel.regions || []).forEach((r) => { ctx.fillStyle = r.type === "speaking" ? "#cfe0d3" : r.type === "singing" ? "#ecd2cf" : "#e2dccd"; ctx.fillRect(r.start/duration*w, 0, (r.end-r.start)/duration*w, h); if (!r.keep) { ctx.fillStyle = "rgba(43,40,32,.18)"; for(let x=r.start/duration*w;x<r.end/duration*w;x+=12) ctx.fillRect(x,0,5,h); } });
-      ctx.fillStyle = "#2b2820"; const samples=renderModel.samples, per=Math.max(1,Math.floor(samples.length/w));
+      const styles=getComputedStyle(document.documentElement), color=(name)=>styles.getPropertyValue(name).trim();
+      ctx.fillStyle = color("--card"); ctx.fillRect(0, 0, w, h);
+      (renderModel.regions || []).forEach((r) => { ctx.fillStyle = color(r.type === "speaking" ? "--green-line" : r.type === "singing" ? "--red-line" : "--line"); ctx.fillRect(r.start/duration*w, 0, (r.end-r.start)/duration*w, h); if (!r.keep) { ctx.save();ctx.globalAlpha=.18;ctx.fillStyle=color("--ink");for(let x=r.start/duration*w;x<r.end/duration*w;x+=12)ctx.fillRect(x,0,5,h);ctx.restore(); } });
+      ctx.fillStyle = color("--ink"); const samples=renderModel.samples, per=Math.max(1,Math.floor(samples.length/w));
       for(let x=0;x<w;x++){ let peak=0; for(let i=Math.floor(x* samples.length/w);i<Math.min(samples.length,Math.floor(x*samples.length/w)+per);i++) peak=Math.max(peak,Math.abs(samples[i]||0)); ctx.fillRect(x,h/2-peak*h*.45,1,Math.max(1,peak*h*.9)); }
-      ctx.strokeStyle="#245332"; ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo((renderModel.playhead||0)/duration*w,0); ctx.lineTo((renderModel.playhead||0)/duration*w,h); ctx.stroke();
-      (renderModel.regions||[]).slice(1).forEach((r)=>{ctx.fillStyle="#2b2820";ctx.fillRect(r.start/duration*w-2,0,4,h);});
+      ctx.strokeStyle=color("--green-dark"); ctx.lineWidth=2; ctx.beginPath(); ctx.moveTo((renderModel.playhead||0)/duration*w,0); ctx.lineTo((renderModel.playhead||0)/duration*w,h); ctx.stroke();
+      (renderModel.regions||[]).slice(1).forEach((r)=>{ctx.fillStyle=color("--ink");ctx.fillRect(r.start/duration*w-2,0,4,h);});
       if (!observer) { observer = new ResizeObserver(draw); observer.observe(canvas); canvas.addEventListener("pointerdown", pointer); }
     }
-    function pointer(event) { const canvas=event.currentTarget, regions=renderModel?.regions||[]; if(regions.length<2)return; canvas.setPointerCapture(event.pointerId); const send=(e)=>{const rect=canvas.getBoundingClientRect(),time=Math.max(0,Math.min(renderModel.duration,(e.clientX-rect.left)/rect.width*renderModel.duration));let boundary=1,best=Infinity;regions.slice(1).forEach((r,i)=>{const d=Math.abs(r.start-time);if(d<best){best=d;boundary=i+1;}});app.ports.timelineBoundary?.send({boundary,time});}; send(event); const move=(e)=>send(e); canvas.addEventListener("pointermove",move); canvas.addEventListener("pointerup",()=>canvas.removeEventListener("pointermove",move),{once:true}); }
+    function pointer(event) { const canvas=event.currentTarget, regions=renderModel?.regions||[], rect=canvas.getBoundingClientRect();if(regions.length<2||canvas.dataset.busy==="true")return;let boundary=0,best=Infinity;regions.slice(1).forEach((r,i)=>{const d=Math.abs(r.start/renderModel.duration*rect.width-(event.clientX-rect.left));if(d<best){best=d;boundary=i+1;}});if(best>15)return;canvas.setPointerCapture(event.pointerId);const send=(e)=>{const box=canvas.getBoundingClientRect(),time=Math.max(0,Math.min(renderModel.duration,(e.clientX-box.left)/box.width*renderModel.duration));app.ports.timelineBoundary?.send({boundary,time});};const move=(e)=>send(e);const cleanup=()=>{canvas.removeEventListener("pointermove",move);canvas.removeEventListener("pointerup",cleanup);canvas.removeEventListener("pointercancel",cleanup);canvas.removeEventListener("lostpointercapture",cleanup);if(drag?.cleanup===cleanup)drag=null;};drag={cleanup};canvas.addEventListener("pointermove",move);canvas.addEventListener("pointerup",cleanup);canvas.addEventListener("pointercancel",cleanup);canvas.addEventListener("lostpointercapture",cleanup);send(event); }
     app.ports.renderTimeline?.subscribe((value)=>{renderModel=value; requestAnimationFrame(draw);});
     function loop(now){const player=audio();if(player&&preview){if(stopAt!=null&&player.currentTime>=stopAt){player.pause();stopAt=null;}if(preview.mode==="preview"&&!player.paused){const cut=(preview.regions||[]).find(r=>!r.keep&&player.currentTime>=r.start&&player.currentTime<r.end);if(cut)player.currentTime=cut.end;}if(now-lastReport>100){lastReport=now;app.ports.previewPlayhead?.send(player.currentTime||0);if(renderModel){renderModel.playhead=player.currentTime||0;draw();}}}frame=requestAnimationFrame(loop);}
     app.ports.configurePreview?.subscribe((value)=>{preview=value&&typeof value==="object"?value:null;if(!preview){cancelAnimationFrame(frame);frame=0;cleanupCanvas();}else if(!frame)frame=requestAnimationFrame(loop);});

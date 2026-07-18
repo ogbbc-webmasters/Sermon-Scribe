@@ -48,7 +48,7 @@ viewUpload upload =
         Uploading fraction ->
             div [ class "upload-box" ]
                 [ p [ class "upload-box__status" ]
-                    [ text ("Uploading\u{2026} " ++ percent fraction) ]
+                    [ text ("Uploading… " ++ percent fraction) ]
                 , viewProgressBar fraction
                 , p [ Ui.hint ]
                     [ text "Please keep this page open until the upload finishes." ]
@@ -106,7 +106,7 @@ viewSermons : Model -> Html Msg
 viewSermons model =
     case model.sermons of
         Loading ->
-            p [ Ui.hint ] [ text "Loading\u{2026}" ]
+            p [ Ui.hint ] [ text "Loading…" ]
 
         LoadFailed ->
             p [ Ui.errorText ]
@@ -182,7 +182,8 @@ viewNormalizedAudio model sermon =
                 )
             , p [ Ui.hint ]
                 [ a
-                    [ href (normalizedAudioUrl sermon "proxy" ++ "&download=1")
+                    [ class "focusable"
+                    , href (normalizedAudioUrl sermon "proxy" ++ "&download=1")
                     , download "normalized.mp3"
                     ]
                     [ text "Download MP3" ]
@@ -277,7 +278,21 @@ viewActionButtons model sermon confirmationOpen =
     in
     div [ Ui.sermonActions ]
         (List.concat
-            [ if sermon.status == "failed" then
+            [ if sermon.stage == "edit" && not sermon.editApproved then
+                [ button [ Ui.primaryButton, onClick (OpenEditor sermon), disabled (confirmationOpen || isDeleting) ]
+                    [ text
+                        (if sermon.status == "done" then
+                            "Review Final"
+
+                         else
+                            "Open Editor"
+                        )
+                    ]
+                ]
+
+              else
+                []
+            , if sermon.status == "failed" then
                 [ button
                     [ Ui.button
                     , onClick (RetrySermon sermon)
@@ -285,7 +300,7 @@ viewActionButtons model sermon confirmationOpen =
                     ]
                     [ text
                         (if isRetrying then
-                            "Retrying\u{2026}"
+                            "Retrying…"
 
                          else
                             "Retry"
@@ -302,7 +317,7 @@ viewActionButtons model sermon confirmationOpen =
                     ]
                     [ text
                         (if isDeleting then
-                            "Deleting\u{2026}"
+                            "Deleting…"
 
                          else
                             "Delete"
@@ -332,7 +347,7 @@ describeStage sermon =
             "Waiting to upload"
 
         ( "upload", "running" ) ->
-            "Uploading\u{2026}"
+            "Uploading…"
 
         ( "upload", "done" ) ->
             "Uploaded"
@@ -342,10 +357,10 @@ describeStage sermon =
 
         ( "normalization", "running" ) ->
             if sermon.progress < 0 then
-                "Normalizing\u{2026}"
+                "Normalizing…"
 
             else
-                "Normalizing\u{2026} " ++ String.fromInt sermon.progress ++ "%"
+                "Normalizing… " ++ String.fromInt sermon.progress ++ "%"
 
         ( "normalization", "done" ) ->
             "Normalization finished"
