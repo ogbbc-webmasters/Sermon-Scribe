@@ -40,6 +40,10 @@ func (s *Server) Routes(webFS fs.FS) http.Handler {
 	mux.HandleFunc("DELETE /api/sermons/{id}", s.handleDeleteSermon)
 	mux.HandleFunc("POST /api/sermons/{id}/retry", s.handleRetrySermon)
 	mux.HandleFunc("POST /api/sermons/{id}/normalize", s.handleRerunNormalization)
+	mux.HandleFunc("GET /api/sermons/{id}/waveform", s.handleWaveform)
+	mux.HandleFunc("POST /api/sermons/{id}/analyze", s.handleAnalyze)
+	mux.HandleFunc("POST /api/sermons/{id}/apply-edits", s.handleApplyEdits)
+	mux.HandleFunc("POST /api/sermons/{id}/approve-edit", s.handleApproveEdit)
 	mux.HandleFunc("GET /api/sermons/{id}/audio/{type}", s.handleSermonAudio)
 	mux.HandleFunc("GET /api/events", s.handleEvents)
 	mux.Handle("/", http.FileServerFS(webFS))
@@ -342,13 +346,21 @@ func (s *Server) handleSermonAudio(w http.ResponseWriter, r *http.Request) {
 		contentType = "audio/flac"
 		downloadName = "normalized.flac"
 	case "proxy":
-		if sm.Stage != "normalization" || sm.Status != "done" {
+		if sm.EditApproved || (sm.Stage == "normalization" && sm.Status != "done") || (sm.Stage != "normalization" && sm.Stage != "edit") {
 			writeError(w, http.StatusConflict, "normalized audio is not ready")
 			return
 		}
 		path = filepath.Join(dir, "normalized.mp3")
 		contentType = "audio/mpeg"
 		downloadName = "normalized.mp3"
+	case "final":
+		if sm.AppliedRegions == nil || (sm.Stage == "edit" && sm.Status != "done" && sm.Status != "pending") {
+			writeError(w, http.StatusConflict, "final audio is not ready")
+			return
+		}
+		path = filepath.Join(dir, "final.mp3")
+		contentType = "audio/mpeg"
+		downloadName = "final.mp3"
 	default:
 		writeError(w, http.StatusNotFound, "audio type not found")
 		return
@@ -382,6 +394,162 @@ func (s *Server) handleSermonAudio(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", downloadName))
 	}
 	http.ServeContent(w, r, downloadName, info.ModTime(), file)
+}
+
+func (s *Server) loadWaveform(id string) (store.Sermon, processing.Waveform, error) {
+	sm, err := s.Store.GetSermon(id)
+	if err != nil {
+		return sm, processing.Waveform{}, err
+	}
+	if sm.EditApproved || (sm.Stage != "normalization" && sm.Stage != "edit") {
+		return sm, processing.Waveform{}, store.ErrEditConflict
+	}
+	data, err := os.ReadFile(filepath.Join(s.UploadsDir, id, "waveform.json"))
+	if err != nil {
+		return sm, processing.Waveform{}, err
+	}
+	var waveform processing.Waveform
+	if err := json.Unmarshal(data, &waveform); err != nil {
+		return sm, waveform, err
+	}
+	if err := processing.ValidateWaveform(waveform); err != nil {
+		return sm, waveform, err
+	}
+	return sm, waveform, nil
+}
+
+func (s *Server) handleWaveform(w http.ResponseWriter, r *http.Request) {
+	_, waveform, err := s.loadWaveform(r.PathValue("id"))
+	if errors.Is(err, store.ErrNotFound) || errors.Is(err, os.ErrNotExist) {
+		writeError(w, http.StatusNotFound, "waveform not found")
+		return
+	}
+	if errors.Is(err, store.ErrEditConflict) {
+		writeError(w, http.StatusConflict, "waveform is not available")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load waveform")
+		return
+	}
+	writeJSON(w, http.StatusOK, waveform)
+}
+
+func (s *Server) handleAnalyze(w http.ResponseWriter, r *http.Request) {
+	sm, waveform, err := s.loadWaveform(r.PathValue("id"))
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, 404, "sermon not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusConflict, "waveform is not ready")
+		return
+	}
+	var regions []processing.Region
+	if sm.AppliedRegions != nil {
+		if err := json.Unmarshal(sm.AppliedRegions, &regions); err != nil {
+			writeError(w, 500, "could not load applied edits")
+			return
+		}
+	} else {
+		regions, err = processing.AnalyzeWaveform(waveform)
+		if err != nil {
+			writeError(w, 500, "could not analyze waveform")
+			return
+		}
+	}
+	writeJSON(w, 200, map[string]any{"duration": waveform.Duration, "regions": regions})
+}
+
+func (s *Server) handleApplyEdits(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	_, waveform, err := s.loadWaveform(id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, 404, "sermon not found")
+		return
+	}
+	if err != nil {
+		writeError(w, 409, "sermon is not ready for editing")
+		return
+	}
+	var req struct {
+		Regions []processing.Region `json:"regions"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		writeError(w, 400, "invalid edit request")
+		return
+	}
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		writeError(w, 400, "invalid edit request")
+		return
+	}
+	if err := processing.ValidateRegions(req.Regions, waveform.Duration); err != nil {
+		writeError(w, 400, err.Error())
+		return
+	}
+	parameters, _ := json.Marshal(map[string]any{"duration": waveform.Duration, "regions": req.Regions})
+	sm, err := s.Store.EnqueueApplyEdits(id, newUUID(), string(parameters), time.Now())
+	if errors.Is(err, store.ErrEditConflict) {
+		writeError(w, 409, "an edit is already running or approved")
+		return
+	}
+	if err != nil {
+		writeError(w, 500, "could not queue edits")
+		return
+	}
+	if s.Queue != nil {
+		s.Queue.Notify()
+	}
+	writeJSON(w, http.StatusAccepted, sm)
+}
+
+func (s *Server) handleApproveEdit(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	dir := filepath.Join(s.UploadsDir, id)
+	if _, err := os.Stat(filepath.Join(dir, "final.mp3")); err != nil {
+		writeError(w, 409, "final audio is not ready")
+		return
+	}
+	stagedDir := filepath.Join(dir, ".approval-staged")
+	_ = os.RemoveAll(stagedDir)
+	staged := []string{}
+	sm, err := s.Store.ApproveEdit(id, func() error {
+		if err := os.Mkdir(stagedDir, 0o700); err != nil {
+			return err
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if name == "normalized.flac" || name == "normalized.mp3" || name == "waveform.json" || strings.HasPrefix(name, "original.") || name == "original" || strings.HasPrefix(name, ".normalization-") {
+				if err := os.Rename(filepath.Join(dir, name), filepath.Join(stagedDir, name)); err != nil {
+					return err
+				}
+				staged = append(staged, name)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		for i := len(staged) - 1; i >= 0; i-- {
+			_ = os.Rename(filepath.Join(stagedDir, staged[i]), filepath.Join(dir, staged[i]))
+		}
+		_ = os.Remove(stagedDir)
+		if errors.Is(err, store.ErrEditConflict) {
+			writeError(w, 409, "edit cannot be approved")
+			return
+		}
+		writeError(w, 500, "could not approve edit")
+		return
+	}
+	if err := os.RemoveAll(stagedDir); err != nil {
+		log.Printf("approval cleanup %s: %v", id, err)
+	}
+	writeJSON(w, 200, sm)
 }
 
 func originalAudioPath(dir string) (string, error) {

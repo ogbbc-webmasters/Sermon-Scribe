@@ -20,6 +20,8 @@ var ErrNotRetryable = errors.New("sermon has no failed job to retry")
 // ErrNotRerunnable indicates that normalization is not currently complete.
 var ErrNotRerunnable = errors.New("sermon normalization is not ready to rerun")
 
+var ErrEditConflict = errors.New("sermon cannot be edited in its current state")
+
 // Job is one persistent unit of background work.
 type Job struct {
 	ID          string
@@ -169,6 +171,81 @@ func (s *Store) SetNormalizationAdjustments(sermonID string, gate, volume int) e
 		return ErrNotFound
 	}
 	return nil
+}
+
+// EnqueueApplyEdits moves a normalized or previously rendered sermon to edit/pending.
+func (s *Store) EnqueueApplyEdits(sermonID, jobID, parameters string, now time.Time) (Sermon, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Sermon{}, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`UPDATE sermons SET stage='edit', status='pending'
+		WHERE id=? AND edit_approved=0 AND status='done' AND stage IN ('normalization','edit')`, sermonID)
+	if err != nil {
+		return Sermon{}, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return Sermon{}, err
+	}
+	if n == 0 {
+		return Sermon{}, ErrEditConflict
+	}
+	if err := enqueueJobTx(tx, NewJob{ID: jobID, SermonID: sermonID, Type: "apply_edits", Stage: "edit", Parameters: parameters}, now); err != nil {
+		return Sermon{}, err
+	}
+	sm, err := getSermon(tx, sermonID)
+	if err != nil {
+		return Sermon{}, err
+	}
+	return sm, tx.Commit()
+}
+
+// SetAppliedRegions stores the exact plan which produced the published final audio.
+func (s *Store) SetAppliedRegions(sermonID string, regions []byte) error {
+	res, err := s.db.Exec(`UPDATE sermons SET applied_regions=? WHERE id=? AND edit_approved=0`, string(regions), sermonID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrEditConflict
+	}
+	return nil
+}
+
+// ApproveEdit marks an edit irreversible inside a transaction coordinated with cleanup.
+func (s *Store) ApproveEdit(id string, cleanup func() error) (Sermon, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Sermon{}, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(`UPDATE sermons SET edit_approved=1 WHERE id=? AND stage='edit' AND status='done' AND edit_approved=0`, id)
+	if err != nil {
+		return Sermon{}, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return Sermon{}, err
+	}
+	if n == 0 {
+		return Sermon{}, ErrEditConflict
+	}
+	if cleanup != nil {
+		if err := cleanup(); err != nil {
+			return Sermon{}, err
+		}
+	}
+	sm, err := getSermon(tx, id)
+	if err != nil {
+		return Sermon{}, err
+	}
+	return sm, tx.Commit()
 }
 
 type sqlExecer interface {

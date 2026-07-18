@@ -46,8 +46,10 @@ func main() {
 
 	events := server.NewEventHub()
 	normalize := processing.NewNormalizeHandler(st, *uploadsDir)
+	applyEdits := processing.NewApplyEditsHandler(st, *uploadsDir)
 	queue := processing.NewQueue(st, map[string]processing.Handler{
-		"normalize": normalize,
+		"normalize":   normalize,
+		"apply_edits": applyEdits,
 	}, processing.Config{Events: events})
 	queue.Start(ctx)
 	defer queue.Stop()
