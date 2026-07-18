@@ -16,7 +16,12 @@
 - Commit API keys, secrets, or `.env` files
 - Batch unrelated changes into a single commit
 
-## Styling Convention
+## Long Term Memory
+
+- **Project**: Sermon Scribe — a web app that turns raw sermon recordings into publish-ready audio with transcriptions and metadata
+- **Repo**: https://github.com/ogbbc-webmasters/Sermon-Scribe (branch: `main`)
+
+### Styling Convention
 
 All CSS lives in `web/styles.css` (served from the embedded `web/` dir).
 
@@ -26,8 +31,3 @@ All CSS lives in `web/styles.css` (served from the embedded `web/` dir).
 - **State ownership**: a base class owns layout, shape, typography, and its own neutral colors only; each modifier fully owns its colors including `:hover`/`:active`/`:disabled` — redeclare every state it changes so no base rule needs overriding. No `:not()` chains, no `!important`
 - **Specificity budget**: at most one class + one pseudo-class per selector (`.button--danger:hover` is the ceiling)
 - **Ui.elm**: `src/Ui.elm` centralizes class names for shared components as `Html.Attribute` helpers (`Ui.primaryButton`, `Ui.card`, …). Use these instead of raw class literals for anything reusable; page-specific one-off classes may stay inline. Add the CSS and the helper together
-
-## Long Term Memory
-
-- **Project**: Sermon Scribe — a web app that turns raw sermon recordings into publish-ready audio with transcriptions and metadata
-- **Repo**: https://github.com/ogbbc-webmasters/Sermon-Scribe (branch: `main`)
