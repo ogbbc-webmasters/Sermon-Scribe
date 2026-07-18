@@ -55,8 +55,10 @@ func TestCompleteUploadEnqueuesNormalization(t *testing.T) {
 	if job.Type != "normalize" || job.Stage != "normalization" || job.State != "queued" || job.Attempts != 0 {
 		t.Fatalf("unexpected job: %+v", job)
 	}
-	if job.Parameters != `{"preset":"standard"}` || sm.NormalizationPreset != "standard" {
-		t.Fatalf("normalization defaults = parameters %q, preset %q", job.Parameters, sm.NormalizationPreset)
+	if job.Parameters != `{"gate_adjustment":0,"volume_adjustment":0}` ||
+		sm.NormalizationGateAdjustment != 0 || sm.NormalizationVolumeAdjustment != 0 {
+		t.Fatalf("normalization defaults = parameters %q, adjustments %d/%d",
+			job.Parameters, sm.NormalizationGateAdjustment, sm.NormalizationVolumeAdjustment)
 	}
 }
 
@@ -73,7 +75,7 @@ func TestEnqueueNormalizationRerun(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	parameters := `{"preset":"louder"}`
+	parameters := `{"gate_adjustment":1,"volume_adjustment":-1}`
 	sm, err := st.EnqueueNormalizationRerun("sermon-1", "job-2", parameters, now.Add(time.Minute))
 	if err != nil {
 		t.Fatal(err)
@@ -92,15 +94,16 @@ func TestEnqueueNormalizationRerun(t *testing.T) {
 		t.Fatalf("duplicate rerun error = %v, want ErrNotRerunnable", err)
 	}
 
-	if err := st.SetNormalizationPreset("sermon-1", "louder"); err != nil {
+	if err := st.SetNormalizationAdjustments("sermon-1", 1, -1); err != nil {
 		t.Fatal(err)
 	}
 	sm, err = st.GetSermon("sermon-1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sm.NormalizationPreset != "louder" {
-		t.Fatalf("stored preset = %q, want louder", sm.NormalizationPreset)
+	if sm.NormalizationGateAdjustment != 1 || sm.NormalizationVolumeAdjustment != -1 {
+		t.Fatalf("stored adjustments = %d/%d, want 1/-1",
+			sm.NormalizationGateAdjustment, sm.NormalizationVolumeAdjustment)
 	}
 }
 

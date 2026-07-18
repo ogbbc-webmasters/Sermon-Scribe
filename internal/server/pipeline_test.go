@@ -82,7 +82,7 @@ func TestRerunNormalization(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resp, err := http.Post(ts.URL+"/api/sermons/"+uploaded.ID+"/normalize", "application/json", strings.NewReader(`{"preset":"no-gate"}`))
+	resp, err := http.Post(ts.URL+"/api/sermons/"+uploaded.ID+"/normalize", "application/json", strings.NewReader(`{"adjustment":"more-gate"}`))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +102,7 @@ func TestRerunNormalization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if queued.ID == job.ID || queued.Parameters != `{"preset":"no-gate"}` {
+	if queued.ID == job.ID || queued.Parameters != `{"gate_adjustment":1,"volume_adjustment":0}` {
 		t.Fatalf("rerun job = %+v", queued)
 	}
 	if notifier.calls.Load() != 2 {
@@ -118,8 +118,8 @@ func TestRerunNormalizationRejectsInvalidStateAndPreset(t *testing.T) {
 		body string
 		want int
 	}{
-		{body: `{"preset":"standard"}`, want: http.StatusConflict},
-		{body: `{"preset":"mystery"}`, want: http.StatusBadRequest},
+		{body: `{"adjustment":"more-gate"}`, want: http.StatusConflict},
+		{body: `{"adjustment":"mystery"}`, want: http.StatusBadRequest},
 		{body: `{}`, want: http.StatusBadRequest},
 	} {
 		resp, err := http.Post(ts.URL+"/api/sermons/"+uploaded.ID+"/normalize", "application/json", strings.NewReader(test.body))

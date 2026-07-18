@@ -18,62 +18,88 @@ import (
 
 const normalizationPipelineVersion = 1
 
-// NormalizationPreset identifies one fixed, user-facing audio treatment.
-type NormalizationPreset string
+// NormalizationSettings are relative adjustments from the default treatment.
+type NormalizationSettings struct {
+	GateAdjustment   int `json:"gate_adjustment"`
+	VolumeAdjustment int `json:"volume_adjustment"`
+}
+
+// NormalizationAdjustment identifies one relative user-requested change.
+type NormalizationAdjustment string
 
 const (
-	PresetStandard     NormalizationPreset = "standard"
-	PresetStrongerGate NormalizationPreset = "stronger-gate"
-	PresetNoGate       NormalizationPreset = "no-gate"
-	PresetLouder       NormalizationPreset = "louder"
-	PresetQuieter      NormalizationPreset = "quieter"
+	AdjustmentMoreGate   NormalizationAdjustment = "more-gate"
+	AdjustmentLessGate   NormalizationAdjustment = "less-gate"
+	AdjustmentMoreVolume NormalizationAdjustment = "more-volume"
+	AdjustmentLessVolume NormalizationAdjustment = "less-volume"
+	minAdjustment                                = -3
+	maxAdjustment                                = 3
 )
 
-var normalizationPresets = map[NormalizationPreset]struct {
-	gate       string
-	loudnessLU int
-}{
-	PresetStandard:     {gate: "agate=threshold=0.020:ratio=4:range=0.15:attack=20:release=250", loudnessLU: -16},
-	PresetStrongerGate: {gate: "agate=threshold=0.035:ratio=6:range=0.08:attack=20:release=300", loudnessLU: -16},
-	PresetNoGate:       {loudnessLU: -16},
-	PresetLouder:       {gate: "agate=threshold=0.020:ratio=4:range=0.15:attack=20:release=250", loudnessLU: -14},
-	PresetQuieter:      {gate: "agate=threshold=0.020:ratio=4:range=0.15:attack=20:release=250", loudnessLU: -18},
-}
-
-// ValidNormalizationPreset reports whether name is one of the fixed presets.
-func ValidNormalizationPreset(name string) bool {
-	_, ok := normalizationPresets[NormalizationPreset(name)]
-	return ok
-}
-
-// NormalizationParameters returns the canonical job parameters for a preset.
-func NormalizationParameters(name string) (string, error) {
-	if !ValidNormalizationPreset(name) {
-		return "", fmt.Errorf("unknown normalization preset %q", name)
+// ValidNormalizationAdjustment reports whether name is one of the four controls.
+func ValidNormalizationAdjustment(name string) bool {
+	switch NormalizationAdjustment(name) {
+	case AdjustmentMoreGate, AdjustmentLessGate, AdjustmentMoreVolume, AdjustmentLessVolume:
+		return true
+	default:
+		return false
 	}
-	data, err := json.Marshal(struct {
-		Preset string `json:"preset"`
-	}{Preset: name})
+}
+
+// AdjustNormalization applies one relative change to the current settings.
+func AdjustNormalization(current NormalizationSettings, adjustment string) (NormalizationSettings, error) {
+	next := current
+	switch NormalizationAdjustment(adjustment) {
+	case AdjustmentMoreGate:
+		next.GateAdjustment++
+	case AdjustmentLessGate:
+		next.GateAdjustment--
+	case AdjustmentMoreVolume:
+		next.VolumeAdjustment++
+	case AdjustmentLessVolume:
+		next.VolumeAdjustment--
+	default:
+		return NormalizationSettings{}, fmt.Errorf("unknown normalization adjustment %q", adjustment)
+	}
+	if err := validateNormalizationSettings(next); err != nil {
+		return NormalizationSettings{}, err
+	}
+	return next, nil
+}
+
+// NormalizationParameters returns canonical job parameters for settings.
+func NormalizationParameters(settings NormalizationSettings) (string, error) {
+	if err := validateNormalizationSettings(settings); err != nil {
+		return "", err
+	}
+	data, err := json.Marshal(settings)
 	return string(data), err
 }
 
-func parseNormalizationParameters(raw string) (NormalizationPreset, error) {
+func parseNormalizationParameters(raw string) (NormalizationSettings, error) {
 	if raw == "" || raw == "{}" {
-		return PresetStandard, nil
+		return NormalizationSettings{}, nil
 	}
-	var parameters struct {
-		Preset string `json:"preset"`
-	}
+	var settings NormalizationSettings
 	decoder := json.NewDecoder(strings.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&parameters); err != nil {
-		return "", fmt.Errorf("decode normalization parameters: %w", err)
+	if err := decoder.Decode(&settings); err != nil {
+		return NormalizationSettings{}, fmt.Errorf("decode normalization parameters: %w", err)
 	}
-	preset := NormalizationPreset(parameters.Preset)
-	if _, ok := normalizationPresets[preset]; !ok {
-		return "", fmt.Errorf("unknown normalization preset %q", parameters.Preset)
+	if err := validateNormalizationSettings(settings); err != nil {
+		return NormalizationSettings{}, err
 	}
-	return preset, nil
+	return settings, nil
+}
+
+func validateNormalizationSettings(settings NormalizationSettings) error {
+	if settings.GateAdjustment < minAdjustment || settings.GateAdjustment > maxAdjustment {
+		return fmt.Errorf("gate adjustment %d outside %d..%d", settings.GateAdjustment, minAdjustment, maxAdjustment)
+	}
+	if settings.VolumeAdjustment < minAdjustment || settings.VolumeAdjustment > maxAdjustment {
+		return fmt.Errorf("volume adjustment %d outside %d..%d", settings.VolumeAdjustment, minAdjustment, maxAdjustment)
+	}
+	return nil
 }
 
 type audioSpec struct {
@@ -103,7 +129,7 @@ func NewNormalizeHandler(st *store.Store, uploadsDir string) *NormalizeHandler {
 
 // Run implements Handler.
 func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Reporter) (Result, error) {
-	preset, err := parseNormalizationParameters(job.Parameters)
+	settings, err := parseNormalizationParameters(job.Parameters)
 	if err != nil {
 		return Result{}, err
 	}
@@ -138,7 +164,7 @@ func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Repo
 		return Result{}, err
 	}
 	if !committed {
-		filter := normalizationFilter(preset)
+		filter := normalizationFilter(settings)
 		if err := h.runFFmpeg(ctx, input, flacTemp, mp3Temp, filter, func(percent int) error {
 			return reporter.Progress(percent, nil)
 		}); err != nil {
@@ -148,8 +174,10 @@ func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Repo
 			return Result{}, err
 		}
 	}
-	if err := h.store.SetNormalizationPreset(job.SermonID, string(preset)); err != nil {
-		return Result{}, fmt.Errorf("store normalization preset: %w", err)
+	if err := h.store.SetNormalizationAdjustments(
+		job.SermonID, settings.GateAdjustment, settings.VolumeAdjustment,
+	); err != nil {
+		return Result{}, fmt.Errorf("store normalization adjustments: %w", err)
 	}
 	if err := reporter.Progress(100, nil); err != nil {
 		return Result{}, err
@@ -157,18 +185,39 @@ func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Repo
 	return Result{}, nil
 }
 
-func normalizationFilter(preset NormalizationPreset) string {
-	settings := normalizationPresets[preset]
+func normalizationFilter(settings NormalizationSettings) string {
 	filters := []string{"aformat=channel_layouts=mono"}
-	if settings.gate != "" {
-		filters = append(filters, settings.gate)
+	if gate := normalizationGate(settings.GateAdjustment); gate != "" {
+		filters = append(filters, gate)
 	}
+	loudnessLU := -16 + 2*settings.VolumeAdjustment
 	filters = append(filters,
-		fmt.Sprintf("loudnorm=I=%d:LRA=11:TP=-1.5:dual_mono=true", settings.loudnessLU),
+		fmt.Sprintf("loudnorm=I=%d:LRA=11:TP=-1.5:dual_mono=true", loudnessLU),
 		"aresample=44100",
 		"asplit=2[master][proxy]",
 	)
 	return "[0:a:0]" + strings.Join(filters, ",")
+}
+
+func normalizationGate(adjustment int) string {
+	switch adjustment {
+	case -3:
+		return ""
+	case -2:
+		return "agate=threshold=0.008:ratio=2:range=0.35:attack=20:release=250"
+	case -1:
+		return "agate=threshold=0.014:ratio=3:range=0.25:attack=20:release=250"
+	case 0:
+		return "agate=threshold=0.020:ratio=4:range=0.15:attack=20:release=250"
+	case 1:
+		return "agate=threshold=0.030:ratio=5:range=0.12:attack=20:release=275"
+	case 2:
+		return "agate=threshold=0.040:ratio=6:range=0.10:attack=20:release=300"
+	case 3:
+		return "agate=threshold=0.055:ratio=8:range=0.08:attack=20:release=325"
+	default:
+		return ""
+	}
 }
 
 func findOriginal(dir string) (string, error) {

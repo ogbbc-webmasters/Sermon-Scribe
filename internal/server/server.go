@@ -253,7 +253,8 @@ func (s *Server) handleRetrySermon(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRerunNormalization(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if _, err := s.Store.GetSermon(id); errors.Is(err, store.ErrNotFound) {
+	sm, err := s.Store.GetSermon(id)
+	if errors.Is(err, store.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "sermon not found")
 		return
 	} else if err != nil {
@@ -263,7 +264,7 @@ func (s *Server) handleRerunNormalization(w http.ResponseWriter, r *http.Request
 	}
 
 	var request struct {
-		Preset string `json:"preset"`
+		Adjustment string `json:"adjustment"`
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
 	decoder.DisallowUnknownFields()
@@ -275,16 +276,24 @@ func (s *Server) handleRerunNormalization(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "invalid normalization request")
 		return
 	}
-	if request.Preset == "" || !processing.ValidNormalizationPreset(request.Preset) {
-		writeError(w, http.StatusBadRequest, "unknown normalization preset")
+	if !processing.ValidNormalizationAdjustment(request.Adjustment) {
+		writeError(w, http.StatusBadRequest, "unknown normalization adjustment")
 		return
 	}
-	parameters, err := processing.NormalizationParameters(request.Preset)
+	settings, err := processing.AdjustNormalization(processing.NormalizationSettings{
+		GateAdjustment:   sm.NormalizationGateAdjustment,
+		VolumeAdjustment: sm.NormalizationVolumeAdjustment,
+	}, request.Adjustment)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "unknown normalization preset")
+		writeError(w, http.StatusConflict, "normalization adjustment limit reached")
 		return
 	}
-	sm, err := s.Store.EnqueueNormalizationRerun(id, newUUID(), parameters, time.Now())
+	parameters, err := processing.NormalizationParameters(settings)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid normalization adjustment")
+		return
+	}
+	sm, err = s.Store.EnqueueNormalizationRerun(id, newUUID(), parameters, time.Now())
 	if errors.Is(err, store.ErrNotRerunnable) {
 		writeError(w, http.StatusConflict, "normalization is not ready to rerun")
 		return

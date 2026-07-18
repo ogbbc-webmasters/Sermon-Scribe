@@ -24,7 +24,7 @@ func (r *recordingReporter) Progress(percent int, _ *string) error {
 	return r.err
 }
 
-func TestNormalizeHandlerCommitsArtifactsAndPreset(t *testing.T) {
+func TestNormalizeHandlerCommitsArtifactsAndAdjustments(t *testing.T) {
 	st := processingTestStore(t)
 	uploads := t.TempDir()
 	sermonID := "sermon-1"
@@ -42,7 +42,8 @@ func TestNormalizeHandlerCommitsArtifactsAndPreset(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	parameters, err := NormalizationParameters(string(PresetLouder))
+	settings := NormalizationSettings{GateAdjustment: 1, VolumeAdjustment: 1}
+	parameters, err := NormalizationParameters(settings)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +86,7 @@ func TestNormalizeHandlerCommitsArtifactsAndPreset(t *testing.T) {
 	if _, err := handler.Run(context.Background(), job, reporter); err != nil {
 		t.Fatal(err)
 	}
-	if runs != 1 || !strings.Contains(lastFilter, "loudnorm=I=-14") {
+	if runs != 1 || !strings.Contains(lastFilter, "threshold=0.030") || !strings.Contains(lastFilter, "loudnorm=I=-14") {
 		t.Fatalf("ffmpeg runs/filter = %d %q", runs, lastFilter)
 	}
 	for _, name := range []string{"normalized.flac", "normalized.mp3", ".normalization-complete.json"} {
@@ -97,8 +98,8 @@ func TestNormalizeHandlerCommitsArtifactsAndPreset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sm.NormalizationPreset != string(PresetLouder) {
-		t.Fatalf("preset = %q, want louder", sm.NormalizationPreset)
+	if sm.NormalizationGateAdjustment != 1 || sm.NormalizationVolumeAdjustment != 1 {
+		t.Fatalf("adjustments = %d/%d, want 1/1", sm.NormalizationGateAdjustment, sm.NormalizationVolumeAdjustment)
 	}
 	if got := reporter.progress; len(got) < 3 || got[0] != 0 || got[len(got)-1] != 100 {
 		t.Fatalf("progress = %v", got)
@@ -112,25 +113,21 @@ func TestNormalizeHandlerCommitsArtifactsAndPreset(t *testing.T) {
 		t.Fatalf("ffmpeg runs after committed retry = %d, want 1", runs)
 	}
 
-	// A user-requested rerun has a new job ID, so the prior marker cannot satisfy it.
-	noGate, err := NormalizationParameters(string(PresetNoGate))
+	// A relative rerun has a new job ID and adjusted settings, forcing a new render.
+	settings, err = AdjustNormalization(settings, string(AdjustmentLessGate))
 	if err != nil {
 		t.Fatal(err)
 	}
 	job.ID = "job-2"
-	job.Parameters = noGate
-	if _, err := handler.Run(context.Background(), job, &recordingReporter{}); err != nil {
-		t.Fatal(err)
-	}
-	if runs != 2 || strings.Contains(lastFilter, "agate=") {
-		t.Fatalf("rerun runs/filter = %d %q", runs, lastFilter)
-	}
-	sm, err = st.GetSermon(sermonID)
+	job.Parameters, err = NormalizationParameters(settings)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sm.NormalizationPreset != string(PresetNoGate) {
-		t.Fatalf("rerun preset = %q, want no-gate", sm.NormalizationPreset)
+	if _, err := handler.Run(context.Background(), job, &recordingReporter{}); err != nil {
+		t.Fatal(err)
+	}
+	if runs != 2 || !strings.Contains(lastFilter, "threshold=0.020") {
+		t.Fatalf("rerun runs/filter = %d %q", runs, lastFilter)
 	}
 }
 
@@ -145,28 +142,54 @@ func TestNormalizeHandlerRejectsBadParametersAndMissingOriginal(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := NewNormalizeHandler(st, uploads)
-	job := store.Job{ID: "job-1", SermonID: "sermon-1", Parameters: `{"preset":"mystery"}`}
-	if _, err := handler.Run(context.Background(), job, &recordingReporter{}); err == nil || !strings.Contains(err.Error(), "unknown normalization preset") {
-		t.Fatalf("bad preset error = %v", err)
+	job := store.Job{ID: "job-1", SermonID: "sermon-1", Parameters: `{"gate_adjustment":4,"volume_adjustment":0}`}
+	if _, err := handler.Run(context.Background(), job, &recordingReporter{}); err == nil || !strings.Contains(err.Error(), "gate adjustment") {
+		t.Fatalf("bad adjustment error = %v", err)
 	}
-	job.Parameters = `{"preset":"standard"}`
+	job.Parameters = `{"gate_adjustment":0,"volume_adjustment":0}`
 	if _, err := handler.Run(context.Background(), job, &recordingReporter{}); err == nil || !strings.Contains(err.Error(), "read sermon uploads") {
 		t.Fatalf("missing original error = %v", err)
 	}
 }
 
-func TestNormalizationFilters(t *testing.T) {
-	if got := normalizationFilter(PresetNoGate); strings.Contains(got, "agate=") {
-		t.Fatalf("no-gate filter contains gate: %q", got)
+func TestNormalizationAdjustmentsAndFilters(t *testing.T) {
+	settings := NormalizationSettings{}
+	var err error
+	settings, err = AdjustNormalization(settings, "more-gate")
+	if err != nil || settings.GateAdjustment != 1 {
+		t.Fatalf("more gate = %+v, %v", settings, err)
 	}
-	if got := normalizationFilter(PresetStrongerGate); !strings.Contains(got, "threshold=0.035") {
-		t.Fatalf("stronger-gate filter = %q", got)
+	settings, err = AdjustNormalization(settings, "less-gate")
+	if err != nil || settings.GateAdjustment != 0 {
+		t.Fatalf("less gate = %+v, %v", settings, err)
 	}
-	if got := normalizationFilter(PresetQuieter); !strings.Contains(got, "loudnorm=I=-18") {
-		t.Fatalf("quieter filter = %q", got)
+	settings, err = AdjustNormalization(settings, "more-volume")
+	if err != nil || settings.VolumeAdjustment != 1 {
+		t.Fatalf("more volume = %+v, %v", settings, err)
 	}
-	if !ValidNormalizationPreset("standard") || !ValidNormalizationPreset("quieter") || ValidNormalizationPreset("unknown") {
-		t.Fatal("preset validation mismatch")
+	settings, err = AdjustNormalization(settings, "less-volume")
+	if err != nil || settings.VolumeAdjustment != 0 {
+		t.Fatalf("less volume = %+v, %v", settings, err)
+	}
+	if _, err := AdjustNormalization(settings, "mystery"); err == nil {
+		t.Fatal("unknown adjustment accepted")
+	}
+
+	if got := normalizationFilter(NormalizationSettings{GateAdjustment: -3}); strings.Contains(got, "agate=") {
+		t.Fatalf("minimum gate filter contains gate: %q", got)
+	}
+	if got := normalizationFilter(NormalizationSettings{GateAdjustment: 2}); !strings.Contains(got, "threshold=0.040") {
+		t.Fatalf("more-gate filter = %q", got)
+	}
+	if got := normalizationFilter(NormalizationSettings{VolumeAdjustment: -1}); !strings.Contains(got, "loudnorm=I=-18") {
+		t.Fatalf("less-volume filter = %q", got)
+	}
+	atLimit := NormalizationSettings{GateAdjustment: maxAdjustment}
+	if _, err := AdjustNormalization(atLimit, "more-gate"); err == nil {
+		t.Fatal("gate adjustment exceeded maximum")
+	}
+	if !ValidNormalizationAdjustment("less-volume") || ValidNormalizationAdjustment("unknown") {
+		t.Fatal("adjustment validation mismatch")
 	}
 }
 
@@ -186,7 +209,7 @@ func TestRunFFmpegProducesMatchingMonoOutputs(t *testing.T) {
 	}
 	flac := filepath.Join(dir, "normalized.flac")
 	mp3 := filepath.Join(dir, "normalized.mp3")
-	if err := runFFmpeg(context.Background(), input, flac, mp3, normalizationFilter(PresetStandard), func(int) error { return nil }); err != nil {
+	if err := runFFmpeg(context.Background(), input, flac, mp3, normalizationFilter(NormalizationSettings{}), func(int) error { return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if err := probeAudio(flac, audioSpec{codec: "flac", sampleRate: 44100, channels: 1}); err != nil {

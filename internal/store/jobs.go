@@ -96,7 +96,7 @@ func (s *Store) CompleteUpload(sermonID, jobID string, now time.Time) (Sermon, e
 
 	job := NewJob{
 		ID: jobID, SermonID: sermonID, Type: "normalize", Stage: "normalization",
-		Parameters: `{"preset":"standard"}`,
+		Parameters: `{"gate_adjustment":0,"volume_adjustment":0}`,
 	}
 	if err := enqueueJobTx(tx, job, now); err != nil {
 		return Sermon{}, err
@@ -118,7 +118,7 @@ func (s *Store) EnqueueJob(job NewJob, now time.Time) error {
 }
 
 // EnqueueNormalizationRerun returns a completed normalization stage to pending
-// and queues a new normalize job carrying the selected preset parameters.
+// and queues a new normalize job carrying the adjusted settings.
 func (s *Store) EnqueueNormalizationRerun(sermonID, jobID, parameters string, now time.Time) (Sermon, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -152,10 +152,12 @@ func (s *Store) EnqueueNormalizationRerun(sermonID, jobID, parameters string, no
 	return sm, tx.Commit()
 }
 
-// SetNormalizationPreset records the preset that produced the committed audio.
-func (s *Store) SetNormalizationPreset(sermonID, preset string) error {
+// SetNormalizationAdjustments records the settings that produced the committed audio.
+func (s *Store) SetNormalizationAdjustments(sermonID string, gate, volume int) error {
 	res, err := s.db.Exec(
-		`UPDATE sermons SET normalization_preset = ? WHERE id = ?`, preset, sermonID)
+		`UPDATE sermons
+		 SET normalization_gate_adjustment = ?, normalization_volume_adjustment = ?
+		 WHERE id = ?`, gate, volume, sermonID)
 	if err != nil {
 		return err
 	}
