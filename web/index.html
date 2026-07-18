@@ -10,7 +10,21 @@
   <div id="app"></div>
   <script src="/elm.js"></script>
   <script>
-    Elm.Main.init({ node: document.getElementById("app") });
+    const app = Elm.Main.init({ node: document.getElementById("app") });
+    const events = new EventSource("/api/events");
+    ["snapshot", "stage_started", "progress", "stage_completed", "failed"]
+      .forEach((eventName) => {
+        events.addEventListener(eventName, (event) => {
+          try {
+            app.ports.pipelineEvents.send({
+              event: eventName,
+              data: JSON.parse(event.data)
+            });
+          } catch (error) {
+            console.error("Could not read pipeline event", error);
+          }
+        });
+      });
   </script>
 </body>
 </html>

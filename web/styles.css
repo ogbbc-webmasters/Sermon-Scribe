@@ -269,6 +269,14 @@ h2::after {
   border-radius: 13px;
 }
 
+/* sermon-actions — controls for one sermon */
+
+.sermon-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
 /* sermon-card — one sermon in the list */
 
 .sermon-card {
