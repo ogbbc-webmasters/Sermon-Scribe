@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"sync"
@@ -271,25 +272,36 @@ func TestDiscardInterruptedUploads(t *testing.T) {
 	}
 }
 
-func TestOpenQueuesCompletedUploadsFromBeforePipeline(t *testing.T) {
+func TestMigrationQueuesCompletedUploadsFromBeforePipeline(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test.db")
-	st, err := Open(path)
+	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
-	if err := st.CreateSermon(Sermon{
-		ID: "legacy-sermon", OriginalFilename: "legacy.wav",
-		UploadedAt: now.Format(time.RFC3339Nano),
-		Stage:      "upload", Status: "done",
-	}); err != nil {
+	if _, err := db.Exec(`CREATE TABLE schema_version (version INTEGER NOT NULL); INSERT INTO schema_version VALUES (2);`); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Close(); err != nil {
+	for _, name := range []string{"001_create_sermons.sql", "002_processing_jobs.sql"} {
+		migration, err := migrationsFS.ReadFile("migrations/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(string(migration)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
+	if _, err := db.Exec(
+		`INSERT INTO sermons (id, original_filename, uploaded_at, stage, status)
+		 VALUES (?, ?, ?, 'upload', 'done')`,
+		"legacy-sermon", "legacy.wav", now.Format(time.RFC3339Nano)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
 
-	st, err = Open(path)
+	st, err := Open(path)
 	if err != nil {
 		t.Fatal(err)
 	}

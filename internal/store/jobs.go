@@ -129,54 +129,6 @@ func enqueueJobTx(q sqlExecer, job NewJob, now time.Time) error {
 	return err
 }
 
-// QueueCompletedUploads advances sermons created before the persistent queue
-// existed and gives each one its missing normalization job.
-func (s *Store) QueueCompletedUploads(now time.Time) (int, error) {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback()
-
-	rows, err := tx.Query(
-		`SELECT s.id FROM sermons s
-		 WHERE s.stage = 'upload' AND s.status = 'done'
-		   AND NOT EXISTS (SELECT 1 FROM jobs WHERE sermon_id = s.id)`)
-	if err != nil {
-		return 0, err
-	}
-	var ids []string
-	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return 0, err
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Close(); err != nil {
-		return 0, err
-	}
-	if err := rows.Err(); err != nil {
-		return 0, err
-	}
-
-	for _, id := range ids {
-		if err := enqueueJobTx(tx, NewJob{
-			ID: "normalize-" + id, SermonID: id,
-			Type: "normalize", Stage: "normalization",
-		}, now); err != nil {
-			return 0, err
-		}
-		if _, err := tx.Exec(
-			`UPDATE sermons SET stage = 'normalization', status = 'pending'
-			 WHERE id = ? AND stage = 'upload' AND status = 'done'`, id); err != nil {
-			return 0, err
-		}
-	}
-	return len(ids), tx.Commit()
-}
-
 // DiscardInterruptedUploads removes upload records that cannot resume after a
 // process restart. The caller removes the corresponding partial directories.
 func (s *Store) DiscardInterruptedUploads() ([]string, error) {
