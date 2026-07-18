@@ -270,3 +270,42 @@ func TestDiscardInterruptedUploads(t *testing.T) {
 		t.Fatalf("completed upload was discarded: %v", err)
 	}
 }
+
+func TestOpenQueuesCompletedUploadsFromBeforePipeline(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.db")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
+	if err := st.CreateSermon(Sermon{
+		ID: "legacy-sermon", OriginalFilename: "legacy.wav",
+		UploadedAt: now.Format(time.RFC3339Nano),
+		Stage:      "upload", Status: "done",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	st, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	sm, err := st.GetSermon("legacy-sermon")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sm.Stage != "normalization" || sm.Status != "pending" {
+		t.Fatalf("legacy sermon state = %s/%s", sm.Stage, sm.Status)
+	}
+	job, err := st.GetCurrentJob(sm.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Type != "normalize" || job.State != "queued" {
+		t.Fatalf("legacy normalize job = %+v", job)
+	}
+}

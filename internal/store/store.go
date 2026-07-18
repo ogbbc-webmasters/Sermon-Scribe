@@ -5,6 +5,7 @@ package store
 import (
 	"database/sql"
 	"fmt"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -48,6 +49,10 @@ func Open(path string) (*Store, error) {
 	if err := s.RecoverRunningJobs(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("recover running jobs: %w", err)
+	}
+	if _, err := s.QueueCompletedUploads(time.Now()); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("queue completed uploads: %w", err)
 	}
 	return s, nil
 }
