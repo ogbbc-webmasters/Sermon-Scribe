@@ -11,14 +11,16 @@ import (
 
 // Sermon is one uploaded recording and its pipeline state.
 type Sermon struct {
-	ID               string  `json:"id"`
-	OriginalFilename string  `json:"original_filename"`
-	UploadedAt       string  `json:"uploaded_at"`
-	UploadedBy       *string `json:"uploaded_by"`
-	Stage            string  `json:"stage"`
-	Status           string  `json:"status"`
-	Progress         int     `json:"progress"`
-	Error            *string `json:"error"`
+	ID                            string  `json:"id"`
+	OriginalFilename              string  `json:"original_filename"`
+	UploadedAt                    string  `json:"uploaded_at"`
+	UploadedBy                    *string `json:"uploaded_by"`
+	Stage                         string  `json:"stage"`
+	Status                        string  `json:"status"`
+	Progress                      int     `json:"progress"`
+	Error                         *string `json:"error"`
+	NormalizationGateAdjustment   int     `json:"normalization_gate_adjustment"`
+	NormalizationVolumeAdjustment int     `json:"normalization_volume_adjustment"`
 }
 
 // Store wraps the SQLite database.
@@ -69,7 +71,8 @@ func (s *Store) CreateSermon(sm Sermon) error {
 
 const sermonViewSQL = `
 	SELECT s.id, s.original_filename, s.uploaded_at, s.uploaded_by,
-	       s.stage, s.status, COALESCE(j.progress, 0), j.last_error
+	       s.stage, s.status, COALESCE(j.progress, 0), j.last_error,
+	       s.normalization_gate_adjustment, s.normalization_volume_adjustment
 	FROM sermons s
 	LEFT JOIN jobs j ON j.id = (
 		SELECT id FROM jobs
@@ -120,6 +123,7 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 	return row.Scan(
 		&sm.ID, &sm.OriginalFilename, &sm.UploadedAt, &sm.UploadedBy,
 		&sm.Stage, &sm.Status, &sm.Progress, &sm.Error,
+		&sm.NormalizationGateAdjustment, &sm.NormalizationVolumeAdjustment,
 	)
 }
 

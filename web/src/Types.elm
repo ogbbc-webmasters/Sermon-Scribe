@@ -22,6 +22,7 @@ type UploadState
 
 type alias Model =
     { sermons : SermonList
+    , editing : Maybe Sermon
     , hasPipelineSnapshot : Bool
     , upload : UploadState
     , confirmingDelete : Maybe Sermon
@@ -30,6 +31,8 @@ type alias Model =
     , deleteError : Maybe String
     , retrying : Set String
     , retryError : Maybe String
+    , rerunning : Set String
+    , normalizationError : Maybe String
     , zone : Time.Zone
     }
 
@@ -43,6 +46,10 @@ type Msg
     | UploadFinished (Result Http.Error Sermon)
     | RetrySermon Sermon
     | RetryFinished Sermon (Result Http.Error Sermon)
+    | RerunNormalization Sermon String
+    | RerunNormalizationFinished Sermon (Result Http.Error Sermon)
+    | OpenEditor Sermon
+    | CloseEditor
     | AskDelete Sermon
     | CancelDelete
     | ConfirmDelete Sermon

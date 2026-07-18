@@ -45,9 +45,10 @@ func main() {
 	defer stop()
 
 	events := server.NewEventHub()
-	// Stage implementations register handlers here. Spec 0.2 adds the
-	// production normalize handler; unknown job types remain safely queued.
-	queue := processing.NewQueue(st, map[string]processing.Handler{}, processing.Config{Events: events})
+	normalize := processing.NewNormalizeHandler(st, *uploadsDir)
+	queue := processing.NewQueue(st, map[string]processing.Handler{
+		"normalize": normalize,
+	}, processing.Config{Events: events})
 	queue.Start(ctx)
 	defer queue.Stop()
 

@@ -1,7 +1,9 @@
 ---
-status: draft
+status: completed
 author: Addison Emig
 creation_date: 2026-01-17
+approved_by: Addison Emig
+approval_date: 2026-07-18
 ---
 
 # Audio Normalization
@@ -13,7 +15,7 @@ Server-side audio normalization for the [Basic Webapp](specs/000-basic-webapp/SP
 1. Upload raw audio → creates sermon (see [Project Setup](specs/000-basic-webapp/000-project-setup/SPEC.md))
 2. `normalize` job converts and normalizes → `normalized.flac` + `normalized.mp3` (see [Processing Pipeline](specs/000-basic-webapp/001-processing-pipeline/SPEC.md))
 3. Sermon reaches `normalization`/`done`
-4. User listens to the result; if it is unsatisfying, re-runs normalization with a different preset (see below)
+4. User listens to the result; if it is unsatisfying, adjusts the gate or volume and re-runs normalization (see below)
 
 ## Design Decisions
 
@@ -44,14 +46,17 @@ Converts to mono, resamples to 44100 Hz, applies noise gate then loudness normal
 - **Noise gate threshold**: TBD - needs testing with actual sermon recordings
 - **loudnorm**: single-pass; sufficient for speech and avoids a second FFmpeg run
 
-### Re-running with Different Parameters
+### Re-running with Adjusted Parameters
 
-- Chosen: normalization can be re-run on demand with a different parameter preset; each run overwrites both normalized outputs and the sermon's stored preset is updated
-  - Presets are a small fixed set of named variations of the FFmpeg filter chain, e.g. **Standard** (default), **Stronger noise gate** (noisier recordings), **No noise gate** (quiet speakers whose soft passages get clipped by the gate), **Louder** (higher loudnorm target)
-  - Exact preset parameters TBD alongside the gate threshold, from testing on real recordings
-  - A re-run is an ordinary `normalize` job carrying the preset, so queueing, progress, and retry come for free
+- Chosen: normalization can be adjusted and re-run on demand; each run overwrites both normalized outputs and stores the gate and volume adjustment levels that produced them
+  - The four adjustments are **more gate**, **less gate**, **more volume**, and **less volume**
+  - Each click moves the corresponding setting one step relative to the current result, so gate and volume changes compose instead of selecting a mutually exclusive preset
+  - Adjustment levels are bounded to prevent unusable filter settings
+  - A re-run is an ordinary `normalize` job carrying the resulting gate and volume levels, so queueing, progress, and retry come for free
+- Considered: a small fixed set of named presets
+  - Rejected: the user's feedback is incremental and may involve both noise and volume; independent relative controls model that feedback directly
 - Considered: exposing raw FFmpeg parameters in the UI
-  - Rejected: the target audience is non-technical; a few labeled buttons match how they'd describe the problem ("too quiet", "still noisy")
+  - Rejected: the target audience is non-technical; symptom-based buttons match how they describe the problem
 
 ### File Structure
 
@@ -67,6 +72,7 @@ Later specs add derived files alongside these (e.g., `final.mp3` rendered from t
 ## API
 
 - `GET /api/sermons/{id}/audio/{type}` - Download audio file where `type` is `original`, `normalized` (the FLAC master), or `proxy` (the MP3)
+- `POST /api/sermons/{id}/normalize` - Apply one relative gate or volume adjustment and queue a new normalization run
 
 Requires exe.dev proxy auth, as defined in [Project Setup](specs/000-basic-webapp/000-project-setup/SPEC.md).
 
@@ -75,5 +81,10 @@ Requires exe.dev proxy auth, as defined in [Project Setup](specs/000-basic-webap
 When sermon stage is `normalization`/`done`, show:
 
 1. An audio player streaming `normalized.mp3` to check the result
-2. Re-run buttons for the other normalization presets, for when the output isn't satisfying
-3. A download button (proxy by default) - an escape hatch until the in-browser editor arrives, not the primary flow; specs 0-2 are built as one continuous effort
+2. Five plain-language outcome actions:
+   - **Continue** - opens the editing page; until the timeline editor is implemented, that page says **Coming soon**
+   - **I hear too much background noise** - increase the gate one step and re-run
+   - **Some words sound cut off** - decrease the gate one step and re-run
+   - **The recording is too quiet** - increase volume one step and re-run
+   - **The recording is too loud** - decrease volume one step and re-run
+3. A separate **Download MP3** link as an escape hatch

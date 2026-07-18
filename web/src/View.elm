@@ -3,8 +3,8 @@ module View exposing (view)
 import Api exposing (Sermon)
 import DateFormat exposing (formatDate)
 import File
-import Html exposing (Html, button, div, h1, h2, input, label, p, span, strong, text)
-import Html.Attributes exposing (accept, class, disabled, id, style, type_)
+import Html exposing (Html, a, audio, button, div, h1, h2, input, label, p, span, strong, text)
+import Html.Attributes exposing (accept, class, controls, disabled, download, href, id, src, style, type_)
 import Html.Events exposing (on, onClick)
 import Json.Decode as Decode exposing (Decoder)
 import Set
@@ -14,14 +14,36 @@ import Ui
 
 view : Model -> Html Msg
 view model =
+    case model.editing of
+        Just sermon ->
+            viewEditor sermon
+
+        Nothing ->
+            div [ class "page" ]
+                [ div [ class "masthead" ]
+                    [ h1 [] [ text "Sermon Scribe" ] ]
+                , viewUpload model.upload
+                , h2 [] [ text "Sermons" ]
+                , viewOptionalError model.deleteError
+                , viewOptionalError model.retryError
+                , viewOptionalError model.normalizationError
+                , viewSermons model
+                ]
+
+
+viewEditor : Sermon -> Html Msg
+viewEditor sermon =
     div [ class "page" ]
         [ div [ class "masthead" ]
             [ h1 [] [ text "Sermon Scribe" ] ]
-        , viewUpload model.upload
-        , h2 [] [ text "Sermons" ]
-        , viewOptionalError model.deleteError
-        , viewOptionalError model.retryError
-        , viewSermons model
+        , h2 [] [ text ("Editing " ++ sermon.originalFilename) ]
+        , div [ Ui.emptyState ]
+            [ strong [] [ text "Coming soon" ]
+            , p [ Ui.hint ]
+                [ text "The automatic audio timeline editor will appear here." ]
+            ]
+        , p []
+            [ button [ Ui.button, onClick CloseEditor ] [ text "Back to Sermons" ] ]
         ]
 
 
@@ -129,8 +151,109 @@ viewSermon model sermon =
                 _ ->
                     text ""
             ]
+        , viewNormalizedAudio model sermon
         , viewSermonActions model sermon
         ]
+
+
+viewNormalizedAudio : Model -> Sermon -> Html Msg
+viewNormalizedAudio model sermon =
+    if sermon.stage == "normalization" && sermon.status == "done" then
+        let
+            isBusy =
+                Set.member sermon.id model.rerunning
+                    || Set.member sermon.id model.deleting
+                    || Set.member sermon.id model.retrying
+
+            adjustmentButtons =
+                normalizationAdjustments
+                    |> List.map
+                        (\adjustment ->
+                            button
+                                [ Ui.button
+                                , onClick (RerunNormalization sermon adjustment.name)
+                                , disabled (isBusy || adjustmentAtLimit sermon adjustment.name)
+                                ]
+                                [ text adjustment.label ]
+                        )
+        in
+        div [ Ui.audioReview ]
+            [ audio
+                [ Ui.audioReviewPlayer
+                , controls True
+                , src (normalizedAudioUrl sermon "proxy")
+                ]
+                []
+            , p [ Ui.audioReviewLabel ]
+                [ text "How does the recording sound?" ]
+            , div [ Ui.audioReviewControls ]
+                (button
+                    [ Ui.primaryButton
+                    , onClick (OpenEditor sermon)
+                    , disabled isBusy
+                    ]
+                    [ text "Continue" ]
+                    :: adjustmentButtons
+                )
+            , p [ Ui.hint ]
+                [ a
+                    [ href (normalizedAudioUrl sermon "proxy" ++ "&download=1")
+                    , download "normalized.mp3"
+                    ]
+                    [ text "Download MP3" ]
+                ]
+            ]
+
+    else
+        text ""
+
+
+type alias NormalizationAdjustment =
+    { name : String
+    , label : String
+    }
+
+
+normalizationAdjustments : List NormalizationAdjustment
+normalizationAdjustments =
+    [ { name = "more-gate", label = "I hear too much background noise" }
+    , { name = "less-gate", label = "Some words sound cut off" }
+    , { name = "more-volume", label = "The recording is too quiet" }
+    , { name = "less-volume", label = "The recording is too loud" }
+    ]
+
+
+adjustmentAtLimit : Sermon -> String -> Bool
+adjustmentAtLimit sermon adjustment =
+    case adjustment of
+        "more-gate" ->
+            sermon.normalizationGateAdjustment >= 3
+
+        "less-gate" ->
+            sermon.normalizationGateAdjustment <= -3
+
+        "more-volume" ->
+            sermon.normalizationVolumeAdjustment >= 3
+
+        "less-volume" ->
+            sermon.normalizationVolumeAdjustment <= -3
+
+        _ ->
+            True
+
+
+audioUrl : String -> String -> String
+audioUrl id audioType =
+    "/api/sermons/" ++ id ++ "/audio/" ++ audioType
+
+
+normalizedAudioUrl : Sermon -> String -> String
+normalizedAudioUrl sermon audioType =
+    audioUrl sermon.id audioType
+        ++ "?gate="
+        ++ String.fromInt sermon.normalizationGateAdjustment
+        ++ "&volume="
+        ++ String.fromInt sermon.normalizationVolumeAdjustment
 
 
 viewSermonActions : Model -> Sermon -> Html Msg

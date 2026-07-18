@@ -27,6 +27,7 @@ main =
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( { sermons = Loading
+      , editing = Nothing
       , hasPipelineSnapshot = False
       , upload = Idle
       , confirmingDelete = Nothing
@@ -35,6 +36,8 @@ init _ =
       , deleteError = Nothing
       , retrying = Set.empty
       , retryError = Nothing
+      , rerunning = Set.empty
+      , normalizationError = Nothing
       , zone = Time.utc
       }
     , Cmd.batch [ Api.fetchSermons GotSermons, Task.perform GotZone Time.here ]
@@ -161,6 +164,42 @@ update msg model =
               }
             , Cmd.none
             )
+
+        RerunNormalization sermon adjustment ->
+            ( { model
+                | rerunning = Set.insert sermon.id model.rerunning
+                , normalizationError = Nothing
+              }
+            , Api.rerunNormalization (RerunNormalizationFinished sermon) sermon.id adjustment
+            )
+
+        RerunNormalizationFinished original (Ok sermon) ->
+            ( { model
+                | rerunning = Set.remove original.id model.rerunning
+                , normalizationError = Nothing
+                , sermons =
+                    if Set.member original.id model.deletedSermons then
+                        model.sermons
+
+                    else
+                        replaceSermonIfUnchanged original sermon model.sermons
+              }
+            , Cmd.none
+            )
+
+        RerunNormalizationFinished original (Err _) ->
+            ( { model
+                | rerunning = Set.remove original.id model.rerunning
+                , normalizationError = Just "Could not adjust the recording. Please try again."
+              }
+            , Cmd.none
+            )
+
+        OpenEditor sermon ->
+            ( { model | editing = Just sermon }, Cmd.none )
+
+        CloseEditor ->
+            ( { model | editing = Nothing }, Cmd.none )
 
         AskDelete sermon ->
             ( { model | confirmingDelete = Just sermon }, Cmd.none )

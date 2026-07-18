@@ -55,6 +55,56 @@ func TestCompleteUploadEnqueuesNormalization(t *testing.T) {
 	if job.Type != "normalize" || job.Stage != "normalization" || job.State != "queued" || job.Attempts != 0 {
 		t.Fatalf("unexpected job: %+v", job)
 	}
+	if job.Parameters != `{"gate_adjustment":0,"volume_adjustment":0}` ||
+		sm.NormalizationGateAdjustment != 0 || sm.NormalizationVolumeAdjustment != 0 {
+		t.Fatalf("normalization defaults = parameters %q, adjustments %d/%d",
+			job.Parameters, sm.NormalizationGateAdjustment, sm.NormalizationVolumeAdjustment)
+	}
+}
+
+func TestEnqueueNormalizationRerun(t *testing.T) {
+	st := openTestStore(t)
+	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
+	seedNormalizeJob(t, st, "sermon-1", "job-1", now)
+
+	job, err := st.ClaimNextJob(context.Background(), []string{"normalize"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CompleteJob(job, nil, now); err != nil {
+		t.Fatal(err)
+	}
+
+	parameters := `{"gate_adjustment":1,"volume_adjustment":-1}`
+	sm, err := st.EnqueueNormalizationRerun("sermon-1", "job-2", parameters, now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sm.Stage != "normalization" || sm.Status != "pending" || sm.Progress != 0 {
+		t.Fatalf("rerun sermon = %+v", sm)
+	}
+	queued, err := st.GetCurrentJob("sermon-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued.ID != "job-2" || queued.Parameters != parameters || queued.State != "queued" {
+		t.Fatalf("rerun job = %+v", queued)
+	}
+	if _, err := st.EnqueueNormalizationRerun("sermon-1", "job-3", parameters, now); !errors.Is(err, ErrNotRerunnable) {
+		t.Fatalf("duplicate rerun error = %v, want ErrNotRerunnable", err)
+	}
+
+	if err := st.SetNormalizationAdjustments("sermon-1", 1, -1); err != nil {
+		t.Fatal(err)
+	}
+	sm, err = st.GetSermon("sermon-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sm.NormalizationGateAdjustment != 1 || sm.NormalizationVolumeAdjustment != -1 {
+		t.Fatalf("stored adjustments = %d/%d, want 1/-1",
+			sm.NormalizationGateAdjustment, sm.NormalizationVolumeAdjustment)
+	}
 }
 
 func TestClaimNextJobIsAtomicAndFiltersTypes(t *testing.T) {

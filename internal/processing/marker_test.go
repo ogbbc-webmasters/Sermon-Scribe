@@ -35,7 +35,7 @@ func TestCommitArtifactsWritesMarkerLast(t *testing.T) {
 		{TemporaryPath: flacTemp, FinalPath: flacFinal, Validate: nonempty},
 		{TemporaryPath: mp3Temp, FinalPath: mp3Final, Validate: nonempty},
 	}
-	marker := CompletionMarker{JobID: "job-1", Parameters: `{"preset":"standard"}`, PipelineVersion: 1}
+	marker := CompletionMarker{JobID: "job-1", Parameters: `{"gate_adjustment":0,"volume_adjustment":0}`, PipelineVersion: 1}
 
 	if err := CommitArtifacts(markerPath, marker, artifacts); err != nil {
 		t.Fatal(err)

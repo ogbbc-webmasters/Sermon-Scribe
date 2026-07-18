@@ -39,6 +39,8 @@ func (s *Server) Routes(webFS fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/sermons", s.handleListSermons)
 	mux.HandleFunc("DELETE /api/sermons/{id}", s.handleDeleteSermon)
 	mux.HandleFunc("POST /api/sermons/{id}/retry", s.handleRetrySermon)
+	mux.HandleFunc("POST /api/sermons/{id}/normalize", s.handleRerunNormalization)
+	mux.HandleFunc("GET /api/sermons/{id}/audio/{type}", s.handleSermonAudio)
 	mux.HandleFunc("GET /api/events", s.handleEvents)
 	mux.Handle("/", http.FileServerFS(webFS))
 	return mux
@@ -247,6 +249,160 @@ func (s *Server) handleRetrySermon(w http.ResponseWriter, r *http.Request) {
 		s.Queue.Notify()
 	}
 	writeJSON(w, http.StatusAccepted, sm)
+}
+
+func (s *Server) handleRerunNormalization(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	sm, err := s.Store.GetSermon(id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "sermon not found")
+		return
+	} else if err != nil {
+		log.Printf("load sermon for normalization rerun %s: %v", id, err)
+		writeError(w, http.StatusInternalServerError, "could not rerun normalization")
+		return
+	}
+
+	var request struct {
+		Adjustment string `json:"adjustment"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid normalization request")
+		return
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		writeError(w, http.StatusBadRequest, "invalid normalization request")
+		return
+	}
+	if !processing.ValidNormalizationAdjustment(request.Adjustment) {
+		writeError(w, http.StatusBadRequest, "unknown normalization adjustment")
+		return
+	}
+	settings, err := processing.AdjustNormalization(processing.NormalizationSettings{
+		GateAdjustment:   sm.NormalizationGateAdjustment,
+		VolumeAdjustment: sm.NormalizationVolumeAdjustment,
+	}, request.Adjustment)
+	if err != nil {
+		writeError(w, http.StatusConflict, "normalization adjustment limit reached")
+		return
+	}
+	parameters, err := processing.NormalizationParameters(settings)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid normalization adjustment")
+		return
+	}
+	sm, err = s.Store.EnqueueNormalizationRerun(id, newUUID(), parameters, time.Now())
+	if errors.Is(err, store.ErrNotRerunnable) {
+		writeError(w, http.StatusConflict, "normalization is not ready to rerun")
+		return
+	}
+	if err != nil {
+		log.Printf("rerun normalization %s: %v", id, err)
+		writeError(w, http.StatusInternalServerError, "could not rerun normalization")
+		return
+	}
+	if s.Events != nil {
+		s.Events.Publish(processing.Event{Name: processing.EventProgress, Sermon: sm})
+	}
+	if s.Queue != nil {
+		s.Queue.Notify()
+	}
+	writeJSON(w, http.StatusAccepted, sm)
+}
+
+func (s *Server) handleSermonAudio(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	sm, err := s.Store.GetSermon(id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "sermon not found")
+		return
+	}
+	if err != nil {
+		log.Printf("load sermon audio %s: %v", id, err)
+		writeError(w, http.StatusInternalServerError, "could not load audio")
+		return
+	}
+
+	dir := filepath.Join(s.UploadsDir, id)
+	audioType := r.PathValue("type")
+	var path, contentType, downloadName string
+	switch audioType {
+	case "original":
+		path, err = originalAudioPath(dir)
+		contentType = "application/octet-stream"
+		downloadName = "original" + sanitizeExt(sm.OriginalFilename)
+	case "normalized":
+		if sm.Stage != "normalization" || sm.Status != "done" {
+			writeError(w, http.StatusConflict, "normalized audio is not ready")
+			return
+		}
+		path = filepath.Join(dir, "normalized.flac")
+		contentType = "audio/flac"
+		downloadName = "normalized.flac"
+	case "proxy":
+		if sm.Stage != "normalization" || sm.Status != "done" {
+			writeError(w, http.StatusConflict, "normalized audio is not ready")
+			return
+		}
+		path = filepath.Join(dir, "normalized.mp3")
+		contentType = "audio/mpeg"
+		downloadName = "normalized.mp3"
+	default:
+		writeError(w, http.StatusNotFound, "audio type not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusNotFound, "audio file not found")
+		return
+	}
+	file, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		writeError(w, http.StatusNotFound, "audio file not found")
+		return
+	}
+	if err != nil {
+		log.Printf("open sermon audio %s: %v", id, err)
+		writeError(w, http.StatusInternalServerError, "could not load audio")
+		return
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load audio")
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	if audioType != "original" {
+		// Normalization reruns overwrite these paths, so clients must revalidate.
+		w.Header().Set("Cache-Control", "no-store")
+	}
+	if r.URL.Query().Get("download") == "1" {
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", downloadName))
+	}
+	http.ServeContent(w, r, downloadName, info.ModTime(), file)
+}
+
+func originalAudioPath(dir string) (string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", err
+	}
+	var found string
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.Type().IsRegular() && (name == "original" || strings.HasPrefix(name, "original.")) {
+			if found != "" {
+				return "", errors.New("multiple original audio files")
+			}
+			found = filepath.Join(dir, name)
+		}
+	}
+	if found == "" {
+		return "", os.ErrNotExist
+	}
+	return found, nil
 }
 
 func (s *Server) handleDeleteSermon(w http.ResponseWriter, r *http.Request) {
