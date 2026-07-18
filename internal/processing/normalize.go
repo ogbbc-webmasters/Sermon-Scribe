@@ -26,6 +26,7 @@ const (
 	PresetStrongerGate NormalizationPreset = "stronger-gate"
 	PresetNoGate       NormalizationPreset = "no-gate"
 	PresetLouder       NormalizationPreset = "louder"
+	PresetQuieter      NormalizationPreset = "quieter"
 )
 
 var normalizationPresets = map[NormalizationPreset]struct {
@@ -36,6 +37,7 @@ var normalizationPresets = map[NormalizationPreset]struct {
 	PresetStrongerGate: {gate: "agate=threshold=0.035:ratio=6:range=0.08:attack=20:release=300", loudnessLU: -16},
 	PresetNoGate:       {loudnessLU: -16},
 	PresetLouder:       {gate: "agate=threshold=0.020:ratio=4:range=0.15:attack=20:release=250", loudnessLU: -14},
+	PresetQuieter:      {gate: "agate=threshold=0.020:ratio=4:range=0.15:attack=20:release=250", loudnessLU: -18},
 }
 
 // ValidNormalizationPreset reports whether name is one of the fixed presets.

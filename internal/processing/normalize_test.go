@@ -162,7 +162,10 @@ func TestNormalizationFilters(t *testing.T) {
 	if got := normalizationFilter(PresetStrongerGate); !strings.Contains(got, "threshold=0.035") {
 		t.Fatalf("stronger-gate filter = %q", got)
 	}
-	if !ValidNormalizationPreset("standard") || ValidNormalizationPreset("unknown") {
+	if got := normalizationFilter(PresetQuieter); !strings.Contains(got, "loudnorm=I=-18") {
+		t.Fatalf("quieter filter = %q", got)
+	}
+	if !ValidNormalizationPreset("standard") || !ValidNormalizationPreset("quieter") || ValidNormalizationPreset("unknown") {
 		t.Fatal("preset validation mismatch")
 	}
 }
