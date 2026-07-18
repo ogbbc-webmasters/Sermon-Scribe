@@ -163,6 +163,9 @@ viewActionButtons model sermon confirmationOpen =
     let
         isRetrying =
             Set.member sermon.id model.retrying
+
+        isDeleting =
+            Set.member sermon.id model.deleting
     in
     div [ Ui.sermonActions ]
         (List.concat
@@ -170,7 +173,7 @@ viewActionButtons model sermon confirmationOpen =
                 [ button
                     [ Ui.button
                     , onClick (RetrySermon sermon)
-                    , disabled (confirmationOpen || isRetrying)
+                    , disabled (confirmationOpen || isRetrying || isDeleting)
                     ]
                     [ text
                         (if isRetrying then
@@ -187,9 +190,16 @@ viewActionButtons model sermon confirmationOpen =
             , [ button
                     [ Ui.button
                     , onClick (AskDelete sermon)
-                    , disabled (confirmationOpen || isRetrying)
+                    , disabled (confirmationOpen || isRetrying || isDeleting)
                     ]
-                    [ text "Delete" ]
+                    [ text
+                        (if isDeleting then
+                            "Deleting\u{2026}"
+
+                         else
+                            "Delete"
+                        )
+                    ]
               ]
             ]
         )

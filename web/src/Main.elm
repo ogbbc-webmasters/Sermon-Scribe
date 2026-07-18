@@ -30,6 +30,8 @@ init _ =
       , hasPipelineSnapshot = False
       , upload = Idle
       , confirmingDelete = Nothing
+      , deleting = Set.empty
+      , deletedSermons = Set.empty
       , deleteError = Nothing
       , retrying = Set.empty
       , retryError = Nothing
@@ -66,17 +68,31 @@ update msg model =
         PipelineEventReceived value ->
             case Decode.decodeValue Api.pipelineEventDecoder value of
                 Ok (Api.PipelineSnapshot sermons) ->
+                    let
+                        visibleSermons =
+                            List.filter
+                                (\sermon -> not (Set.member sermon.id model.deletedSermons))
+                                sermons
+
+                        snapshotIds =
+                            Set.fromList (List.map .id sermons)
+                    in
                     ( { model
-                        | sermons = Loaded sermons
+                        | sermons = Loaded visibleSermons
                         , hasPipelineSnapshot = True
+                        , deletedSermons = Set.intersect model.deletedSermons snapshotIds
                       }
                     , Cmd.none
                     )
 
                 Ok (Api.PipelineUpdate sermon) ->
-                    ( { model | sermons = upsertSermon sermon model.sermons }
-                    , Cmd.none
-                    )
+                    if Set.member sermon.id model.deletedSermons then
+                        ( model, Cmd.none )
+
+                    else
+                        ( { model | sermons = upsertSermon sermon model.sermons }
+                        , Cmd.none
+                        )
 
                 Err _ ->
                     ( model, Cmd.none )
@@ -122,7 +138,12 @@ update msg model =
             ( { model
                 | retrying = Set.remove id model.retrying
                 , retryError = Nothing
-                , sermons = upsertSermon sermon model.sermons
+                , sermons =
+                    if Set.member id model.deletedSermons then
+                        model.sermons
+
+                    else
+                        upsertSermon sermon model.sermons
               }
             , Cmd.none
             )
@@ -142,20 +163,29 @@ update msg model =
             ( { model | confirmingDelete = Nothing }, Cmd.none )
 
         ConfirmDelete sermon ->
-            ( { model | confirmingDelete = Nothing, deleteError = Nothing }
+            ( { model
+                | confirmingDelete = Nothing
+                , deleting = Set.insert sermon.id model.deleting
+                , deleteError = Nothing
+              }
             , Api.deleteSermon (DeleteFinished sermon.id) sermon.id
             )
 
         DeleteFinished id (Ok ()) ->
             ( { model
-                | deleteError = Nothing
+                | deleting = Set.remove id model.deleting
+                , deletedSermons = Set.insert id model.deletedSermons
+                , deleteError = Nothing
                 , sermons = removeSermon id model.sermons
               }
             , Cmd.none
             )
 
-        DeleteFinished _ (Err _) ->
-            ( { model | deleteError = Just "Could not delete. Please try again." }
+        DeleteFinished id (Err _) ->
+            ( { model
+                | deleting = Set.remove id model.deleting
+                , deleteError = Just "Could not delete. Please try again."
+              }
             , Cmd.none
             )
 

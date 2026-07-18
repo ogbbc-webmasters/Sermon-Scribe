@@ -25,6 +25,8 @@ type alias Model =
     , hasPipelineSnapshot : Bool
     , upload : UploadState
     , confirmingDelete : Maybe Sermon
+    , deleting : Set String
+    , deletedSermons : Set String
     , deleteError : Maybe String
     , retrying : Set String
     , retryError : Maybe String
