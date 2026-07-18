@@ -21,7 +21,7 @@ Run `nix develop` to enter the pinned development shell with all required tools.
 - [Go](https://go.dev/) (version per `go.mod`)
 - [Elm 0.19.2](https://github.com/elm/compiler/releases/tag/0.19.2)
 - [just](https://github.com/casey/just)
-- [FFmpeg](https://ffmpeg.org/) (required by the upcoming audio-normalization stage)
+- [FFmpeg](https://ffmpeg.org/) (required for audio normalization)
 
 ## Quickstart
 
