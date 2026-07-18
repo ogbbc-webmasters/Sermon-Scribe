@@ -171,6 +171,9 @@ func TestDelete(t *testing.T) {
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
 		t.Errorf("uploads dir still present after delete (err=%v)", err)
 	}
+	if _, err := os.Stat(dir + ".deleting"); !os.IsNotExist(err) {
+		t.Errorf("staged uploads dir still present after delete (err=%v)", err)
+	}
 }
 
 func TestDeleteNotFound(t *testing.T) {
@@ -226,25 +229,20 @@ func TestSanitizeExt(t *testing.T) {
 	}
 }
 
-func TestDeleteCleanupFailureKeepsRow(t *testing.T) {
+func TestDeleteStageFailureKeepsRowAndFiles(t *testing.T) {
 	srv, ts := newTestServer(t)
 
 	_, sm := uploadFile(t, ts, "sticky.mp3", []byte("x"), nil)
 	dir := filepath.Join(srv.UploadsDir, sm.ID)
+	stagedDir := dir + ".deleting"
 
-	// Make os.RemoveAll fail: a file inside a non-writable subdirectory
-	// cannot be unlinked.
-	sub := filepath.Join(dir, "locked")
-	if err := os.Mkdir(sub, 0o755); err != nil {
+	// Block the staging rename with a non-empty destination directory.
+	if err := os.Mkdir(stagedDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(sub, "f"), []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(stagedDir, "blocker"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(sub, 0o555); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Chmod(sub, 0o755) })
 
 	req, _ := http.NewRequest("DELETE", ts.URL+"/api/sermons/"+sm.ID, nil)
 	resp, err := http.DefaultClient.Do(req)
@@ -258,11 +256,14 @@ func TestDeleteCleanupFailureKeepsRow(t *testing.T) {
 
 	// Row must survive so the delete can be retried.
 	if _, err := srv.Store.GetSermon(sm.ID); err != nil {
-		t.Errorf("row missing after failed cleanup: %v", err)
+		t.Errorf("row missing after failed staging: %v", err)
+	}
+	if got, err := os.ReadFile(filepath.Join(dir, "original.mp3")); err != nil || string(got) != "x" {
+		t.Errorf("original file after failed staging = %q, %v", got, err)
 	}
 
-	// Retry succeeds once the directory is removable again.
-	if err := os.Chmod(sub, 0o755); err != nil {
+	// Retry succeeds once the staging destination is clear.
+	if err := os.RemoveAll(stagedDir); err != nil {
 		t.Fatal(err)
 	}
 	resp2, err := http.DefaultClient.Do(req)

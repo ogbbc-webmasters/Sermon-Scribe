@@ -5,6 +5,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log"
@@ -183,14 +184,25 @@ func (s *Server) handleListSermons(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDeleteSermon(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	uploadDir := filepath.Join(s.UploadsDir, id)
+	stagedDir := uploadDir + ".deleting"
+	staged := false
 
-	// The uploads dir is removed before the row deletion commits: if the
-	// removal fails, the transaction rolls back so the row survives and
-	// the delete can be retried instead of orphaning files on disk.
+	// Atomically stage the uploads before the row deletion commits. If the
+	// transaction fails, the directory can be restored without losing files.
 	deleted, err := s.Store.DeleteSermon(id, func() error {
-		return os.RemoveAll(filepath.Join(s.UploadsDir, id))
+		if err := os.Rename(uploadDir, stagedDir); err != nil {
+			return err
+		}
+		staged = true
+		return nil
 	})
 	if err != nil {
+		if staged {
+			if restoreErr := os.Rename(stagedDir, uploadDir); restoreErr != nil {
+				err = errors.Join(err, fmt.Errorf("restore uploads: %w", restoreErr))
+			}
+		}
 		log.Printf("delete sermon %s: %v", id, err)
 		writeError(w, http.StatusInternalServerError, "could not delete sermon")
 		return
@@ -198,6 +210,12 @@ func (s *Server) handleDeleteSermon(w http.ResponseWriter, r *http.Request) {
 	if !deleted {
 		writeError(w, http.StatusNotFound, "sermon not found")
 		return
+	}
+
+	// The row is committed and the original path is gone. A cleanup failure
+	// may leave staged files for manual cleanup, but cannot corrupt a live row.
+	if err := os.RemoveAll(stagedDir); err != nil {
+		log.Printf("delete sermon %s: remove staged uploads: %v", id, err)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
