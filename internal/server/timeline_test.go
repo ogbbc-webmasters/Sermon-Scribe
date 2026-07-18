@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/processing"
+	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 )
 
 func readyTimelineSermon(t *testing.T, srv *Server, ts *httptest.Server) string {
@@ -95,6 +97,8 @@ func TestTimelineAnalyzeApplyAndApproval(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "final.mp3"), []byte("final"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	events, unsubscribe := srv.Events.subscribe()
+	defer unsubscribe()
 	resp, err = http.Post(ts.URL+"/api/sermons/"+id+"/approve-edit", "application/json", nil)
 	if err != nil {
 		t.Fatal(err)
@@ -109,6 +113,15 @@ func TestTimelineAnalyzeApplyAndApproval(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "waveform.json")); !os.IsNotExist(err) {
 		t.Fatal("waveform was not deleted")
+	}
+	select {
+	case event := <-events:
+		approved := event.Data.(store.Sermon)
+		if !approved.EditApproved {
+			t.Fatal("approval event did not contain durable approved state")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for approval event")
 	}
 	resp, err = http.Post(ts.URL+"/api/sermons/"+id+"/approve-edit", "application/json", nil)
 	if err != nil {
@@ -132,5 +145,82 @@ func TestApplyRejectsAllDeleteAndMalformedPlans(t *testing.T) {
 		if resp.StatusCode != http.StatusBadRequest {
 			t.Errorf("body %s status = %d", body, resp.StatusCode)
 		}
+	}
+}
+
+func TestWaveformUnavailableWhileNormalizationPending(t *testing.T) {
+	srv, ts := newTestServer(t)
+	_, sm := uploadFile(t, ts, "pending.wav", []byte("original"), nil)
+	dir := filepath.Join(srv.UploadsDir, sm.ID)
+	waveform := processing.Waveform{Duration: 1, SamplesPerSecond: 20, Samples: make([]float64, 20)}
+	data, _ := json.Marshal(waveform)
+	if err := os.WriteFile(filepath.Join(dir, "waveform.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, endpoint := range []string{"waveform", "analyze", "apply-edits"} {
+		method := "GET"
+		if endpoint != "waveform" {
+			method = "POST"
+		}
+		req, _ := http.NewRequest(method, ts.URL+"/api/sermons/"+sm.ID+"/"+endpoint, strings.NewReader(`{"regions":[]}`))
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusConflict {
+			t.Errorf("%s during pending normalization = %d, want 409", endpoint, resp.StatusCode)
+		}
+	}
+}
+
+func TestFinalAudioUnavailableDuringRepeatRender(t *testing.T) {
+	srv, ts := newTestServer(t)
+	id := readyTimelineSermon(t, srv, ts)
+	dir := filepath.Join(srv.UploadsDir, id)
+	if err := os.WriteFile(filepath.Join(dir, "final.mp3"), []byte("old final"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	regions := []processing.Region{{Start: 0, End: 2, Type: "speaking", Keep: true}}
+	encoded, _ := json.Marshal(regions)
+	if err := srv.Store.SetAppliedRegions(id, encoded); err != nil {
+		t.Fatal(err)
+	}
+	plan := `{"regions":[{"start":0,"end":2,"type":"speaking","keep":true}]}`
+	resp, err := http.Post(ts.URL+"/api/sermons/"+id+"/apply-edits", "application/json", strings.NewReader(plan))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	resp, err = http.Get(ts.URL + "/api/sermons/" + id + "/audio/final")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("final audio during pending repeat render = %d, want 409", resp.StatusCode)
+	}
+}
+
+func TestApprovalReconcilesStaleStaging(t *testing.T) {
+	srv, ts := newTestServer(t)
+	id := readyTimelineSermon(t, srv, ts)
+	dir := filepath.Join(srv.UploadsDir, id)
+	staged := filepath.Join(dir, ".approval-staged")
+	if err := os.Mkdir(staged, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(filepath.Join(dir, "waveform.json"), filepath.Join(staged, "waveform.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := reconcileApprovalStaging(dir, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "waveform.json")); err != nil {
+		t.Fatalf("staged source was not restored: %v", err)
+	}
+	if _, err := os.Stat(staged); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("staging directory remains: %v", err)
 	}
 }

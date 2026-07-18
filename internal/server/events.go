@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/processing"
+	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 )
 
 const eventBufferSize = 64
@@ -72,6 +73,29 @@ func (h *EventHub) subscribe() (<-chan streamEvent, func()) {
 	}
 }
 
+// subscribeWithSnapshot serializes the database snapshot and registration
+// with Publish. The lock is released before the caller performs any writes.
+func (h *EventHub) subscribeWithSnapshot(load func() ([]store.Sermon, error)) (<-chan streamEvent, []store.Sermon, func(), error) {
+	h.mu.Lock()
+	snapshot, err := load()
+	if err != nil {
+		h.mu.Unlock()
+		return nil, nil, nil, err
+	}
+	ch := make(chan streamEvent, eventBufferSize)
+	h.subscribers[ch] = struct{}{}
+	h.mu.Unlock()
+	unsubscribe := func() {
+		h.mu.Lock()
+		if _, ok := h.subscribers[ch]; ok {
+			delete(h.subscribers, ch)
+			close(ch)
+		}
+		h.mu.Unlock()
+	}
+	return ch, snapshot, unsubscribe, nil
+}
+
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -83,15 +107,12 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Register before reading SQLite. Events committed while the snapshot is
-	// prepared are buffered and delivered only after the snapshot.
-	events, unsubscribe := s.Events.subscribe()
-	defer unsubscribe()
-	snapshot, err := s.Store.ListSermons()
+	events, snapshot, unsubscribe, err := s.Events.subscribeWithSnapshot(s.Store.ListSermons)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load event snapshot")
 		return
 	}
+	defer unsubscribe()
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

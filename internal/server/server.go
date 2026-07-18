@@ -354,7 +354,7 @@ func (s *Server) handleSermonAudio(w http.ResponseWriter, r *http.Request) {
 		contentType = "audio/mpeg"
 		downloadName = "normalized.mp3"
 	case "final":
-		if sm.AppliedRegions == nil || (sm.Stage == "edit" && sm.Status != "done" && sm.Status != "pending") {
+		if sm.Stage != "edit" || sm.Status != "done" || sm.AppliedRegions == nil {
 			writeError(w, http.StatusConflict, "final audio is not ready")
 			return
 		}
@@ -401,7 +401,7 @@ func (s *Server) loadWaveform(id string) (store.Sermon, processing.Waveform, err
 	if err != nil {
 		return sm, processing.Waveform{}, err
 	}
-	if sm.EditApproved || (sm.Stage != "normalization" && sm.Stage != "edit") {
+	if sm.EditApproved || !((sm.Stage == "normalization" && sm.Status == "done") || sm.Stage == "edit") {
 		return sm, processing.Waveform{}, store.ErrEditConflict
 	}
 	data, err := os.ReadFile(filepath.Join(s.UploadsDir, id, "waveform.json"))
@@ -512,33 +512,25 @@ func (s *Server) handleApproveEdit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 409, "final audio is not ready")
 		return
 	}
-	stagedDir := filepath.Join(dir, ".approval-staged")
-	_ = os.RemoveAll(stagedDir)
-	staged := []string{}
-	sm, err := s.Store.ApproveEdit(id, func() error {
-		if err := os.Mkdir(stagedDir, 0o700); err != nil {
-			return err
+	current, err := s.Store.GetSermon(id)
+	if err == nil {
+		if err := reconcileApprovalStaging(dir, current.EditApproved); err != nil {
+			log.Printf("approval reconciliation %s: %v", id, err)
+			writeError(w, 500, "could not approve edit")
+			return
 		}
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			return err
-		}
-		for _, e := range entries {
-			name := e.Name()
-			if name == "normalized.flac" || name == "normalized.mp3" || name == "waveform.json" || strings.HasPrefix(name, "original.") || name == "original" || strings.HasPrefix(name, ".normalization-") {
-				if err := os.Rename(filepath.Join(dir, name), filepath.Join(stagedDir, name)); err != nil {
-					return err
-				}
-				staged = append(staged, name)
+		// A retry after a crash reconciles any source files left behind after
+		// the approval transaction committed.
+		if current.EditApproved {
+			if err := cleanupApprovedSources(dir); err != nil {
+				log.Printf("approval reconciliation %s: %v", id, err)
+				writeError(w, 500, "could not approve edit")
+				return
 			}
 		}
-		return nil
-	})
+	}
+	sm, err := s.Store.ApproveEdit(id)
 	if err != nil {
-		for i := len(staged) - 1; i >= 0; i-- {
-			_ = os.Rename(filepath.Join(stagedDir, staged[i]), filepath.Join(dir, staged[i]))
-		}
-		_ = os.Remove(stagedDir)
 		if errors.Is(err, store.ErrEditConflict) {
 			writeError(w, 409, "edit cannot be approved")
 			return
@@ -546,10 +538,60 @@ func (s *Server) handleApproveEdit(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "could not approve edit")
 		return
 	}
-	if err := os.RemoveAll(stagedDir); err != nil {
+	if s.Events != nil {
+		s.Events.Publish(processing.Event{Name: processing.EventStageCompleted, Sermon: sm})
+	}
+	if err := cleanupApprovedSources(dir); err != nil {
 		log.Printf("approval cleanup %s: %v", id, err)
+		writeError(w, 500, "edit approved but source cleanup failed")
+		return
 	}
 	writeJSON(w, 200, sm)
+}
+
+func approvalSource(name string) bool {
+	return name == "normalized.flac" || name == "normalized.mp3" || name == "waveform.json" || name == "original" || strings.HasPrefix(name, "original.") || strings.HasPrefix(name, ".normalization-")
+}
+
+func reconcileApprovalStaging(dir string, approved bool) error {
+	staged := filepath.Join(dir, ".approval-staged")
+	entries, err := os.ReadDir(staged)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if approved {
+		return os.RemoveAll(staged)
+	}
+	for _, entry := range entries {
+		dst := filepath.Join(dir, entry.Name())
+		if _, err := os.Lstat(dst); err == nil {
+			return fmt.Errorf("restore staged source %s: destination exists", entry.Name())
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		if err := os.Rename(filepath.Join(staged, entry.Name()), dst); err != nil {
+			return fmt.Errorf("restore staged source %s: %w", entry.Name(), err)
+		}
+	}
+	return os.Remove(staged)
+}
+
+func cleanupApprovedSources(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if approvalSource(entry.Name()) || entry.Name() == ".approval-staged" {
+			if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func originalAudioPath(dir string) (string, error) {

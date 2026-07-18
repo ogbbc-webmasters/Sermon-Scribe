@@ -211,6 +211,52 @@ func TestEventHubDisconnectsSlowSubscriber(t *testing.T) {
 	}
 }
 
+func TestEventHubSnapshotRegistrationOrdersPublishAfterSnapshot(t *testing.T) {
+	hub := NewEventHub()
+	loaderStarted := make(chan struct{})
+	releaseLoader := make(chan struct{})
+	type result struct {
+		events   <-chan streamEvent
+		snapshot []store.Sermon
+		cancel   func()
+	}
+	resultCh := make(chan result)
+	go func() {
+		events, snapshot, cancel, err := hub.subscribeWithSnapshot(func() ([]store.Sermon, error) {
+			close(loaderStarted)
+			<-releaseLoader
+			return []store.Sermon{{ID: "old"}}, nil
+		})
+		if err != nil {
+			t.Errorf("subscribeWithSnapshot: %v", err)
+			return
+		}
+		resultCh <- result{events, snapshot, cancel}
+	}()
+	<-loaderStarted
+	published := make(chan struct{})
+	go func() {
+		hub.Publish(processing.Event{Name: processing.EventProgress, Sermon: store.Sermon{ID: "new"}})
+		close(published)
+	}()
+	select {
+	case <-published:
+		t.Fatal("publish completed while snapshot lock was held")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(releaseLoader)
+	got := <-resultCh
+	defer got.cancel()
+	<-published
+	if len(got.snapshot) != 1 || got.snapshot[0].ID != "old" {
+		t.Fatalf("snapshot = %+v", got.snapshot)
+	}
+	event := <-got.events
+	if sermon := event.Data.(store.Sermon); sermon.ID != "new" {
+		t.Fatalf("event sermon = %+v", sermon)
+	}
+}
+
 func readSSEBlock(t *testing.T, reader *bufio.Reader) string {
 	t.Helper()
 	var block strings.Builder

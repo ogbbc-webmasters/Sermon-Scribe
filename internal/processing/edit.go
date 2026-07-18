@@ -95,11 +95,17 @@ func runEditFFmpeg(ctx context.Context, input, output string, regions []Region, 
 	for s.Scan() {
 		if strings.HasPrefix(s.Text(), "out_time_us=") {
 			v, _ := strconv.ParseFloat(strings.TrimPrefix(s.Text(), "out_time_us="), 64)
-			_ = onProgress(min(99, int(v/1e6/duration*100)))
+			if err := onProgress(min(99, int(v/1e6/duration*100))); err != nil {
+				_ = cmd.Process.Kill()
+				_ = cmd.Wait()
+				return fmt.Errorf("report ffmpeg edit progress: %w", err)
+			}
 		}
 	}
 	if err := s.Err(); err != nil {
-		return err
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		return fmt.Errorf("read ffmpeg edit progress: %w", err)
 	}
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("ffmpeg edit failed: %s", strings.TrimSpace(stderr.String()))

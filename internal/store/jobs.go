@@ -218,8 +218,9 @@ func (s *Store) SetAppliedRegions(sermonID string, regions []byte) error {
 	return nil
 }
 
-// ApproveEdit marks an edit irreversible inside a transaction coordinated with cleanup.
-func (s *Store) ApproveEdit(id string, cleanup func() error) (Sermon, error) {
+// ApproveEdit durably marks a completed edit irreversible. File cleanup is
+// deliberately performed by the caller after this transaction commits.
+func (s *Store) ApproveEdit(id string) (Sermon, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Sermon{}, err
@@ -235,11 +236,6 @@ func (s *Store) ApproveEdit(id string, cleanup func() error) (Sermon, error) {
 	}
 	if n == 0 {
 		return Sermon{}, ErrEditConflict
-	}
-	if cleanup != nil {
-		if err := cleanup(); err != nil {
-			return Sermon{}, err
-		}
 	}
 	sm, err := getSermon(tx, id)
 	if err != nil {
