@@ -1,7 +1,9 @@
 ---
-status: draft
+status: completed
 author: Addison Emig
 creation_date: 2026-07-16
+approved_by: Addison Emig
+approval_date: 2026-07-16
 ---
 
 # Project Setup
@@ -30,6 +32,9 @@ Scaffolding for the [Basic Webapp](specs/000-basic-webapp/SPEC.md): tech stack, 
 - Chosen: Elm 0.19.2, compiled to a single `elm.js` embedded in the Go binary via `//go:embed`
   - Recently released Elm version; strong static guarantees for an event-heavy UI (SSE-driven state updates)
   - `elm make` only - no bundler, preserving the one-binary deployment
+  - Built at build time: a `justfile` recipe runs `elm make --optimize` to produce `web/elm.js`, then `go build`; `elm.js` is gitignored and the Elm compiler is required in the build environment (this VM)
+- Considered: committing the compiled `elm.js` to the repo
+  - Rejected: generated artifact in git that is easy to forget to rebuild
 - Considered: single hand-written HTML/JS file (prior prototype approach)
   - Rejected: the event-based UI (live job progress across multiple sermons) benefits from Elm's architecture
 - Considered: JS framework (React/Vite)
@@ -37,10 +42,14 @@ Scaffolding for the [Basic Webapp](specs/000-basic-webapp/SPEC.md): tech stack, 
 
 ### Authentication
 
-- Chosen: exe.dev proxy auth via the `X-Exedev-Userid` header; all routes require it
-  - Zero auth code to maintain; the proxy authenticates users
+- Chosen: authentication and authorization are provided entirely by the exe.dev private proxy; the app trusts all requests it receives
+  - The VM's share list is the authorization boundary (`ssh exe.dev share add/remove`); unauthenticated visitors are redirected to exe.dev login by the proxy and never reach the app
+  - No in-app auth checks and no login/logout UI; zero auth code to maintain, and local dev needs no header injection
+  - Optionally, the `X-Exedev-Email` header (present on all proxied requests) may be recorded as a nullable `uploaded_by` on the sermon record for attribution - display only, never enforcement
 - Considered: application-level accounts
   - Rejected: unnecessary for a small trusted user base
+- Considered: in-app presence check on the `X-Exedev-Userid` header as defense-in-depth
+  - Rejected: only guards against an accidental `share set-public`, whose blast radius here is small; not worth complicating local development
 
 ### Deployment
 
@@ -61,6 +70,47 @@ The normalization stage adds `normalized.flac` (lossless master) and `normalized
 
 - Chosen: a `sermons` table holding id, original filename, upload timestamp, stage, and status
 - Stage and status vocabulary is defined by the [Processing Pipeline](specs/000-basic-webapp/001-processing-pipeline/SPEC.md); later specs add metadata fields (title, scripture references, topics, transcript)
+
+### Sermon Identity
+
+- Chosen: sermons are identified in the list by original filename plus upload date; no title field at upload
+  - Keeps upload to a single step (pick a file), serving the minimal-steps UX goal
+  - Weekly cadence means the date alone usually identifies a sermon
+- Considered: an optional free-text title at upload
+  - Rejected: [Transcription and Metadata](specs/002-transcription-and-metadata/SPEC.md) extracts a real title from the transcript, so a manual field would be redundant shortly after
+
+### Deletion
+
+- Chosen: hard delete, behind a confirmation dialog - removes the sermon row and its entire `uploads/{sermon_id}/` directory
+  - Wrong-file and duplicate uploads are the most likely user errors in a minimal upload flow
+  - Each sermon is ~1.5-2 GB across artifacts, so reclaiming disk matters on a VM
+  - Low-stakes: the source recording still exists on the uploader's device
+- Considered: soft delete
+  - Rejected: leaves disk usage growing and requires an eventual purge story
+
+### Schema Migrations
+
+- Chosen: hand-rolled sequential migrations - numbered `.sql` files embedded via `go:embed`, applied in order at startup, tracked in a `schema_version` table
+  - ~30 lines of Go, zero dependencies; later specs add columns and tables with plain `ALTER TABLE` / `CREATE TABLE` files
+- Considered: a migration library (goose, golang-migrate)
+  - Rejected: same model as the hand-rolled approach but with a dependency; revisit only if a migration ever needs Go logic
+
+### Continuous Integration
+
+- Chosen: minimal GitHub Actions workflow as a PR check - install Go and Elm, run the `justfile` build, run `go test ./...`
+  - Keeps `main` always-green for collaborators in the `ogbbc-webmasters` org
+  - Proves the build works outside this VM, guarding against undocumented VM-local build dependencies
+  - Deployment stays manual on the VM; CI validates, it does not deploy
+- Considered: no CI
+  - Rejected: one ~20-line workflow file is cheap insurance once more than one person can push
+
+### Upload Mechanics
+
+- Chosen: a single `multipart/form-data` POST, streamed to disk by the upload handler
+  - Simplest possible flow on both ends; a dropped connection means re-uploading, which is acceptable for trusted users on stable connections
+  - Verify before relying on it that the exe.dev proxy tolerates a ~1-2 GB request body (test with a real large upload)
+- Considered: chunked/resumable upload
+  - Rejected: substantially more code on both ends (and fiddly file slicing in Elm) to solve a problem our users rarely have
 
 ### Upload Constraints
 

@@ -1,0 +1,355 @@
+/*
+  Sermon Scribe stylesheet — conventions (see docs/styling.md):
+
+  1. Section order: tokens (:root) → base/reset → components (alphabetical)
+     → utilities.
+  2. All colors, radii, and shadows come from :root custom properties.
+     No raw hex values in component rules.
+  3. Naming is BEM-lite: component = one flat class (.sermon-card),
+     part = .sermon-card__name, modifier = .button--primary.
+  4. State ownership: a base class owns layout/shape/typography plus its
+     own (neutral) colors. Every modifier fully owns its colors, INCLUDING
+     :hover/:active/:disabled. Never make a base state rule that a modifier
+     has to fight. No :not() chains, no !important.
+  5. Specificity budget: at most one class + one pseudo-class per selector.
+*/
+
+/* ---------------------------------------------------------------- tokens */
+
+:root {
+  /* palette */
+  --ink: #2b2820;
+  --ink-soft: #6b6455;
+  --paper: #f4f1ea;
+  --paper-bright: #fdfbf5;
+  --card: #fffdf8;
+  --wash: #f6f2e8; /* neutral hover fill */
+  --track: #ece7da;
+  --line: #e2dccd;
+  --line-strong: #cfc7b4;
+  --line-dashed: #c9c0aa;
+  --green: #2e6b3f;
+  --green-mid: #3d8a52;
+  --green-dark: #245332;
+  --green-soft: #e5efe7;
+  --green-line: #cfe0d3;
+  --gold: #b98a2e;
+  --red: #a8342a;
+  --red-dark: #8a2a22;
+  --red-soft: #fbf0ef;
+  --red-line: #ecd2cf;
+  --red-line-strong: #dfb5b0;
+  --on-accent: #ffffff;
+
+  /* type */
+  --font-body: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
+  --font-display: Georgia, "Times New Roman", serif;
+
+  /* shape */
+  --radius-sm: 10px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  /* elevation */
+  --shadow: 0 1px 2px rgba(43, 40, 32, 0.06), 0 4px 16px rgba(43, 40, 32, 0.07);
+  --shadow-accent: 0 2px 6px rgba(36, 83, 50, 0.3);
+  --shadow-inset: inset 0 1px 3px rgba(43, 40, 32, 0.12);
+
+  /* spacing rhythm */
+  --space-xs: 6px;
+  --space-sm: 10px;
+  --space-md: 12px;
+  --space-lg: 14px;
+  --space-xl: 20px;
+  --space-2xl: 24px;
+  --space-3xl: 36px;
+}
+
+/* ------------------------------------------------------------ base/reset */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 19px;
+  line-height: 1.55;
+  color: var(--ink);
+  background:
+    radial-gradient(1200px 400px at 50% -100px, var(--paper-bright) 0%, var(--paper) 70%);
+  min-height: 100vh;
+}
+
+h1 {
+  font-family: var(--font-display);
+  font-size: 2.1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--ink);
+}
+
+h2 {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  margin: 2.2em 0 0.8em;
+  color: var(--ink);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-md);
+}
+
+h2::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid var(--line);
+  transform: translateY(-6px);
+}
+
+/* ------------------------------------------------- components (A → Z) */
+
+/* badge — pill-shaped status label. Base owns shape + default (green)
+   colors; each modifier fully owns its own colors. */
+
+.badge {
+  display: inline-block;
+  border-radius: var(--radius-pill);
+  padding: 1px 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  background: var(--green-soft);
+  color: var(--green-dark);
+  border: 1px solid var(--green-line);
+}
+
+.badge--failed {
+  background: var(--red-soft);
+  color: var(--red);
+  border-color: var(--red-line);
+}
+
+/* button — base owns shape/typography/motion plus the neutral color set.
+   Modifiers redeclare ALL colors, including hover, so no rule here ever
+   needs to be fought with :not() or !important. */
+
+.button {
+  display: inline-block;
+  font-family: inherit;
+  font-size: 1.05rem;
+  font-weight: 600;
+  padding: 13px 26px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.05s ease;
+}
+
+.button:hover {
+  background: var(--wash);
+  border-color: var(--line-strong);
+}
+
+.button:active {
+  transform: translateY(1px);
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+  background: var(--card);
+  border-color: var(--line);
+}
+
+.button--danger {
+  background: var(--red);
+  border-color: var(--red);
+  color: var(--on-accent);
+}
+
+.button--danger:hover {
+  background: var(--red-dark);
+  border-color: var(--red-dark);
+}
+
+.button--danger:disabled {
+  background: var(--red);
+  border-color: var(--red);
+}
+
+.button--primary {
+  background: linear-gradient(160deg, var(--green) 0%, var(--green-dark) 100%);
+  border-color: var(--green-dark);
+  color: var(--on-accent);
+  font-size: 1.15rem;
+  padding: 16px 34px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-accent);
+}
+
+.button--primary:hover {
+  background: linear-gradient(160deg, var(--green) 0%, var(--green-dark) 100%);
+  border-color: var(--green-dark);
+  filter: brightness(1.07);
+}
+
+.button--primary:disabled {
+  background: linear-gradient(160deg, var(--green) 0%, var(--green-dark) 100%);
+  border-color: var(--green-dark);
+}
+
+/* confirm-box — inline destructive-action confirmation */
+
+.confirm-box {
+  background: var(--red-soft);
+  border: 1.5px solid var(--red-line-strong);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  flex-basis: 100%;
+}
+
+.confirm-box__question {
+  margin: 0 0 var(--space-lg);
+}
+
+.confirm-box__buttons {
+  display: flex;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+/* empty-state — placeholder shown when a list has no items */
+
+.empty-state {
+  text-align: center;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius-xl);
+  padding: 36px 24px;
+  font-size: 1rem;
+}
+
+/* masthead — page title banner */
+
+.masthead {
+  text-align: center;
+  margin-bottom: var(--space-3xl);
+}
+
+/* page — centered content column */
+
+.page {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 40px var(--space-xl) 80px;
+}
+
+/* progress — determinate progress bar */
+
+.progress {
+  height: 26px;
+  background: var(--track);
+  border-radius: 13px;
+  overflow: hidden;
+  box-shadow: var(--shadow-inset);
+}
+
+.progress__fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--green) 0%, var(--green-mid) 100%);
+  transition: width 0.2s ease;
+  border-radius: 13px;
+}
+
+/* sermon-card — one sermon in the list */
+
+.sermon-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 20px 24px;
+  margin-bottom: var(--space-lg);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  box-shadow: var(--shadow);
+}
+
+.sermon-card__info {
+  min-width: 0;
+}
+
+.sermon-card__name {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.sermon-card__meta {
+  margin: var(--space-xs) 0 0;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+/* upload-box — drop-zone-styled upload panel */
+
+.upload-box {
+  background: var(--card);
+  border: 1.5px dashed var(--line-dashed);
+  border-radius: var(--radius-xl);
+  padding: 34px 24px;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+
+.upload-box__status {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 var(--space-lg);
+}
+
+/* -------------------------------------------------------------- utilities */
+
+.error-text {
+  color: var(--red);
+  font-weight: 600;
+  margin: var(--space-lg) 0 0;
+}
+
+.hint {
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  margin: var(--space-lg) 0 0;
+}
+
+/* ---------------------------------------------------------------- media */
+
+@media (max-width: 520px) {
+  body {
+    font-size: 18px;
+  }
+
+  .page {
+    padding-top: 28px;
+  }
+
+  .sermon-card {
+    padding: 16px 18px;
+  }
+}
