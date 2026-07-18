@@ -95,10 +95,14 @@ func (s *Store) CompleteUpload(sermonID, jobID string, now time.Time) (Sermon, e
 	if err := enqueueJobTx(tx, job, now); err != nil {
 		return Sermon{}, err
 	}
+	sm, err := getSermon(tx, sermonID)
+	if err != nil {
+		return Sermon{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return Sermon{}, err
 	}
-	return s.GetSermon(sermonID)
+	return sm, nil
 }
 
 // EnqueueJob adds a queued job. Stage-specific handlers can use this when a
@@ -144,7 +148,11 @@ func (s *Store) RecoverRunningJobs() error {
 		return err
 	}
 	if _, err := tx.Exec(
-		`UPDATE jobs SET state = 'queued', updated_at = ? WHERE state = 'running'`,
+		`UPDATE jobs
+		 SET state = 'queued',
+		     attempts = CASE WHEN attempts > 0 THEN attempts - 1 ELSE 0 END,
+		     updated_at = ?
+		 WHERE state = 'running'`,
 		time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 		return err
 	}

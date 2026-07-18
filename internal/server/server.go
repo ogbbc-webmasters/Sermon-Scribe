@@ -174,11 +174,11 @@ func (s *Server) handleUploadSermon(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not record upload")
 		return
 	}
-	if s.Queue != nil {
-		s.Queue.Notify()
-	}
 	if s.Events != nil {
 		s.Events.Publish(processing.Event{Name: processing.EventStageCompleted, Sermon: sm})
+	}
+	if s.Queue != nil {
+		s.Queue.Notify()
 	}
 	writeJSON(w, http.StatusCreated, sm)
 }
@@ -235,11 +235,11 @@ func (s *Server) handleRetrySermon(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not retry sermon")
 		return
 	}
-	if s.Queue != nil {
-		s.Queue.Notify()
-	}
 	if s.Events != nil {
 		s.Events.Publish(processing.Event{Name: processing.EventProgress, Sermon: sm})
+	}
+	if s.Queue != nil {
+		s.Queue.Notify()
 	}
 	writeJSON(w, http.StatusAccepted, sm)
 }
@@ -278,6 +278,14 @@ func (s *Server) handleDeleteSermon(w http.ResponseWriter, r *http.Request) {
 	// may leave staged files for manual cleanup, but cannot corrupt a live row.
 	if err := os.RemoveAll(stagedDir); err != nil {
 		log.Printf("delete sermon %s: remove staged uploads: %v", id, err)
+	}
+	if s.Events != nil {
+		sermons, err := s.Store.ListSermons()
+		if err != nil {
+			log.Printf("delete sermon %s: publish snapshot: %v", id, err)
+		} else {
+			s.Events.PublishSnapshot(sermons)
+		}
 	}
 
 	w.WriteHeader(http.StatusNoContent)

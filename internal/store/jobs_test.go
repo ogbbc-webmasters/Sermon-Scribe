@@ -229,7 +229,7 @@ func TestOpenRecoversRunningJobs(t *testing.T) {
 	if job.State != "queued" || sm.Status != "pending" {
 		t.Fatalf("recovered job/sermon = %s/%s", job.State, sm.Status)
 	}
-	if job.Attempts != 1 {
-		t.Fatalf("recovered attempts = %d, want 1", job.Attempts)
+	if job.Attempts != 0 {
+		t.Fatalf("recovered attempts = %d, want 0", job.Attempts)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/processing"
+	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 )
 
 const eventBufferSize = 64
@@ -15,18 +16,33 @@ const eventBufferSize = 64
 // EventHub fans best-effort processing events out to connected SSE clients.
 // A client that cannot keep up is disconnected and will recover from a fresh
 // snapshot when EventSource reconnects.
+type streamEvent struct {
+	Name string
+	Data any
+}
+
 type EventHub struct {
 	mu          sync.Mutex
-	subscribers map[chan processing.Event]struct{}
+	subscribers map[chan streamEvent]struct{}
 }
 
 // NewEventHub constructs an empty event hub.
 func NewEventHub() *EventHub {
-	return &EventHub{subscribers: make(map[chan processing.Event]struct{})}
+	return &EventHub{subscribers: make(map[chan streamEvent]struct{})}
 }
 
 // Publish implements processing.EventSink.
 func (h *EventHub) Publish(event processing.Event) {
+	h.publish(streamEvent{Name: event.Name, Data: event.Sermon})
+}
+
+// PublishSnapshot replaces the sermon list for connected clients, notably
+// after deletion where there is no sermon value left to publish.
+func (h *EventHub) PublishSnapshot(sermons []store.Sermon) {
+	h.publish(streamEvent{Name: "snapshot", Data: sermons})
+}
+
+func (h *EventHub) publish(event streamEvent) {
 	if h == nil {
 		return
 	}
@@ -42,8 +58,8 @@ func (h *EventHub) Publish(event processing.Event) {
 	}
 }
 
-func (h *EventHub) subscribe() (<-chan processing.Event, func()) {
-	ch := make(chan processing.Event, eventBufferSize)
+func (h *EventHub) subscribe() (<-chan streamEvent, func()) {
+	ch := make(chan streamEvent, eventBufferSize)
 	h.mu.Lock()
 	h.subscribers[ch] = struct{}{}
 	h.mu.Unlock()
@@ -99,7 +115,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			if err := writeSSE(w, event.Name, event.Sermon); err != nil {
+			if err := writeSSE(w, event.Name, event.Data); err != nil {
 				return
 			}
 			flusher.Flush()

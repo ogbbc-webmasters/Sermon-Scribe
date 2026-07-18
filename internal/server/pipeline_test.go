@@ -163,3 +163,70 @@ func readSSEBlock(t *testing.T, reader *bufio.Reader) string {
 		block.WriteString(line)
 	}
 }
+
+type orderingNotifier struct {
+	events   <-chan streamEvent
+	observed atomic.Bool
+}
+
+func (n *orderingNotifier) Notify() {
+	select {
+	case event := <-n.events:
+		if event.Name == processing.EventStageCompleted {
+			n.observed.Store(true)
+		}
+	default:
+	}
+}
+
+func TestUploadPublishesTransitionBeforeWakingQueue(t *testing.T) {
+	srv, ts := newTestServer(t)
+	events, unsubscribe := srv.Events.subscribe()
+	defer unsubscribe()
+	notifier := &orderingNotifier{events: events}
+	srv.Queue = notifier
+
+	resp, _ := uploadFile(t, ts, "ordered.wav", []byte("audio"), nil)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", resp.StatusCode)
+	}
+	if !notifier.observed.Load() {
+		t.Fatal("queue was notified before the upload transition was published")
+	}
+}
+
+func TestDeletePublishesReplacementSnapshot(t *testing.T) {
+	srv, ts := newTestServer(t)
+	_, uploaded := uploadFile(t, ts, "delete-live.wav", []byte("audio"), nil)
+	events, unsubscribe := srv.Events.subscribe()
+	defer unsubscribe()
+
+	req, err := http.NewRequest(http.MethodDelete, ts.URL+"/api/sermons/"+uploaded.ID, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", resp.StatusCode)
+	}
+
+	select {
+	case event := <-events:
+		if event.Name != "snapshot" {
+			t.Fatalf("delete event = %q, want snapshot", event.Name)
+		}
+		sermons, ok := event.Data.([]store.Sermon)
+		if !ok {
+			t.Fatalf("snapshot data type = %T", event.Data)
+		}
+		if len(sermons) != 0 {
+			t.Fatalf("snapshot contains %d sermons, want 0", len(sermons))
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for deletion snapshot")
+	}
+}
