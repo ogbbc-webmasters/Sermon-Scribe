@@ -1,7 +1,9 @@
 ---
-status: draft
+status: in-progress
 author: Addison Emig
 creation_date: 2026-01-17
+approved_by: Addison Emig
+approval_date: 2026-07-18
 ---
 
 # Automatic Audio Timeline
@@ -106,4 +108,4 @@ Consecutive windows matching singing characteristics are merged into singing reg
 
 **Audio preview after applying edits**: Apply Edits renders `final.mp3` from the FLAC master; the user listens to this actual artifact before approving. Apply is repeatable and non-destructive (each run overwrites `final.mp3`), so the loop is: skip-preview to iterate → Apply Edits → audition the real render → adjust and re-apply, or Approve.
 
-**Edit persistence**: User adjustments saved to browser localStorage (keyed by sermon ID). On load, restore from localStorage if available, otherwise call analyze endpoint. Clear localStorage after "Apply Edits" succeeds. Multiple tabs editing the same sermon: last write wins (not worth adding complexity for this edge case).
+**Edit persistence**: User adjustments saved to browser localStorage (keyed by sermon ID). On load, restore from localStorage if available, otherwise use the most recently applied regions from the server if available, otherwise call the analyze endpoint. Applying edits persists the accepted region plan with the sermon and clears localStorage after success, so a later reload can still adjust and re-apply the last render. Multiple tabs editing the same sermon: last write wins (not worth adding complexity for this edge case).
