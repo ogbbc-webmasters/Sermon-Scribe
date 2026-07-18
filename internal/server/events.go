@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/processing"
-	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 )
 
 const eventBufferSize = 64
@@ -36,10 +35,10 @@ func (h *EventHub) Publish(event processing.Event) {
 	h.publish(streamEvent{Name: event.Name, Data: event.Sermon})
 }
 
-// PublishSnapshot replaces the sermon list for connected clients, notably
-// after deletion where there is no sermon value left to publish.
-func (h *EventHub) PublishSnapshot(sermons []store.Sermon) {
-	h.publish(streamEvent{Name: "snapshot", Data: sermons})
+// PublishDeleted removes a sermon from connected clients. The id remains a
+// frontend tombstone so a delayed worker event cannot recreate the card.
+func (h *EventHub) PublishDeleted(id string) {
+	h.publish(streamEvent{Name: "deleted", Data: map[string]string{"id": id}})
 }
 
 func (h *EventHub) publish(event streamEvent) {

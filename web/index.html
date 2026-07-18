@@ -12,7 +12,7 @@
   <script>
     const app = Elm.Main.init({ node: document.getElementById("app") });
     const events = new EventSource("/api/events");
-    ["snapshot", "stage_started", "progress", "stage_completed", "failed"]
+    ["snapshot", "stage_started", "progress", "stage_completed", "failed", "deleted"]
       .forEach((eventName) => {
         events.addEventListener(eventName, (event) => {
           try {

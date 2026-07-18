@@ -195,7 +195,7 @@ func TestUploadPublishesTransitionBeforeWakingQueue(t *testing.T) {
 	}
 }
 
-func TestDeletePublishesReplacementSnapshot(t *testing.T) {
+func TestDeletePublishesTombstoneEvent(t *testing.T) {
 	srv, ts := newTestServer(t)
 	_, uploaded := uploadFile(t, ts, "delete-live.wav", []byte("audio"), nil)
 	events, unsubscribe := srv.Events.subscribe()
@@ -216,17 +216,17 @@ func TestDeletePublishesReplacementSnapshot(t *testing.T) {
 
 	select {
 	case event := <-events:
-		if event.Name != "snapshot" {
-			t.Fatalf("delete event = %q, want snapshot", event.Name)
+		if event.Name != "deleted" {
+			t.Fatalf("delete event = %q, want deleted", event.Name)
 		}
-		sermons, ok := event.Data.([]store.Sermon)
+		data, ok := event.Data.(map[string]string)
 		if !ok {
-			t.Fatalf("snapshot data type = %T", event.Data)
+			t.Fatalf("deleted data type = %T", event.Data)
 		}
-		if len(sermons) != 0 {
-			t.Fatalf("snapshot contains %d sermons, want 0", len(sermons))
+		if data["id"] != uploaded.ID {
+			t.Fatalf("deleted id = %q, want %q", data["id"], uploaded.ID)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for deletion snapshot")
+		t.Fatal("timed out waiting for deletion event")
 	}
 }

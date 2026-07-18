@@ -33,6 +33,7 @@ type alias Sermon =
 type PipelineEvent
     = PipelineSnapshot (List Sermon)
     | PipelineUpdate Sermon
+    | PipelineDeleted String
 
 
 sermonDecoder : Decoder Sermon
@@ -69,6 +70,10 @@ pipelineEventDecoder =
 
                     "failed" ->
                         pipelineUpdateDecoder
+
+                    "deleted" ->
+                        Decode.at [ "data", "id" ] Decode.string
+                            |> Decode.map PipelineDeleted
 
                     _ ->
                         Decode.fail ("unknown pipeline event: " ++ eventName)

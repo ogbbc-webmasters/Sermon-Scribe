@@ -56,7 +56,9 @@ update msg model =
                 ( model, Cmd.none )
 
             else
-                ( { model | sermons = Loaded sermons }, Cmd.none )
+                ( { model | sermons = mergeFetchedSermons model.deletedSermons sermons model.sermons }
+                , Cmd.none
+                )
 
         GotSermons (Err _) ->
             if model.hasPipelineSnapshot then
@@ -68,19 +70,14 @@ update msg model =
         PipelineEventReceived value ->
             case Decode.decodeValue Api.pipelineEventDecoder value of
                 Ok (Api.PipelineSnapshot sermons) ->
-                    let
-                        visibleSermons =
-                            List.filter
-                                (\sermon -> not (Set.member sermon.id model.deletedSermons))
-                                sermons
-
-                        snapshotIds =
-                            Set.fromList (List.map .id sermons)
-                    in
                     ( { model
-                        | sermons = Loaded visibleSermons
+                        | sermons =
+                            Loaded
+                                (List.filter
+                                    (\sermon -> not (Set.member sermon.id model.deletedSermons))
+                                    sermons
+                                )
                         , hasPipelineSnapshot = True
-                        , deletedSermons = Set.intersect model.deletedSermons snapshotIds
                       }
                     , Cmd.none
                     )
@@ -93,6 +90,15 @@ update msg model =
                         ( { model | sermons = upsertSermon sermon model.sermons }
                         , Cmd.none
                         )
+
+                Ok (Api.PipelineDeleted id) ->
+                    ( { model
+                        | deleting = Set.remove id model.deleting
+                        , deletedSermons = Set.insert id model.deletedSermons
+                        , sermons = removeSermon id model.sermons
+                      }
+                    , Cmd.none
+                    )
 
                 Err _ ->
                     ( model, Cmd.none )
@@ -201,6 +207,20 @@ subscriptions model =
             _ ->
                 Sub.none
         ]
+
+
+mergeFetchedSermons : Set.Set String -> List Api.Sermon -> SermonList -> SermonList
+mergeFetchedSermons deleted fetched current =
+    let
+        visibleFetched =
+            List.filter (\sermon -> not (Set.member sermon.id deleted)) fetched
+    in
+    case current of
+        Loaded currentSermons ->
+            List.foldl upsertSermon (Loaded visibleFetched) currentSermons
+
+        _ ->
+            Loaded visibleFetched
 
 
 upsertSermon : Api.Sermon -> SermonList -> SermonList

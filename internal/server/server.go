@@ -280,12 +280,7 @@ func (s *Server) handleDeleteSermon(w http.ResponseWriter, r *http.Request) {
 		log.Printf("delete sermon %s: remove staged uploads: %v", id, err)
 	}
 	if s.Events != nil {
-		sermons, err := s.Store.ListSermons()
-		if err != nil {
-			log.Printf("delete sermon %s: publish snapshot: %v", id, err)
-		} else {
-			s.Events.PublishSnapshot(sermons)
-		}
+		s.Events.PublishDeleted(id)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
