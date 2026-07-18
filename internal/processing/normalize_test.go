@@ -3,6 +3,7 @@ package processing
 import (
 	"context"
 	"errors"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,19 +49,24 @@ func TestNormalizeHandlerCommitsArtifactsAndPreset(t *testing.T) {
 	job := store.Job{ID: "job-1", SermonID: sermonID, Type: "normalize", Parameters: parameters}
 
 	runs := 0
+	var lastFilter string
 	handler := NewNormalizeHandler(st, uploads)
 	handler.runFFmpeg = func(_ context.Context, input, flac, mp3, filter string, progress func(int) error) error {
 		runs++
+		lastFilter = filter
 		if input != filepath.Join(dir, "original.wav") {
 			t.Fatalf("input = %q", input)
 		}
-		if !strings.Contains(filter, "loudnorm=I=-14") || !strings.Contains(filter, "asplit=2") {
-			t.Fatalf("louder filter = %q", filter)
+		if !strings.Contains(filter, "asplit=2") {
+			t.Fatalf("normalization filter = %q", filter)
 		}
 		if err := os.WriteFile(flac, []byte("flac"), 0o644); err != nil {
 			return err
 		}
 		if err := os.WriteFile(mp3, []byte("mp3"), 0o644); err != nil {
+			return err
+		}
+		if err := progress(0); err != nil {
 			return err
 		}
 		return progress(60)
@@ -79,8 +85,8 @@ func TestNormalizeHandlerCommitsArtifactsAndPreset(t *testing.T) {
 	if _, err := handler.Run(context.Background(), job, reporter); err != nil {
 		t.Fatal(err)
 	}
-	if runs != 1 {
-		t.Fatalf("ffmpeg runs = %d, want 1", runs)
+	if runs != 1 || !strings.Contains(lastFilter, "loudnorm=I=-14") {
+		t.Fatalf("ffmpeg runs/filter = %d %q", runs, lastFilter)
 	}
 	for _, name := range []string{"normalized.flac", "normalized.mp3", ".normalization-complete.json"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
@@ -104,6 +110,27 @@ func TestNormalizeHandlerCommitsArtifactsAndPreset(t *testing.T) {
 	}
 	if runs != 1 {
 		t.Fatalf("ffmpeg runs after committed retry = %d, want 1", runs)
+	}
+
+	// A user-requested rerun has a new job ID, so the prior marker cannot satisfy it.
+	noGate, err := NormalizationParameters(string(PresetNoGate))
+	if err != nil {
+		t.Fatal(err)
+	}
+	job.ID = "job-2"
+	job.Parameters = noGate
+	if _, err := handler.Run(context.Background(), job, &recordingReporter{}); err != nil {
+		t.Fatal(err)
+	}
+	if runs != 2 || strings.Contains(lastFilter, "agate=") {
+		t.Fatalf("rerun runs/filter = %d %q", runs, lastFilter)
+	}
+	sm, err = st.GetSermon(sermonID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sm.NormalizationPreset != string(PresetNoGate) {
+		t.Fatalf("rerun preset = %q, want no-gate", sm.NormalizationPreset)
 	}
 }
 
@@ -164,5 +191,16 @@ func TestRunFFmpegProducesMatchingMonoOutputs(t *testing.T) {
 	}
 	if err := probeAudio(mp3, audioSpec{codec: "mp3", sampleRate: 44100, channels: 1}); err != nil {
 		t.Fatal(err)
+	}
+	flacDuration, err := probeDuration(context.Background(), flac)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mp3Duration, err := probeDuration(context.Background(), mp3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if math.Abs(flacDuration-mp3Duration) > 0.05 {
+		t.Fatalf("output durations differ: flac=%f mp3=%f", flacDuration, mp3Duration)
 	}
 }

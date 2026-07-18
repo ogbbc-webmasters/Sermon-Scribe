@@ -68,6 +68,71 @@ func TestRetryFailedSermon(t *testing.T) {
 	}
 }
 
+func TestRerunNormalization(t *testing.T) {
+	srv, ts := newTestServer(t)
+	notifier := &countingNotifier{}
+	srv.Queue = notifier
+	_, uploaded := uploadFile(t, ts, "rerun.wav", []byte("audio"), nil)
+	now := time.Now()
+	job, err := srv.Store.ClaimNextJob(context.Background(), []string{"normalize"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.Store.CompleteJob(job, nil, now); err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := http.Post(ts.URL+"/api/sermons/"+uploaded.ID+"/normalize", "application/json", strings.NewReader(`{"preset":"no-gate"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusAccepted {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("status = %d, want 202: %s", resp.StatusCode, body)
+	}
+	var sm store.Sermon
+	if err := json.NewDecoder(resp.Body).Decode(&sm); err != nil {
+		t.Fatal(err)
+	}
+	if sm.Status != "pending" || sm.Progress != 0 {
+		t.Fatalf("rerun sermon = %+v", sm)
+	}
+	queued, err := srv.Store.GetCurrentJob(uploaded.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued.ID == job.ID || queued.Parameters != `{"preset":"no-gate"}` {
+		t.Fatalf("rerun job = %+v", queued)
+	}
+	if notifier.calls.Load() != 2 {
+		t.Fatalf("queue notifications = %d, want 2", notifier.calls.Load())
+	}
+}
+
+func TestRerunNormalizationRejectsInvalidStateAndPreset(t *testing.T) {
+	_, ts := newTestServer(t)
+	_, uploaded := uploadFile(t, ts, "pending.wav", []byte("audio"), nil)
+
+	for _, test := range []struct {
+		body string
+		want int
+	}{
+		{body: `{"preset":"standard"}`, want: http.StatusConflict},
+		{body: `{"preset":"mystery"}`, want: http.StatusBadRequest},
+		{body: `{}`, want: http.StatusBadRequest},
+	} {
+		resp, err := http.Post(ts.URL+"/api/sermons/"+uploaded.ID+"/normalize", "application/json", strings.NewReader(test.body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != test.want {
+			t.Errorf("body %s: status = %d, want %d", test.body, resp.StatusCode, test.want)
+		}
+	}
+}
+
 func TestRetryRejectsNonfailedAndMissingSermons(t *testing.T) {
 	_, ts := newTestServer(t)
 	_, uploaded := uploadFile(t, ts, "pending.wav", []byte("audio"), nil)

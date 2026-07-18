@@ -136,9 +136,6 @@ func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Repo
 		return Result{}, err
 	}
 	if !committed {
-		if err := reporter.Progress(0, nil); err != nil {
-			return Result{}, err
-		}
 		filter := normalizationFilter(preset)
 		if err := h.runFFmpeg(ctx, input, flacTemp, mp3Temp, filter, func(percent int) error {
 			return reporter.Progress(percent, nil)
@@ -194,7 +191,15 @@ func findOriginal(dir string) (string, error) {
 }
 
 func runFFmpeg(ctx context.Context, input, flacOutput, mp3Output, filter string, onProgress func(int) error) error {
-	duration, _ := probeDuration(ctx, input)
+	duration, durationErr := probeDuration(ctx, input)
+	initialProgress := 0
+	if durationErr != nil || duration <= 0 {
+		duration = 0
+		initialProgress = -1
+	}
+	if err := onProgress(initialProgress); err != nil {
+		return fmt.Errorf("report ffmpeg progress: %w", err)
+	}
 	args := []string{
 		"-hide_banner", "-nostdin", "-y", "-i", input,
 		"-filter_complex", filter,

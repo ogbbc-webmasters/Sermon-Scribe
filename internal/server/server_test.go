@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -204,6 +205,99 @@ func TestListNewestFirst(t *testing.T) {
 	for i, w := range want {
 		if list[i].OriginalFilename != w {
 			t.Errorf("list[%d] = %q, want %q", i, list[i].OriginalFilename, w)
+		}
+	}
+}
+
+func TestSermonAudio(t *testing.T) {
+	srv, ts := newTestServer(t)
+	original := []byte("original audio")
+	_, sm := uploadFile(t, ts, "listen.WAV", original, nil)
+
+	resp, err := http.Get(ts.URL + "/api/sermons/" + sm.ID + "/audio/original")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || !bytes.Equal(got, original) {
+		t.Fatalf("original response = %d %q", resp.StatusCode, got)
+	}
+
+	resp, err = http.Get(ts.URL + "/api/sermons/" + sm.ID + "/audio/proxy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("pending proxy status = %d, want 409", resp.StatusCode)
+	}
+
+	job, err := srv.Store.ClaimNextJob(context.Background(), []string{"normalize"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.Store.CompleteJob(job, nil, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(srv.UploadsDir, sm.ID)
+	if err := os.WriteFile(filepath.Join(dir, "normalized.flac"), []byte("flac audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "normalized.mp3"), []byte("mp3 audio"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	req, err := http.NewRequest(http.MethodGet, ts.URL+"/api/sermons/"+sm.ID+"/audio/proxy?download=1", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Range", "bytes=0-2")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusPartialContent || string(got) != "mp3" {
+		t.Fatalf("proxy range response = %d %q", resp.StatusCode, got)
+	}
+	if resp.Header.Get("Content-Type") != "audio/mpeg" || resp.Header.Get("Content-Disposition") != `attachment; filename="normalized.mp3"` {
+		t.Fatalf("proxy headers = content-type %q disposition %q", resp.Header.Get("Content-Type"), resp.Header.Get("Content-Disposition"))
+	}
+
+	resp, err = http.Get(ts.URL + "/api/sermons/" + sm.ID + "/audio/normalized")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "audio/flac" {
+		t.Fatalf("normalized response = %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+
+	resp, err = http.Get(ts.URL + "/api/sermons/" + sm.ID + "/audio/unknown")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("unknown audio type status = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestSermonAudioRejectsUnknownSermonAndType(t *testing.T) {
+	_, ts := newTestServer(t)
+	for _, path := range []string{
+		"/api/sermons/missing/audio/original",
+		"/api/sermons/missing/audio/proxy",
+	} {
+		resp, err := http.Get(ts.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("GET %s status = %d, want 404", path, resp.StatusCode)
 		}
 	}
 }
