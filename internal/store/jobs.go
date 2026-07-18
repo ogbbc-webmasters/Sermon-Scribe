@@ -17,6 +17,9 @@ var ErrNoJob = errors.New("no job ready")
 // ErrNotRetryable indicates that a sermon has no failed current-stage job.
 var ErrNotRetryable = errors.New("sermon has no failed job to retry")
 
+// ErrNotRerunnable indicates that normalization is not currently complete.
+var ErrNotRerunnable = errors.New("sermon normalization is not ready to rerun")
+
 // Job is one persistent unit of background work.
 type Job struct {
 	ID          string
@@ -91,7 +94,10 @@ func (s *Store) CompleteUpload(sermonID, jobID string, now time.Time) (Sermon, e
 		return Sermon{}, ErrNotFound
 	}
 
-	job := NewJob{ID: jobID, SermonID: sermonID, Type: "normalize", Stage: "normalization"}
+	job := NewJob{
+		ID: jobID, SermonID: sermonID, Type: "normalize", Stage: "normalization",
+		Parameters: `{"preset":"standard"}`,
+	}
 	if err := enqueueJobTx(tx, job, now); err != nil {
 		return Sermon{}, err
 	}
@@ -109,6 +115,58 @@ func (s *Store) CompleteUpload(sermonID, jobID string, now time.Time) (Sermon, e
 // completed stage schedules another machine stage.
 func (s *Store) EnqueueJob(job NewJob, now time.Time) error {
 	return enqueueJobTx(s.db, job, now)
+}
+
+// EnqueueNormalizationRerun returns a completed normalization stage to pending
+// and queues a new normalize job carrying the selected preset parameters.
+func (s *Store) EnqueueNormalizationRerun(sermonID, jobID, parameters string, now time.Time) (Sermon, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Sermon{}, err
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec(
+		`UPDATE sermons SET status = 'pending'
+		 WHERE id = ? AND stage = 'normalization' AND status = 'done'`, sermonID)
+	if err != nil {
+		return Sermon{}, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return Sermon{}, err
+	}
+	if n == 0 {
+		return Sermon{}, ErrNotRerunnable
+	}
+	if err := enqueueJobTx(tx, NewJob{
+		ID: jobID, SermonID: sermonID, Type: "normalize", Stage: "normalization",
+		Parameters: parameters,
+	}, now); err != nil {
+		return Sermon{}, err
+	}
+	sm, err := getSermon(tx, sermonID)
+	if err != nil {
+		return Sermon{}, err
+	}
+	return sm, tx.Commit()
+}
+
+// SetNormalizationPreset records the preset that produced the committed audio.
+func (s *Store) SetNormalizationPreset(sermonID, preset string) error {
+	res, err := s.db.Exec(
+		`UPDATE sermons SET normalization_preset = ? WHERE id = ?`, preset, sermonID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 type sqlExecer interface {

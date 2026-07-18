@@ -55,6 +55,53 @@ func TestCompleteUploadEnqueuesNormalization(t *testing.T) {
 	if job.Type != "normalize" || job.Stage != "normalization" || job.State != "queued" || job.Attempts != 0 {
 		t.Fatalf("unexpected job: %+v", job)
 	}
+	if job.Parameters != `{"preset":"standard"}` || sm.NormalizationPreset != "standard" {
+		t.Fatalf("normalization defaults = parameters %q, preset %q", job.Parameters, sm.NormalizationPreset)
+	}
+}
+
+func TestEnqueueNormalizationRerun(t *testing.T) {
+	st := openTestStore(t)
+	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
+	seedNormalizeJob(t, st, "sermon-1", "job-1", now)
+
+	job, err := st.ClaimNextJob(context.Background(), []string{"normalize"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CompleteJob(job, nil, now); err != nil {
+		t.Fatal(err)
+	}
+
+	parameters := `{"preset":"louder"}`
+	sm, err := st.EnqueueNormalizationRerun("sermon-1", "job-2", parameters, now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sm.Stage != "normalization" || sm.Status != "pending" || sm.Progress != 0 {
+		t.Fatalf("rerun sermon = %+v", sm)
+	}
+	queued, err := st.GetCurrentJob("sermon-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queued.ID != "job-2" || queued.Parameters != parameters || queued.State != "queued" {
+		t.Fatalf("rerun job = %+v", queued)
+	}
+	if _, err := st.EnqueueNormalizationRerun("sermon-1", "job-3", parameters, now); !errors.Is(err, ErrNotRerunnable) {
+		t.Fatalf("duplicate rerun error = %v, want ErrNotRerunnable", err)
+	}
+
+	if err := st.SetNormalizationPreset("sermon-1", "louder"); err != nil {
+		t.Fatal(err)
+	}
+	sm, err = st.GetSermon("sermon-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sm.NormalizationPreset != "louder" {
+		t.Fatalf("stored preset = %q, want louder", sm.NormalizationPreset)
+	}
 }
 
 func TestClaimNextJobIsAtomicAndFiltersTypes(t *testing.T) {
