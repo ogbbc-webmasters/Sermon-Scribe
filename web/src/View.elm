@@ -2,6 +2,7 @@ module View exposing (view)
 
 import Api exposing (Sermon)
 import DateFormat exposing (formatDate)
+import Editor
 import File
 import Html exposing (Html, a, audio, button, div, h1, h2, input, label, p, span, strong, text)
 import Html.Attributes exposing (accept, class, controls, disabled, download, href, id, src, style, type_)
@@ -15,8 +16,8 @@ import Ui
 view : Model -> Html Msg
 view model =
     case model.editing of
-        Just sermon ->
-            viewEditor sermon
+        Just editor ->
+            Html.map EditorMsg (Editor.view editor)
 
         Nothing ->
             div [ class "page" ]
@@ -29,22 +30,6 @@ view model =
                 , viewOptionalError model.normalizationError
                 , viewSermons model
                 ]
-
-
-viewEditor : Sermon -> Html Msg
-viewEditor sermon =
-    div [ class "page" ]
-        [ div [ class "masthead" ]
-            [ h1 [] [ text "Sermon Scribe" ] ]
-        , h2 [] [ text ("Editing " ++ sermon.originalFilename) ]
-        , div [ Ui.emptyState ]
-            [ strong [] [ text "Coming soon" ]
-            , p [ Ui.hint ]
-                [ text "The automatic audio timeline editor will appear here." ]
-            ]
-        , p []
-            [ button [ Ui.button, onClick CloseEditor ] [ text "Back to Sermons" ] ]
-        ]
 
 
 viewOptionalError : Maybe String -> Html Msg

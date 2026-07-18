@@ -1,6 +1,12 @@
 module Api exposing
     ( PipelineEvent(..)
+    , Region
     , Sermon
+    , Timeline
+    , Waveform
+    , analyze
+    , applyEdits
+    , approveEdit
     , deleteSermon
     , fetchSermons
     , pipelineEventDecoder
@@ -9,6 +15,7 @@ module Api exposing
     , sermonDecoder
     , uploadSermon
     , uploadTracker
+    , waveform
     )
 
 {-| Server API: sermon state, pipeline events, and HTTP requests.
@@ -31,7 +38,20 @@ type alias Sermon =
     , error : Maybe String
     , normalizationGateAdjustment : Int
     , normalizationVolumeAdjustment : Int
+    , appliedRegions : Maybe (List Region)
+    , editApproved : Bool
     }
+
+type alias Region = { start : Float, end : Float, regionType : String, keep : Bool }
+type alias Waveform = { duration : Float, samplesPerSecond : Float, samples : List Float }
+type alias Timeline = { duration : Float, regions : List Region }
+
+regionDecoder : Decoder Region
+regionDecoder =
+    Decode.map4 Region (Decode.field "start" Decode.float) (Decode.field "end" Decode.float) (Decode.field "type" Decode.string) (Decode.field "keep" Decode.bool)
+
+regionEncoder : Region -> Encode.Value
+regionEncoder region = Encode.object [ ( "start", Encode.float region.start ), ( "end", Encode.float region.end ), ( "type", Encode.string region.regionType ), ( "keep", Encode.bool region.keep ) ]
 
 
 type PipelineEvent
@@ -42,16 +62,18 @@ type PipelineEvent
 
 sermonDecoder : Decoder Sermon
 sermonDecoder =
-    Decode.map3
-        (\sermon gate volume ->
+    Decode.map5
+        (\sermon gate volume applied approved ->
             { sermon
                 | normalizationGateAdjustment = gate
                 , normalizationVolumeAdjustment = volume
+                , appliedRegions = applied
+                , editApproved = approved
             }
         )
         (Decode.map8
             (\id originalFilename uploadedAt uploadedBy stage status progress error ->
-                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0
+                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0 Nothing False
             )
             (Decode.field "id" Decode.string)
             (Decode.field "original_filename" Decode.string)
@@ -64,6 +86,20 @@ sermonDecoder =
         )
         (Decode.field "normalization_gate_adjustment" Decode.int)
         (Decode.field "normalization_volume_adjustment" Decode.int)
+        (Decode.maybe (Decode.field "applied_regions" (Decode.nullable (Decode.list regionDecoder))) |> Decode.map (Maybe.withDefault Nothing))
+        (Decode.oneOf [ Decode.field "edit_approved" Decode.bool, Decode.succeed False ])
+
+waveform : (Result Http.Error Waveform -> msg) -> String -> Cmd msg
+waveform toMsg id = Http.get { url = "/api/sermons/" ++ id ++ "/waveform", expect = Http.expectJson toMsg (Decode.map3 Waveform (Decode.field "duration" Decode.float) (Decode.field "samples_per_second" Decode.float) (Decode.field "samples" (Decode.list Decode.float))) }
+
+analyze : (Result Http.Error Timeline -> msg) -> String -> Cmd msg
+analyze toMsg id = Http.post { url = "/api/sermons/" ++ id ++ "/analyze", body = Http.emptyBody, expect = Http.expectJson toMsg (Decode.map2 Timeline (Decode.field "duration" Decode.float) (Decode.field "regions" (Decode.list regionDecoder))) }
+
+applyEdits : (Result Http.Error Sermon -> msg) -> String -> List Region -> Cmd msg
+applyEdits toMsg id regions = Http.post { url = "/api/sermons/" ++ id ++ "/apply-edits", body = Http.jsonBody (Encode.object [ ( "regions", Encode.list regionEncoder regions ) ]), expect = Http.expectJson toMsg sermonDecoder }
+
+approveEdit : (Result Http.Error Sermon -> msg) -> String -> Cmd msg
+approveEdit toMsg id = Http.post { url = "/api/sermons/" ++ id ++ "/approve-edit", body = Http.emptyBody, expect = Http.expectJson toMsg sermonDecoder }
 
 
 pipelineEventDecoder : Decoder PipelineEvent
