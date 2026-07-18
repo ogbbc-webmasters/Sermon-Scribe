@@ -262,8 +262,11 @@ func TestSermonAudio(t *testing.T) {
 	if resp.StatusCode != http.StatusPartialContent || string(got) != "mp3" {
 		t.Fatalf("proxy range response = %d %q", resp.StatusCode, got)
 	}
-	if resp.Header.Get("Content-Type") != "audio/mpeg" || resp.Header.Get("Content-Disposition") != `attachment; filename="normalized.mp3"` {
-		t.Fatalf("proxy headers = content-type %q disposition %q", resp.Header.Get("Content-Type"), resp.Header.Get("Content-Disposition"))
+	if resp.Header.Get("Content-Type") != "audio/mpeg" ||
+		resp.Header.Get("Content-Disposition") != `attachment; filename="normalized.mp3"` ||
+		resp.Header.Get("Cache-Control") != "no-store" {
+		t.Fatalf("proxy headers = content-type %q disposition %q cache-control %q",
+			resp.Header.Get("Content-Type"), resp.Header.Get("Content-Disposition"), resp.Header.Get("Cache-Control"))
 	}
 
 	resp, err = http.Get(ts.URL + "/api/sermons/" + sm.ID + "/audio/normalized")

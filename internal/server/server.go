@@ -326,8 +326,9 @@ func (s *Server) handleSermonAudio(w http.ResponseWriter, r *http.Request) {
 	}
 
 	dir := filepath.Join(s.UploadsDir, id)
+	audioType := r.PathValue("type")
 	var path, contentType, downloadName string
-	switch r.PathValue("type") {
+	switch audioType {
 	case "original":
 		path, err = originalAudioPath(dir)
 		contentType = "application/octet-stream"
@@ -373,6 +374,10 @@ func (s *Server) handleSermonAudio(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", contentType)
+	if audioType != "original" {
+		// Normalization reruns overwrite these paths, so clients must revalidate.
+		w.Header().Set("Cache-Control", "no-store")
+	}
 	if r.URL.Query().Get("download") == "1" {
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", downloadName))
 	}

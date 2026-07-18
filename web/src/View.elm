@@ -181,7 +181,7 @@ viewNormalizedAudio model sermon =
             [ audio
                 [ Ui.audioReviewPlayer
                 , controls True
-                , src (audioUrl sermon.id "proxy")
+                , src (normalizedAudioUrl sermon "proxy")
                 ]
                 []
             , p [ Ui.audioReviewLabel ]
@@ -197,7 +197,7 @@ viewNormalizedAudio model sermon =
                 )
             , p [ Ui.hint ]
                 [ a
-                    [ href (audioUrl sermon.id "proxy" ++ "?download=1")
+                    [ href (normalizedAudioUrl sermon "proxy" ++ "&download=1")
                     , download "normalized.mp3"
                     ]
                     [ text "Download MP3" ]
@@ -245,6 +245,15 @@ adjustmentAtLimit sermon adjustment =
 audioUrl : String -> String -> String
 audioUrl id audioType =
     "/api/sermons/" ++ id ++ "/audio/" ++ audioType
+
+
+normalizedAudioUrl : Sermon -> String -> String
+normalizedAudioUrl sermon audioType =
+    audioUrl sermon.id audioType
+        ++ "?gate="
+        ++ String.fromInt sermon.normalizationGateAdjustment
+        ++ "&volume="
+        ++ String.fromInt sermon.normalizationVolumeAdjustment
 
 
 viewSermonActions : Model -> Sermon -> Html Msg
