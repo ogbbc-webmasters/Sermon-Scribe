@@ -2,7 +2,7 @@
 set -euo pipefail
 
 go_version="$(awk '$1 == "go" { print $2; exit }' go.mod)"
-elm_version="$(sed -n 's/.*"elm-version": "\([^"]*\)".*/\1/p' elm.json)"
+elm_version="$(sed -n 's/.*"elm-version": "\([^"]*\)".*/\1/p' web/elm.json)"
 just_version="1.40.0"
 
 if (( EUID == 0 )); then
@@ -50,6 +50,6 @@ fi
 
 echo "Downloading project dependencies"
 go mod download
-elm make src/Main.elm --output=/dev/null
+(cd web && elm make src/Main.elm --output=/dev/null)
 
 echo "Development environment is ready. Run 'just run' to start the app on http://localhost:8000."
