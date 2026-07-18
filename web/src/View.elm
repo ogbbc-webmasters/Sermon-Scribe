@@ -14,15 +14,36 @@ import Ui
 
 view : Model -> Html Msg
 view model =
+    case model.editing of
+        Just sermon ->
+            viewEditor sermon
+
+        Nothing ->
+            div [ class "page" ]
+                [ div [ class "masthead" ]
+                    [ h1 [] [ text "Sermon Scribe" ] ]
+                , viewUpload model.upload
+                , h2 [] [ text "Sermons" ]
+                , viewOptionalError model.deleteError
+                , viewOptionalError model.retryError
+                , viewOptionalError model.normalizationError
+                , viewSermons model
+                ]
+
+
+viewEditor : Sermon -> Html Msg
+viewEditor sermon =
     div [ class "page" ]
         [ div [ class "masthead" ]
             [ h1 [] [ text "Sermon Scribe" ] ]
-        , viewUpload model.upload
-        , h2 [] [ text "Sermons" ]
-        , viewOptionalError model.deleteError
-        , viewOptionalError model.retryError
-        , viewOptionalError model.normalizationError
-        , viewSermons model
+        , h2 [] [ text ("Editing " ++ sermon.originalFilename) ]
+        , div [ Ui.emptyState ]
+            [ strong [] [ text "Coming soon" ]
+            , p [ Ui.hint ]
+                [ text "The automatic audio timeline editor will appear here." ]
+            ]
+        , p []
+            [ button [ Ui.button, onClick CloseEditor ] [ text "Back to Sermons" ] ]
         ]
 
 
@@ -147,13 +168,13 @@ viewNormalizedAudio model sermon =
             adjustmentButtons =
                 normalizationAdjustments
                     |> List.map
-                        (\( preset, labelText ) ->
+                        (\adjustment ->
                             button
                                 [ Ui.button
-                                , onClick (RerunNormalization sermon preset)
-                                , disabled (isBusy || preset == sermon.normalizationPreset)
+                                , onClick (RerunNormalization sermon adjustment.name)
+                                , disabled (isBusy || adjustmentAtLimit sermon adjustment.name)
                                 ]
-                                [ text labelText ]
+                                [ text adjustment.label ]
                         )
         in
         div [ Ui.audioReview ]
@@ -164,52 +185,61 @@ viewNormalizedAudio model sermon =
                 ]
                 []
             , p [ Ui.audioReviewLabel ]
-                [ text ("Current preset: " ++ presetLabel sermon.normalizationPreset) ]
+                [ text "How does the recording sound?" ]
             , div [ Ui.audioReviewControls ]
-                (a
+                (button
                     [ Ui.primaryButton
-                    , href (audioUrl sermon.id "proxy" ++ "?download=1")
-                    , download "normalized.mp3"
+                    , onClick (OpenEditor sermon)
+                    , disabled isBusy
                     ]
                     [ text "Continue" ]
                     :: adjustmentButtons
                 )
-            , p [ Ui.hint ] [ text "Continue downloads the normalized MP3." ]
+            , p [ Ui.hint ]
+                [ a
+                    [ href (audioUrl sermon.id "proxy" ++ "?download=1")
+                    , download "normalized.mp3"
+                    ]
+                    [ text "Download MP3" ]
+                ]
             ]
 
     else
         text ""
 
 
-normalizationAdjustments : List ( String, String )
+type alias NormalizationAdjustment =
+    { name : String
+    , label : String
+    }
+
+
+normalizationAdjustments : List NormalizationAdjustment
 normalizationAdjustments =
-    [ ( "stronger-gate", "I hear too much background noise" )
-    , ( "no-gate", "Some words sound cut off" )
-    , ( "louder", "The recording is too quiet" )
-    , ( "quieter", "The recording is too loud" )
+    [ { name = "more-gate", label = "I hear too much background noise" }
+    , { name = "less-gate", label = "Some words sound cut off" }
+    , { name = "more-volume", label = "The recording is too quiet" }
+    , { name = "less-volume", label = "The recording is too loud" }
     ]
 
 
-presetLabel : String -> String
-presetLabel preset =
-    case preset of
-        "standard" ->
-            "Standard"
+adjustmentAtLimit : Sermon -> String -> Bool
+adjustmentAtLimit sermon adjustment =
+    case adjustment of
+        "more-gate" ->
+            sermon.normalizationGateAdjustment >= 3
 
-        "stronger-gate" ->
-            "Stronger noise gate"
+        "less-gate" ->
+            sermon.normalizationGateAdjustment <= -3
 
-        "no-gate" ->
-            "No noise gate"
+        "more-volume" ->
+            sermon.normalizationVolumeAdjustment >= 3
 
-        "louder" ->
-            "Louder"
-
-        "quieter" ->
-            "Quieter"
+        "less-volume" ->
+            sermon.normalizationVolumeAdjustment <= -3
 
         _ ->
-            capitalize preset
+            True
 
 
 audioUrl : String -> String -> String

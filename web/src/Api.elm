@@ -29,7 +29,8 @@ type alias Sermon =
     , status : String
     , progress : Int
     , error : Maybe String
-    , normalizationPreset : String
+    , normalizationGateAdjustment : Int
+    , normalizationVolumeAdjustment : Int
     }
 
 
@@ -41,11 +42,16 @@ type PipelineEvent
 
 sermonDecoder : Decoder Sermon
 sermonDecoder =
-    Decode.map2
-        (\sermon preset -> { sermon | normalizationPreset = preset })
+    Decode.map3
+        (\sermon gate volume ->
+            { sermon
+                | normalizationGateAdjustment = gate
+                , normalizationVolumeAdjustment = volume
+            }
+        )
         (Decode.map8
             (\id originalFilename uploadedAt uploadedBy stage status progress error ->
-                Sermon id originalFilename uploadedAt uploadedBy stage status progress error "standard"
+                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0
             )
             (Decode.field "id" Decode.string)
             (Decode.field "original_filename" Decode.string)
@@ -56,7 +62,8 @@ sermonDecoder =
             (Decode.field "progress" Decode.int)
             (Decode.field "error" (Decode.nullable Decode.string))
         )
-        (Decode.field "normalization_preset" Decode.string)
+        (Decode.field "normalization_gate_adjustment" Decode.int)
+        (Decode.field "normalization_volume_adjustment" Decode.int)
 
 
 pipelineEventDecoder : Decoder PipelineEvent
@@ -151,11 +158,11 @@ retrySermon toMsg id =
 
 
 rerunNormalization : (Result Http.Error Sermon -> msg) -> String -> String -> Cmd msg
-rerunNormalization toMsg id preset =
+rerunNormalization toMsg id adjustment =
     Http.post
         { url = "/api/sermons/" ++ id ++ "/normalize"
         , body =
             Http.jsonBody
-                (Encode.object [ ( "preset", Encode.string preset ) ])
+                (Encode.object [ ( "adjustment", Encode.string adjustment ) ])
         , expect = Http.expectJson toMsg sermonDecoder
         }

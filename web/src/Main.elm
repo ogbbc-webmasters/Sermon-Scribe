@@ -27,6 +27,7 @@ main =
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( { sermons = Loading
+      , editing = Nothing
       , hasPipelineSnapshot = False
       , upload = Idle
       , confirmingDelete = Nothing
@@ -164,12 +165,12 @@ update msg model =
             , Cmd.none
             )
 
-        RerunNormalization sermon preset ->
+        RerunNormalization sermon adjustment ->
             ( { model
                 | rerunning = Set.insert sermon.id model.rerunning
                 , normalizationError = Nothing
               }
-            , Api.rerunNormalization (RerunNormalizationFinished sermon) sermon.id preset
+            , Api.rerunNormalization (RerunNormalizationFinished sermon) sermon.id adjustment
             )
 
         RerunNormalizationFinished original (Ok sermon) ->
@@ -189,10 +190,16 @@ update msg model =
         RerunNormalizationFinished original (Err _) ->
             ( { model
                 | rerunning = Set.remove original.id model.rerunning
-                , normalizationError = Just "Could not re-run normalization. Please try again."
+                , normalizationError = Just "Could not adjust the recording. Please try again."
               }
             , Cmd.none
             )
+
+        OpenEditor sermon ->
+            ( { model | editing = Just sermon }, Cmd.none )
+
+        CloseEditor ->
+            ( { model | editing = Nothing }, Cmd.none )
 
         AskDelete sermon ->
             ( { model | confirmingDelete = Just sermon }, Cmd.none )
