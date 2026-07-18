@@ -6,9 +6,9 @@ import (
 	"log"
 	"net/http"
 
-	sermonscribe "github.com/ogbbc-webmasters/Sermon-Scribe"
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/server"
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
+	"github.com/ogbbc-webmasters/Sermon-Scribe/web"
 )
 
 func main() {
@@ -26,7 +26,7 @@ func main() {
 	srv := &server.Server{Store: st, UploadsDir: *uploadsDir}
 
 	log.Printf("listening on %s", *addr)
-	if err := http.ListenAndServe(*addr, srv.Routes(sermonscribe.WebFS())); err != nil {
+	if err := http.ListenAndServe(*addr, srv.Routes(web.WebFS())); err != nil {
 		log.Fatal(err)
 	}
 }

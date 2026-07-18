@@ -1,6 +1,6 @@
 # Compile the Elm frontend to web/elm.js.
 build-elm:
-    elm make src/Main.elm --optimize --output=web/elm.js
+    cd web && elm make src/Main.elm --optimize --output=elm.js
 
 # Build the server binary (embeds web/, so the Elm build runs first).
 build: build-elm
