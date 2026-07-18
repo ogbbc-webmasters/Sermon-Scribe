@@ -7,7 +7,9 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -28,6 +30,16 @@ func main() {
 		log.Fatal(err)
 	}
 	defer st.Close()
+
+	interruptedUploads, err := st.DiscardInterruptedUploads()
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, id := range interruptedUploads {
+		if err := os.RemoveAll(filepath.Join(*uploadsDir, id)); err != nil {
+			log.Printf("remove interrupted upload %s: %v", id, err)
+		}
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

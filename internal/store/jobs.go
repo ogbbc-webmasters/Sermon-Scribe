@@ -129,6 +129,44 @@ func enqueueJobTx(q sqlExecer, job NewJob, now time.Time) error {
 	return err
 }
 
+// DiscardInterruptedUploads removes upload records that cannot resume after a
+// process restart. The caller removes the corresponding partial directories.
+func (s *Store) DiscardInterruptedUploads() ([]string, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query(
+		`SELECT id FROM sermons
+		 WHERE stage = 'upload' AND status IN ('pending', 'running')`)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if _, err := tx.Exec(
+		`DELETE FROM sermons
+		 WHERE stage = 'upload' AND status IN ('pending', 'running')`); err != nil {
+		return nil, err
+	}
+	return ids, tx.Commit()
+}
+
 // RecoverRunningJobs returns work abandoned by a stopped process to the queue.
 func (s *Store) RecoverRunningJobs() error {
 	tx, err := s.db.Begin()

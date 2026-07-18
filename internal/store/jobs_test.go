@@ -233,3 +233,40 @@ func TestOpenRecoversRunningJobs(t *testing.T) {
 		t.Fatalf("recovered attempts = %d, want 0", job.Attempts)
 	}
 }
+
+func TestDiscardInterruptedUploads(t *testing.T) {
+	st := openTestStore(t)
+	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
+	for _, item := range []struct {
+		id     string
+		status string
+	}{
+		{id: "pending-upload", status: "pending"},
+		{id: "running-upload", status: "running"},
+	} {
+		if err := st.CreateSermon(Sermon{
+			ID: item.id, OriginalFilename: item.id + ".wav",
+			UploadedAt: now.Format(time.RFC3339Nano),
+			Stage:      "upload", Status: item.status,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	seedNormalizeJob(t, st, "complete-upload", "job-1", now)
+
+	ids, err := st.DiscardInterruptedUploads()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("discarded ids = %v, want two interrupted uploads", ids)
+	}
+	for _, id := range []string{"pending-upload", "running-upload"} {
+		if _, err := st.GetSermon(id); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("GetSermon(%q) error = %v, want ErrNotFound", id, err)
+		}
+	}
+	if _, err := st.GetSermon("complete-upload"); err != nil {
+		t.Fatalf("completed upload was discarded: %v", err)
+	}
+}
