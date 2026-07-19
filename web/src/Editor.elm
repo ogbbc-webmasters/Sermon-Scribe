@@ -1,8 +1,8 @@
 module Editor exposing (Effect(..), Model, Msg(..), init, pipeline, update, view)
 
 import Api exposing (Region, Sermon, Timeline, Waveform)
-import Html exposing (Html, audio, button, canvas, div, h1, h2, h3, p, span, strong, text)
-import Html.Attributes exposing (attribute, class, controls, disabled, id, src, tabindex)
+import Html exposing (Html, audio, button, canvas, div, h1, h2, h3, node, p, span, strong, text)
+import Html.Attributes exposing (attribute, class, controls, disabled, id, src, tabindex, title)
 import Html.Events exposing (onClick)
 import Http
 import Json.Decode as Decode
@@ -606,14 +606,31 @@ viewTimelineControls model =
     in
     div [ class "timeline-controls" ]
         [ div [ class "timeline-controls__buttons" ]
-            [ button [ Ui.button, onClick ZoomOut, disabled (model.zoom <= 1) ] [ text "Zoom Out" ]
-            , button [ Ui.button, onClick ZoomIn, disabled (model.zoom >= 512) ] [ text "Zoom In" ]
-            , button [ Ui.button, onClick (Pan -1), disabled (model.viewStart <= 0) ] [ text "Earlier" ]
-            , button [ Ui.button, onClick (Pan 1), disabled (viewEnd >= duration) ] [ text "Later" ]
-            , button [ Ui.button, onClick ShowAll, disabled (model.zoom <= 1) ] [ text "Show All" ]
+            [ timelineIconButton "Earlier" "material-symbols:navigate-before-rounded" (Pan -1) (model.viewStart <= 0)
+            , timelineIconButton "Zoom out" "material-symbols:zoom-out-rounded" ZoomOut (model.zoom <= 1)
+            , timelineIconButton "Show all" "material-symbols:fit-screen-rounded" ShowAll (model.zoom <= 1)
+            , timelineIconButton "Zoom in" "material-symbols:zoom-in-rounded" ZoomIn (model.zoom >= 512)
+            , timelineIconButton "Later" "material-symbols:navigate-next-rounded" (Pan 1) (viewEnd >= duration)
             ]
         , p [ class "timeline-controls__range" ]
             [ text ("Showing " ++ Timeline.timestamp model.viewStart ++ " – " ++ Timeline.timestamp viewEnd ++ " of " ++ Timeline.timestamp duration) ]
+        ]
+
+
+timelineIconButton label iconName message isDisabled =
+    button
+        [ Ui.iconButton
+        , onClick message
+        , disabled isDisabled
+        , attribute "aria-label" label
+        , title label
+        ]
+        [ node "iconify-icon"
+            [ class "button__icon"
+            , attribute "icon" iconName
+            , attribute "aria-hidden" "true"
+            ]
+            []
         ]
 
 

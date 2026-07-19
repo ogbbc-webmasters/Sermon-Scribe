@@ -17,6 +17,7 @@ module Ui exposing
     , emptyState
     , errorText
     , hint
+    , iconButton
     , primaryButton
     , progress
     , progressFill
@@ -67,35 +68,47 @@ audioReviewControls =
 -- BUTTONS
 
 
-{-| Neutral button. -}
+{-| Neutral button.
+-}
 button : Html.Attribute msg
 button =
     class "button"
 
 
-{-| Prominent call-to-action button (green). -}
+{-| Prominent call-to-action button (green).
+-}
 primaryButton : Html.Attribute msg
 primaryButton =
     class "button button--primary"
 
 
-{-| Destructive-action button (red). -}
+{-| Destructive-action button (red).
+-}
 dangerButton : Html.Attribute msg
 dangerButton =
     class "button button--danger"
+
+
+{-| Compact circular button whose accessible name is supplied by the caller.
+-}
+iconButton : Html.Attribute msg
+iconButton =
+    class "button button--icon"
 
 
 
 -- BADGES
 
 
-{-| Status pill, default (green) look. -}
+{-| Status pill, default (green) look.
+-}
 badge : Html.Attribute msg
 badge =
     class "badge"
 
 
-{-| Status pill for failed/error states (red). -}
+{-| Status pill for failed/error states (red).
+-}
 badgeFailed : Html.Attribute msg
 badgeFailed =
     class "badge badge--failed"
@@ -105,7 +118,8 @@ badgeFailed =
 -- CARDS
 
 
-{-| List-item card (currently the sermon card). -}
+{-| List-item card (currently the sermon card).
+-}
 card : Html.Attribute msg
 card =
     class "sermon-card"
@@ -135,7 +149,8 @@ sermonActions =
 -- CONFIRMATION
 
 
-{-| Inline confirmation panel for destructive actions. -}
+{-| Inline confirmation panel for destructive actions.
+-}
 confirmBox : Html.Attribute msg
 confirmBox =
     class "confirm-box"
@@ -155,13 +170,15 @@ confirmBoxButtons =
 -- PROGRESS
 
 
-{-| Progress bar track. -}
+{-| Progress bar track.
+-}
 progress : Html.Attribute msg
 progress =
     class "progress"
 
 
-{-| Progress bar fill (width set inline by the caller). -}
+{-| Progress bar fill (width set inline by the caller).
+-}
 progressFill : Html.Attribute msg
 progressFill =
     class "progress__fill"
@@ -171,19 +188,22 @@ progressFill =
 -- TEXT & STATES
 
 
-{-| Muted helper text. -}
+{-| Muted helper text.
+-}
 hint : Html.Attribute msg
 hint =
     class "hint"
 
 
-{-| Error message text. -}
+{-| Error message text.
+-}
 errorText : Html.Attribute msg
 errorText =
     class "error-text"
 
 
-{-| Placeholder for an empty list. -}
+{-| Placeholder for an empty list.
+-}
 emptyState : Html.Attribute msg
 emptyState =
     class "empty-state"
