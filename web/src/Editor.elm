@@ -1,7 +1,7 @@
 module Editor exposing (Effect(..), Model, Msg(..), init, pipeline, update, view)
 
 import Api exposing (Region, Sermon, Timeline, Waveform)
-import Html exposing (Html, audio, button, canvas, div, h1, h2, h3, node, p, span, strong, text)
+import Html exposing (Html, audio, button, canvas, div, h1, node, p, span, strong, text)
 import Html.Attributes exposing (attribute, class, controls, disabled, id, src, tabindex, title)
 import Html.Events exposing (onClick)
 import Http
@@ -28,6 +28,7 @@ type alias Model =
     , playhead : Float
     , zoom : Float
     , viewStart : Float
+    , nudgeStep : Float
     }
 
 
@@ -37,14 +38,19 @@ type Msg
     | GotDraft Decode.Value
     | Select Int
     | Toggle Int
+    | SetKeep Int Bool
     | Nudge Int Float
     | Boundary Decode.Value
+    | CanvasSelect Decode.Value
     | Play Int
     | Playhead Decode.Value
     | ZoomIn
     | ZoomOut
     | Pan Float
     | ShowAll
+    | SetNudgeStep Float
+    | SelectPrevious
+    | SelectNext
     | Apply
     | Applied (Result Http.Error Sermon)
     | ConfirmApproval
@@ -71,7 +77,7 @@ type Effect
 
 init : Sermon -> ( Model, Cmd Msg, Effect )
 init sermon =
-    ( { sermon = sermon, waveform = Nothing, analysis = Nothing, draft = Nothing, draftReceived = False, regions = [], selected = 0, dirty = False, applying = False, finalReady = sermon.stage == "edit" && sermon.status == "done", confirmingApproval = False, error = Nothing, backWarning = False, playhead = 0, zoom = 1, viewStart = 0 }
+    ( { sermon = sermon, waveform = Nothing, analysis = Nothing, draft = Nothing, draftReceived = False, regions = [], selected = 0, dirty = False, applying = False, finalReady = sermon.stage == "edit" && sermon.status == "done", confirmingApproval = False, error = Nothing, backWarning = False, playhead = 0, zoom = 1, viewStart = 0, nudgeStep = 0.01 }
     , Cmd.batch [ Api.waveform GotWaveform sermon.id, Api.analyze GotAnalysis sermon.id ]
     , LoadDraft sermon.id
     )
@@ -150,7 +156,7 @@ update msg model =
                     ( model, Cmd.none, None )
 
         Select index ->
-            ( { model | selected = index }, Cmd.none, None )
+            redraw (selectRegion index model)
 
         Toggle index ->
             if busy model then
@@ -172,6 +178,26 @@ update msg model =
                         , selected = index
                     }
 
+        SetKeep index keep ->
+            if busy model then
+                ( model, Cmd.none, None )
+
+            else
+                changed
+                    { model
+                        | regions =
+                            List.indexedMap
+                                (\i region ->
+                                    if i == index then
+                                        { region | keep = keep }
+
+                                    else
+                                        region
+                                )
+                                model.regions
+                        , selected = index
+                    }
+
         Nudge boundary delta ->
             if busy model then
                 ( model, Cmd.none, None )
@@ -187,6 +213,14 @@ update msg model =
 
                     else
                         changeBoundary boundary time model
+
+                Err _ ->
+                    ( model, Cmd.none, None )
+
+        CanvasSelect value ->
+            case Decode.decodeValue Decode.int value of
+                Ok index ->
+                    redraw (selectRegion index model)
 
                 Err _ ->
                     ( model, Cmd.none, None )
@@ -225,6 +259,15 @@ update msg model =
 
         ShowAll ->
             redraw { model | zoom = 1, viewStart = 0 }
+
+        SetNudgeStep step ->
+            ( { model | nudgeStep = step }, Cmd.none, None )
+
+        SelectPrevious ->
+            redraw (selectRegion (model.selected - 1) model)
+
+        SelectNext ->
+            redraw (selectRegion (model.selected + 1) model)
 
         Apply ->
             if busy model then
@@ -404,6 +447,7 @@ renderEffect model =
                     , ( "samples", Encode.list Encode.float wave.samples )
                     , ( "regions", encodeRegions model.regions )
                     , ( "playhead", Encode.float model.playhead )
+                    , ( "selected", Encode.int model.selected )
                     , ( "view_start", Encode.float model.viewStart )
                     , ( "view_end", Encode.float (model.viewStart + visibleSpan model) )
                     ]
@@ -415,7 +459,16 @@ renderEffect model =
 
 
 view model =
-    div [ class "editor" ] [ h1 [] [ text "Automatic Audio Timeline" ], p [ class "editor__filename" ] [ text model.sermon.originalFilename ], viewBody model ]
+    div [ class "editor" ]
+        [ div [ class "editor__header" ]
+            [ timelineIconButton "Back to sermons" "mdi:arrow-left" Back (busy model)
+            , div []
+                [ h1 [ class "editor__title" ] [ text "Edit audio" ]
+                , p [ class "editor__filename" ] [ text model.sermon.originalFilename ]
+                ]
+            ]
+        , viewBody model
+        ]
 
 
 viewBody model =
@@ -431,26 +484,30 @@ viewBody model =
     else
         div []
             [ viewError model.error
-            , canvas
-                [ id "timeline-canvas"
-                , class "timeline focusable"
-                , attribute "role" "img"
-                , attribute "aria-label" "Audio waveform with editable regions"
-                , attribute "data-busy"
-                    (if busy model then
-                        "true"
+            , div [ class "timeline-stage" ]
+                [ canvas
+                    [ id "timeline-canvas"
+                    , class "timeline focusable"
+                    , attribute "role" "img"
+                    , attribute "aria-label" "Audio waveform with editable regions"
+                    , attribute "data-busy"
+                        (if busy model then
+                            "true"
 
-                     else
-                        "false"
-                    )
-                , tabindex 0
+                         else
+                            "false"
+                        )
+                    , tabindex 0
+                    ]
+                    []
+                , viewTimelineRange model
                 ]
-                []
             , viewTimelineControls model
             , p [ class "timeline-key" ]
-                [ text "Speech is plain, singing has diagonal lines, and silence has dots. Vertically hatched sections will be deleted. Color is only an extra cue." ]
+                [ text "Tap a section to edit it. Patterns identify audio type; vertical hatching means delete." ]
             , audio [ id "timeline-audio", class "editor__audio", controls True, src (audioSource model) ] []
             , viewStatus model
+            , viewRegionInspector model
             , div [ class "editor__actions" ]
                 [ button [ Ui.primaryButton, onClick Apply, disabled (busy model || model.finalReady || not (validPlan model)) ]
                     [ text
@@ -470,8 +527,6 @@ viewBody model =
                 ]
             , approval model
             , backWarning model
-            , h2 [] [ text "Sections" ]
-            , div [ class "region-list" ] (List.indexedMap (regionCard model) model.regions)
             ]
 
 
@@ -522,66 +577,121 @@ backWarning model =
         text ""
 
 
-regionCard model index region =
-    div
+viewRegionInspector model =
+    case get model.selected model.regions of
+        Nothing ->
+            text ""
+
+        Just region ->
+            div [ class "region-inspector" ]
+                [ div [ class "region-inspector__nav" ]
+                    [ timelineIconButton "Previous section" "mdi:chevron-left" SelectPrevious (model.selected <= 0)
+                    , div [ class "region-inspector__identity" ]
+                        [ strong [ class "region-inspector__title" ]
+                            [ text (regionLabel region.regionType ++ " " ++ String.fromInt (model.selected + 1) ++ " of " ++ String.fromInt (List.length model.regions)) ]
+                        , span [ class "region-inspector__time" ]
+                            [ text (Timeline.timestamp region.start ++ " – " ++ Timeline.timestamp region.end) ]
+                        ]
+                    , timelineIconButton "Play section" "mdi:play" (Play model.selected) False
+                    , timelineIconButton "Next section" "mdi:chevron-right" SelectNext (model.selected >= List.length model.regions - 1)
+                    ]
+                , div [ class "region-inspector__decision" ]
+                    [ decisionButton "Keep" "mdi:check" (SetKeep model.selected True) region.keep (busy model)
+                    , decisionButton "Delete" "mdi:content-cut" (SetKeep model.selected False) (not region.keep) (busy model)
+                    ]
+                , div [ class "precision-editor" ]
+                    [ div [ class "precision-editor__header" ]
+                        [ strong [] [ text "Boundary adjustment" ]
+                        , div [ class "precision-editor__steps" ]
+                            [ stepButton model 0.01
+                            , stepButton model 0.1
+                            , stepButton model 1
+                            ]
+                        ]
+                    , if model.selected > 0 then
+                        boundaryRow model "Start" model.selected region.start
+
+                      else
+                        text ""
+                    , if model.selected < List.length model.regions - 1 then
+                        boundaryRow model "End" (model.selected + 1) region.end
+
+                      else
+                        text ""
+                    ]
+                ]
+
+
+regionLabel regionType =
+    case regionType of
+        "speaking" ->
+            "Speech"
+
+        "singing" ->
+            "Singing"
+
+        _ ->
+            "Silence"
+
+
+decisionButton label iconName message selected isBusy =
+    button
         [ class
-            ("region-card"
-                ++ (if index == model.selected then
-                        " region-card--selected"
+            (if selected then
+                "decision-button decision-button--selected"
 
-                    else
-                        ""
-                   )
+             else
+                "decision-button"
             )
-        , onClick (Select index)
+        , onClick message
+        , disabled (isBusy || selected)
+        , attribute "aria-pressed"
+            (if selected then
+                "true"
+
+             else
+                "false"
+            )
         ]
-        [ div [ class "region-card__heading" ]
-            [ h3 [ class "region-card__title" ] [ text (String.fromInt (index + 1) ++ ". " ++ region.regionType) ]
-            , strong []
-                [ text
-                    (if region.keep then
-                        "KEPT"
-
-                     else
-                        "DELETED"
-                    )
-                ]
-            ]
-        , p [] [ text (Timeline.timestamp region.start ++ " – " ++ Timeline.timestamp region.end) ]
-        , div [ class "region-card__controls" ]
-            [ button [ Ui.button, onClick (Toggle index), disabled (busy model) ]
-                [ text
-                    (if region.keep then
-                        "Delete Section"
-
-                     else
-                        "Keep Section"
-                    )
-                ]
-            , button [ Ui.button, onClick (Play index) ] [ text "Play Region" ]
-            ]
-        , if index > 0 then
-            nudgeControls model index
-
-          else
-            text ""
-        , if index < List.length model.regions - 1 then
-            nudgeControls model (index + 1)
-
-          else
-            text ""
+        [ icon iconName
+        , text label
         ]
 
 
-nudgeControls model boundary =
-    div [ class "boundary-controls" ]
-        [ span [] [ text ("Boundary " ++ String.fromInt boundary ++ ":") ]
-        , button [ Ui.button, onClick (Nudge boundary -1), disabled (busy model) ] [ text "−1s" ]
-        , button [ Ui.button, onClick (Nudge boundary -0.1), disabled (busy model) ] [ text "−0.1s" ]
-        , button [ Ui.button, onClick (Nudge boundary -0.01), disabled (busy model) ] [ text "−0.01s" ]
-        , button [ Ui.button, onClick (Nudge boundary 0.01), disabled (busy model) ] [ text "+0.01s" ]
-        , button [ Ui.button, onClick (Nudge boundary 0.1), disabled (busy model) ] [ text "+0.1s" ]
-        , button [ Ui.button, onClick (Nudge boundary 1), disabled (busy model) ] [ text "+1s" ]
+stepButton model step =
+    button
+        [ class
+            (if model.nudgeStep == step then
+                "step-button step-button--selected"
+
+             else
+                "step-button"
+            )
+        , onClick (SetNudgeStep step)
+        , attribute "aria-pressed"
+            (if model.nudgeStep == step then
+                "true"
+
+             else
+                "false"
+            )
+        ]
+        [ text
+            (if step == 1 then
+                "1s"
+
+             else
+                String.fromFloat step ++ "s"
+            )
+        ]
+
+
+boundaryRow model label boundary time =
+    div [ class "precision-editor__row" ]
+        [ span [ class "precision-editor__label" ] [ text label ]
+        , timelineIconButton ("Move " ++ String.toLower label ++ " earlier") "mdi:minus" (Nudge boundary -model.nudgeStep) (busy model)
+        , strong [ class "precision-editor__time" ] [ text (Timeline.timestamp time) ]
+        , timelineIconButton ("Move " ++ String.toLower label ++ " later") "mdi:plus" (Nudge boundary model.nudgeStep) (busy model)
         ]
 
 
@@ -606,15 +716,25 @@ viewTimelineControls model =
     in
     div [ class "timeline-controls" ]
         [ div [ class "timeline-controls__buttons" ]
-            [ timelineIconButton "Earlier" "material-symbols:navigate-before-rounded" (Pan -1) (model.viewStart <= 0)
+            [ timelineIconButton "Earlier" "mdi:chevron-left" (Pan -1) (model.viewStart <= 0)
             , timelineIconButton "Zoom out" "material-symbols:zoom-out-rounded" ZoomOut (model.zoom <= 1)
             , timelineIconButton "Show all" "material-symbols:fit-screen-rounded" ShowAll (model.zoom <= 1)
             , timelineIconButton "Zoom in" "material-symbols:zoom-in-rounded" ZoomIn (model.zoom >= 512)
-            , timelineIconButton "Later" "material-symbols:navigate-next-rounded" (Pan 1) (viewEnd >= duration)
+            , timelineIconButton "Later" "mdi:chevron-right" (Pan 1) (viewEnd >= duration)
             ]
-        , p [ class "timeline-controls__range" ]
-            [ text ("Showing " ++ Timeline.timestamp model.viewStart ++ " – " ++ Timeline.timestamp viewEnd ++ " of " ++ Timeline.timestamp duration) ]
         ]
+
+
+viewTimelineRange model =
+    let
+        duration =
+            model.waveform |> Maybe.map .duration |> Maybe.withDefault 0
+
+        viewEnd =
+            min duration (model.viewStart + visibleSpan model)
+    in
+    p [ class "timeline-stage__range" ]
+        [ text (Timeline.timestamp model.viewStart ++ " – " ++ Timeline.timestamp viewEnd) ]
 
 
 timelineIconButton label iconName message isDisabled =
@@ -625,17 +745,46 @@ timelineIconButton label iconName message isDisabled =
         , attribute "aria-label" label
         , title label
         ]
-        [ node "iconify-icon"
-            [ class "button__icon"
-            , attribute "icon" iconName
-            , attribute "aria-hidden" "true"
-            ]
-            []
+        [ icon iconName ]
+
+
+icon iconName =
+    node "iconify-icon"
+        [ class "button__icon"
+        , attribute "icon" iconName
+        , attribute "aria-hidden" "true"
         ]
+        []
 
 
 redraw model =
     ( model, Cmd.none, renderEffect model )
+
+
+selectRegion requested model =
+    let
+        index =
+            max 0 (min (List.length model.regions - 1) requested)
+
+        selected =
+            get index model.regions
+
+        span =
+            visibleSpan model
+
+        start =
+            selected
+                |> Maybe.andThen
+                    (\region ->
+                        if region.start < model.viewStart || region.end > model.viewStart + span then
+                            Just (clampViewStart model ((region.start + region.end - span) / 2))
+
+                        else
+                            Nothing
+                    )
+                |> Maybe.withDefault model.viewStart
+    in
+    { model | selected = index, viewStart = start }
 
 
 setZoom requested model =
