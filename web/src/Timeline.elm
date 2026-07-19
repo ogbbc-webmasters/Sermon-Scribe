@@ -128,13 +128,23 @@ timestamp : Float -> String
 timestamp seconds =
     let
         whole =
-            round (seconds * 10)
+            round (seconds * 100)
 
         minutes =
-            whole // 600
+            whole // 6000
 
         remainder =
-            toFloat (modBy 600 whole) / 10
+            toFloat (modBy 6000 whole) / 100
+
+        formattedRemainder =
+            String.fromFloat remainder
+
+        decimals =
+            formattedRemainder
+                |> String.split "."
+                |> List.drop 1
+                |> List.head
+                |> Maybe.withDefault ""
     in
     String.fromInt minutes
         ++ ":"
@@ -144,4 +154,14 @@ timestamp seconds =
             else
                 ""
            )
-        ++ String.fromFloat remainder
+        ++ formattedRemainder
+        ++ (case String.length decimals of
+                0 ->
+                    ".00"
+
+                1 ->
+                    "0"
+
+                _ ->
+                    ""
+           )

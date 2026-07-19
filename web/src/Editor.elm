@@ -573,7 +573,15 @@ regionCard model index region =
 
 
 nudgeControls model boundary =
-    div [ class "boundary-controls" ] [ span [] [ text ("Boundary " ++ String.fromInt boundary ++ ":") ], button [ Ui.button, onClick (Nudge boundary -1), disabled (busy model) ] [ text "−1s" ], button [ Ui.button, onClick (Nudge boundary -0.1), disabled (busy model) ] [ text "−0.1s" ], button [ Ui.button, onClick (Nudge boundary 0.1), disabled (busy model) ] [ text "+0.1s" ], button [ Ui.button, onClick (Nudge boundary 1), disabled (busy model) ] [ text "+1s" ] ]
+    div [ class "boundary-controls" ]
+        [ span [] [ text ("Boundary " ++ String.fromInt boundary ++ ":") ]
+        , button [ Ui.button, onClick (Nudge boundary -1), disabled (busy model) ] [ text "−1s" ]
+        , button [ Ui.button, onClick (Nudge boundary -0.1), disabled (busy model) ] [ text "−0.1s" ]
+        , button [ Ui.button, onClick (Nudge boundary -0.01), disabled (busy model) ] [ text "−0.01s" ]
+        , button [ Ui.button, onClick (Nudge boundary 0.01), disabled (busy model) ] [ text "+0.01s" ]
+        , button [ Ui.button, onClick (Nudge boundary 0.1), disabled (busy model) ] [ text "+0.1s" ]
+        , button [ Ui.button, onClick (Nudge boundary 1), disabled (busy model) ] [ text "+1s" ]
+        ]
 
 
 busy model =
@@ -598,7 +606,7 @@ viewTimelineControls model =
     div [ class "timeline-controls" ]
         [ div [ class "timeline-controls__buttons" ]
             [ button [ Ui.button, onClick ZoomOut, disabled (model.zoom <= 1) ] [ text "Zoom Out" ]
-            , button [ Ui.button, onClick ZoomIn, disabled (model.zoom >= 64) ] [ text "Zoom In" ]
+            , button [ Ui.button, onClick ZoomIn, disabled (model.zoom >= 512) ] [ text "Zoom In" ]
             , button [ Ui.button, onClick (Pan -1), disabled (model.viewStart <= 0) ] [ text "Earlier" ]
             , button [ Ui.button, onClick (Pan 1), disabled (viewEnd >= duration) ] [ text "Later" ]
             , button [ Ui.button, onClick ShowAll, disabled (model.zoom <= 1) ] [ text "Show All" ]
@@ -624,7 +632,7 @@ setZoom requested model =
             model.viewStart + oldSpan / 2
 
         zoom =
-            max 1 (min 64 requested)
+            max 1 (min 512 requested)
 
         newSpan =
             if zoom <= 0 then
