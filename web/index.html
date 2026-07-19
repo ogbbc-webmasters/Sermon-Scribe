@@ -33,7 +33,17 @@
       const ctx = canvas.getContext("2d"); ctx.scale(dpr, dpr); const w = rect.width, h = 220, duration = renderModel.duration || 1, viewStart = renderModel.view_start || 0, viewEnd = renderModel.view_end || duration, viewDuration = Math.max(.001, viewEnd - viewStart);
       const styles=getComputedStyle(document.documentElement), color=(name)=>styles.getPropertyValue(name).trim();
       ctx.fillStyle = color("--card"); ctx.fillRect(0, 0, w, h);
-      (renderModel.regions || []).forEach((r) => { const start=Math.max(viewStart,r.start),end=Math.min(viewEnd,r.end);if(end<=start)return;ctx.fillStyle = color(r.type === "speaking" ? "--green-line" : r.type === "singing" ? "--red-line" : "--line"); ctx.fillRect((start-viewStart)/viewDuration*w, 0, (end-start)/viewDuration*w, h); if (!r.keep) { ctx.save();ctx.globalAlpha=.18;ctx.fillStyle=color("--ink");for(let x=(start-viewStart)/viewDuration*w;x<(end-viewStart)/viewDuration*w;x+=12)ctx.fillRect(x,0,5,h);ctx.restore(); } });
+      (renderModel.regions || []).forEach((r) => {
+        const start=Math.max(viewStart,r.start),end=Math.min(viewEnd,r.end);if(end<=start)return;
+        const left=(start-viewStart)/viewDuration*w,right=(end-viewStart)/viewDuration*w,width=right-left;
+        ctx.fillStyle=color(r.type === "speaking" ? "--green-line" : r.type === "singing" ? "--red-line" : "--line");ctx.fillRect(left,0,width,h);
+        ctx.save();ctx.strokeStyle=color("--ink");ctx.fillStyle=color("--ink");ctx.globalAlpha=.22;ctx.lineWidth=1;
+        if(r.type==="singing"){for(let x=left-h;x<right;x+=14){ctx.beginPath();ctx.moveTo(x,h);ctx.lineTo(x+h,0);ctx.stroke();}}
+        if(r.type==="silence"){for(let y=12;y<h;y+=16){for(let x=left+8;x<right;x+=16)ctx.fillRect(x,y,2,2);}}
+        ctx.restore();
+        if(!r.keep){ctx.save();ctx.globalAlpha=.24;ctx.fillStyle=color("--ink");for(let x=left;x<right;x+=12)ctx.fillRect(x,0,5,h);ctx.restore();}
+        if(width>72){ctx.save();ctx.fillStyle=color("--ink");ctx.globalAlpha=.8;ctx.font="600 12px system-ui, sans-serif";ctx.textAlign="center";ctx.fillText(r.type==="speaking"?"SPEECH":r.type.toUpperCase(),left+width/2,18);ctx.fillText(r.keep?"KEEP":"DELETE",left+width/2,h-10);ctx.restore();}
+      });
       ctx.fillStyle = color("--ink"); const samples=renderModel.samples, first=Math.max(0,Math.floor(viewStart/duration*samples.length)),last=Math.min(samples.length,Math.ceil(viewEnd/duration*samples.length)),per=Math.max(1,Math.floor((last-first)/w));
       for(let x=0;x<w;x++){ let peak=0,start=first+Math.floor(x*(last-first)/w);for(let i=start;i<Math.min(last,start+per);i++)peak=Math.max(peak,Math.abs(samples[i]||0));ctx.fillRect(x,h/2-peak*h*.45,1,Math.max(1,peak*h*.9)); }
       const playhead=renderModel.playhead||0;if(playhead>=viewStart&&playhead<=viewEnd){ctx.strokeStyle=color("--green-dark");ctx.lineWidth=2;ctx.beginPath();ctx.moveTo((playhead-viewStart)/viewDuration*w,0);ctx.lineTo((playhead-viewStart)/viewDuration*w,h);ctx.stroke();}

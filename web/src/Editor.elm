@@ -447,7 +447,8 @@ viewBody model =
                 ]
                 []
             , viewTimelineControls model
-            , p [ class "timeline-key" ] [ text "Green: speaking · Red: singing · Gray: silence. Hatched sections will be deleted." ]
+            , p [ class "timeline-key" ]
+                [ text "Speech is plain, singing has diagonal lines, and silence has dots. Vertically hatched sections will be deleted. Color is only an extra cue." ]
             , audio [ id "timeline-audio", class "editor__audio", controls True, src (audioSource model) ] []
             , viewStatus model
             , div [ class "editor__actions" ]
