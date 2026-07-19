@@ -215,6 +215,21 @@ h2::after {
   cursor: ew-resize;
 }
 
+.timeline-controls {
+  margin-top: var(--space-md);
+}
+
+.timeline-controls__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.timeline-controls__range {
+  color: var(--ink-soft);
+  margin: var(--space-sm) 0 0;
+}
+
 .timeline-key {
   color: var(--ink-soft);
   margin-top: var(--space-xs);

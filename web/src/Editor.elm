@@ -26,6 +26,8 @@ type alias Model =
     , error : Maybe String
     , backWarning : Bool
     , playhead : Float
+    , zoom : Float
+    , viewStart : Float
     }
 
 
@@ -39,6 +41,10 @@ type Msg
     | Boundary Decode.Value
     | Play Int
     | Playhead Decode.Value
+    | ZoomIn
+    | ZoomOut
+    | Pan Float
+    | ShowAll
     | Apply
     | Applied (Result Http.Error Sermon)
     | ConfirmApproval
@@ -65,7 +71,7 @@ type Effect
 
 init : Sermon -> ( Model, Cmd Msg, Effect )
 init sermon =
-    ( { sermon = sermon, waveform = Nothing, analysis = Nothing, draft = Nothing, draftReceived = False, regions = [], selected = 0, dirty = False, applying = False, finalReady = sermon.stage == "edit" && sermon.status == "done", confirmingApproval = False, error = Nothing, backWarning = False, playhead = 0 }
+    ( { sermon = sermon, waveform = Nothing, analysis = Nothing, draft = Nothing, draftReceived = False, regions = [], selected = 0, dirty = False, applying = False, finalReady = sermon.stage == "edit" && sermon.status == "done", confirmingApproval = False, error = Nothing, backWarning = False, playhead = 0, zoom = 1, viewStart = 0 }
     , Cmd.batch [ Api.waveform GotWaveform sermon.id, Api.analyze GotAnalysis sermon.id ]
     , LoadDraft sermon.id
     )
@@ -200,6 +206,25 @@ update msg model =
 
                 Err _ ->
                     ( model, Cmd.none, None )
+
+        ZoomIn ->
+            redraw (setZoom (model.zoom * 2) model)
+
+        ZoomOut ->
+            redraw (setZoom (model.zoom / 2) model)
+
+        Pan direction ->
+            let
+                span =
+                    visibleSpan model
+
+                next =
+                    { model | viewStart = clampViewStart model (model.viewStart + direction * span * 0.75) }
+            in
+            redraw next
+
+        ShowAll ->
+            redraw { model | zoom = 1, viewStart = 0 }
 
         Apply ->
             if busy model then
@@ -373,7 +398,17 @@ previewValue model =
 renderEffect model =
     case model.waveform of
         Just wave ->
-            Render (Encode.object [ ( "duration", Encode.float wave.duration ), ( "samples", Encode.list Encode.float wave.samples ), ( "regions", encodeRegions model.regions ), ( "playhead", Encode.float model.playhead ) ]) (previewValue model)
+            Render
+                (Encode.object
+                    [ ( "duration", Encode.float wave.duration )
+                    , ( "samples", Encode.list Encode.float wave.samples )
+                    , ( "regions", encodeRegions model.regions )
+                    , ( "playhead", Encode.float model.playhead )
+                    , ( "view_start", Encode.float model.viewStart )
+                    , ( "view_end", Encode.float (model.viewStart + visibleSpan model) )
+                    ]
+                )
+                (previewValue model)
 
         Nothing ->
             None
@@ -411,6 +446,7 @@ viewBody model =
                 , tabindex 0
                 ]
                 []
+            , viewTimelineControls model
             , p [ class "timeline-key" ] [ text "Green: speaking · Red: singing · Gray: silence. Hatched sections will be deleted." ]
             , audio [ id "timeline-audio", class "editor__audio", controls True, src (audioSource model) ] []
             , viewStatus model
@@ -546,3 +582,78 @@ busy model =
 
 loadFailed model =
     model.error /= Nothing && (model.waveform == Nothing || model.analysis == Nothing)
+
+
+viewTimelineControls model =
+    let
+        duration =
+            model.waveform |> Maybe.map .duration |> Maybe.withDefault 0
+
+        span =
+            visibleSpan model
+
+        viewEnd =
+            min duration (model.viewStart + span)
+    in
+    div [ class "timeline-controls" ]
+        [ div [ class "timeline-controls__buttons" ]
+            [ button [ Ui.button, onClick ZoomOut, disabled (model.zoom <= 1) ] [ text "Zoom Out" ]
+            , button [ Ui.button, onClick ZoomIn, disabled (model.zoom >= 64) ] [ text "Zoom In" ]
+            , button [ Ui.button, onClick (Pan -1), disabled (model.viewStart <= 0) ] [ text "Earlier" ]
+            , button [ Ui.button, onClick (Pan 1), disabled (viewEnd >= duration) ] [ text "Later" ]
+            , button [ Ui.button, onClick ShowAll, disabled (model.zoom <= 1) ] [ text "Show All" ]
+            ]
+        , p [ class "timeline-controls__range" ]
+            [ text ("Showing " ++ Timeline.timestamp model.viewStart ++ " – " ++ Timeline.timestamp viewEnd ++ " of " ++ Timeline.timestamp duration) ]
+        ]
+
+
+redraw model =
+    ( model, Cmd.none, renderEffect model )
+
+
+setZoom requested model =
+    let
+        duration =
+            model.waveform |> Maybe.map .duration |> Maybe.withDefault 0
+
+        oldSpan =
+            visibleSpan model
+
+        center =
+            model.viewStart + oldSpan / 2
+
+        zoom =
+            max 1 (min 64 requested)
+
+        newSpan =
+            if zoom <= 0 then
+                duration
+
+            else
+                duration / zoom
+
+        next =
+            { model | zoom = zoom }
+    in
+    { next | viewStart = clampViewStart next (center - newSpan / 2) }
+
+
+visibleSpan model =
+    let
+        duration =
+            model.waveform |> Maybe.map .duration |> Maybe.withDefault 0
+    in
+    if model.zoom <= 0 then
+        duration
+
+    else
+        duration / model.zoom
+
+
+clampViewStart model requested =
+    let
+        duration =
+            model.waveform |> Maybe.map .duration |> Maybe.withDefault 0
+    in
+    max 0 (min (max 0 (duration - visibleSpan model)) requested)
