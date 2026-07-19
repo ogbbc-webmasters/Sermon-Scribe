@@ -307,7 +307,12 @@ pipeline sermon model =
     else if sermon.stage == "edit" && sermon.status == "done" then
         case sermon.appliedRegions of
             Just regions ->
-                if model.dirty && model.regions /= regions then
+                if model.waveform == Nothing || model.analysis == Nothing || not model.draftReceived then
+                    -- Resolve the local draft before deciding whether this is a
+                    -- new completion or a reconnect describing an older render.
+                    ( { model | sermon = sermon, applying = False, finalReady = True }, None )
+
+                else if model.dirty && model.regions /= regions then
                     -- A reconnect snapshot describes the last successful render,
                     -- not necessarily the user's newer local draft.
                     ( { model | sermon = sermon, applying = False }, None )
@@ -382,7 +387,7 @@ viewBody model =
     if loadFailed model then
         div [ class "editor__load-error" ]
             [ viewError model.error
-            , button [ Ui.button, onClick Back ] [ text "Back to Sermons" ]
+            , button [ Ui.button, onClick ForceClose ] [ text "Back to Sermons" ]
             ]
 
     else if model.waveform == Nothing || model.analysis == Nothing || not model.draftReceived then
