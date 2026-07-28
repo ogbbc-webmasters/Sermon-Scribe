@@ -746,7 +746,7 @@ viewTimelineRange model =
             min duration (model.viewStart + visibleSpan model)
     in
     p [ class "timeline-stage__range" ]
-        [ text (Timeline.timestamp model.viewStart ++ " – " ++ Timeline.timestamp viewEnd) ]
+        [ text ("Visible range: " ++ Timeline.timestamp model.viewStart ++ " – " ++ Timeline.timestamp viewEnd) ]
 
 
 timelineIconButton label iconName message isDisabled =
