@@ -303,9 +303,13 @@ h2::after {
   gap: var(--space-sm);
 }
 
+.region-inspector__subtitle,
 .region-inspector__time {
   color: var(--ink-soft);
   font-size: 0.9rem;
+}
+
+.region-inspector__time {
   font-variant-numeric: tabular-nums;
 }
 

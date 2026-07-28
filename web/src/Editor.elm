@@ -598,7 +598,9 @@ viewRegionInspector model =
                     [ timelineIconButton "Previous section" "mdi:chevron-left" SelectPrevious (model.selected <= 0)
                     , div [ class "region-inspector__identity" ]
                         [ strong [ class "region-inspector__title" ]
-                            [ text (regionLabel region.regionType ++ " " ++ String.fromInt (model.selected + 1) ++ " of " ++ String.fromInt (List.length model.regions)) ]
+                            [ text (regionLabel region.regionType) ]
+                        , span [ class "region-inspector__subtitle" ]
+                            [ text ("Section " ++ String.fromInt (model.selected + 1) ++ "/" ++ String.fromInt (List.length model.regions)) ]
                         , span [ class "region-inspector__time" ]
                             [ text (Timeline.timestamp region.start ++ " – " ++ Timeline.timestamp region.end) ]
                         ]
