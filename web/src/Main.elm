@@ -40,9 +40,6 @@ port configurePreview : Decode.Value -> Cmd msg
 port previewPlayhead : (Decode.Value -> msg) -> Sub msg
 
 
-port playTimelineRegion : Decode.Value -> Cmd msg
-
-
 main : Program () Model Msg
 main =
     Browser.element
@@ -372,9 +369,6 @@ performEditor effect model command =
 
         Editor.Preview value ->
             ( model, Cmd.batch [ command, configurePreview value, clearTimelineDraft (model.editing |> Maybe.map (.sermon >> .id) |> Maybe.withDefault "") ] )
-
-        Editor.PlayRegion start end ->
-            ( model, Cmd.batch [ command, playTimelineRegion (Encode.object [ ( "start", Encode.float start ), ( "end", Encode.float end ) ]) ] )
 
         Editor.Close ->
             ( { model | editing = Nothing }, Cmd.batch [ command, configurePreview Encode.null ] )

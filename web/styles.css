@@ -278,6 +278,11 @@ h2::after {
   padding: var(--space-lg);
 }
 
+.region-inspector__audio {
+  display: block;
+  width: 100%;
+}
+
 .region-inspector__decision {
   display: flex;
   gap: var(--space-sm);
@@ -295,6 +300,15 @@ h2::after {
   align-items: center;
   display: flex;
   gap: var(--space-sm);
+}
+
+.region-inspector__preview {
+  margin-top: var(--space-lg);
+}
+
+.region-inspector__preview-label {
+  display: block;
+  margin-bottom: var(--space-xs);
 }
 
 .region-inspector__subtitle,

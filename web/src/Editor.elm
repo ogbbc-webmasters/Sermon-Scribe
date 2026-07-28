@@ -41,7 +41,6 @@ type Msg
     | SetKeep Int Bool
     | Nudge Int Float
     | CanvasSelect Decode.Value
-    | Play Int
     | Playhead Decode.Value
     | ZoomIn
     | ZoomOut
@@ -69,7 +68,6 @@ type Effect
     | Render Encode.Value Encode.Value
     | Complete String Encode.Value Encode.Value
     | Preview Encode.Value
-    | PlayRegion Float Float
     | Close
     | ApprovedSermon Sermon
 
@@ -210,14 +208,6 @@ update msg model =
                     redraw (selectRegion index model)
 
                 Err _ ->
-                    ( model, Cmd.none, None )
-
-        Play index ->
-            case get index model.regions of
-                Just region ->
-                    ( { model | selected = index }, Cmd.none, PlayRegion region.start region.end )
-
-                Nothing ->
                     ( model, Cmd.none, None )
 
         Playhead value ->
@@ -534,15 +524,20 @@ viewAudioPreview model =
 
 
 audioSource model =
+    if model.finalReady then
+        "/api/sermons/" ++ model.sermon.id ++ "/audio/final?v=" ++ String.fromInt model.sermon.progress
+
+    else
+        proxyAudioSource model
+
+
+proxyAudioSource model =
     "/api/sermons/"
         ++ model.sermon.id
-        ++ "/audio/"
-        ++ (if model.finalReady then
-                "final?v=" ++ String.fromInt model.sermon.progress
-
-            else
-                "proxy?gate=" ++ String.fromInt model.sermon.normalizationGateAdjustment ++ "&volume=" ++ String.fromInt model.sermon.normalizationVolumeAdjustment
-           )
+        ++ "/audio/proxy?gate="
+        ++ String.fromInt model.sermon.normalizationGateAdjustment
+        ++ "&volume="
+        ++ String.fromInt model.sermon.normalizationVolumeAdjustment
 
 
 viewStatus model =
@@ -593,8 +588,20 @@ viewRegionInspector model =
                         , span [ class "region-inspector__time" ]
                             [ text (Timeline.timestamp region.start ++ " – " ++ Timeline.timestamp region.end) ]
                         ]
-                    , timelineIconButton "Play section" "mdi:play" (Play model.selected) False
                     , timelineIconButton "Next section" "mdi:chevron-right" SelectNext (model.selected >= List.length model.regions - 1)
+                    ]
+                , div [ class "region-inspector__preview" ]
+                    [ strong [ class "region-inspector__preview-label" ] [ text "Section audio" ]
+                    , audio
+                        [ id "section-audio"
+                        , class "region-inspector__audio"
+                        , controls True
+                        , attribute "preload" "metadata"
+                        , attribute "data-start" (String.fromFloat region.start)
+                        , attribute "data-end" (String.fromFloat region.end)
+                        , src (proxyAudioSource model)
+                        ]
+                        []
                     ]
                 , div [ class "region-inspector__decision" ]
                     [ decisionButton "Keep" "mdi:check" (SetKeep model.selected True) region.keep (busy model)
