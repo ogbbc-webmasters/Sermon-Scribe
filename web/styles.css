@@ -362,20 +362,6 @@ h2::after {
   position: relative;
 }
 
-.timeline-stage__range {
-  background: var(--card);
-  border-radius: var(--radius-pill);
-  box-shadow: var(--shadow);
-  color: var(--ink);
-  font-size: 0.8rem;
-  font-variant-numeric: tabular-nums;
-  left: var(--space-sm);
-  margin: 0;
-  padding: var(--space-xs) var(--space-sm);
-  position: absolute;
-  top: var(--space-sm);
-}
-
 .button:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 3px;

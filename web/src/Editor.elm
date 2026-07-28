@@ -488,7 +488,6 @@ viewBody model =
                     , tabindex 0
                     ]
                     []
-                , viewTimelineRange model
                 ]
             , viewTimelineControls model
             , viewAudioPreview model
@@ -735,18 +734,6 @@ viewTimelineControls model =
             , timelineIconButton "Later" "material-symbols:chevron-right-rounded" (Pan 1) (viewEnd >= duration)
             ]
         ]
-
-
-viewTimelineRange model =
-    let
-        duration =
-            model.waveform |> Maybe.map .duration |> Maybe.withDefault 0
-
-        viewEnd =
-            min duration (model.viewStart + visibleSpan model)
-    in
-    p [ class "timeline-stage__range" ]
-        [ text ("Visible range: " ++ Timeline.timestamp model.viewStart ++ " – " ++ Timeline.timestamp viewEnd) ]
 
 
 timelineIconButton label iconName message isDisabled =
