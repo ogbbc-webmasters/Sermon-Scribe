@@ -717,9 +717,9 @@ viewTimelineControls model =
     div [ class "timeline-controls" ]
         [ div [ class "timeline-controls__buttons" ]
             [ timelineIconButton "Earlier" "mdi:chevron-left" (Pan -1) (model.viewStart <= 0)
-            , timelineIconButton "Zoom out" "material-symbols:zoom-out-rounded" ZoomOut (model.zoom <= 1)
-            , timelineIconButton "Show all" "material-symbols:fit-screen-rounded" ShowAll (model.zoom <= 1)
-            , timelineIconButton "Zoom in" "material-symbols:zoom-in-rounded" ZoomIn (model.zoom >= 512)
+            , timelineIconButton "Zoom out" "mdi:magnify-minus-outline" ZoomOut (model.zoom <= 1)
+            , timelineIconButton "Show all" "mdi:fit-to-screen-outline" ShowAll (model.zoom <= 1)
+            , timelineIconButton "Zoom in" "mdi:magnify-plus-outline" ZoomIn (model.zoom >= 512)
             , timelineIconButton "Later" "mdi:chevron-right" (Pan 1) (viewEnd >= duration)
             ]
         ]
@@ -752,6 +752,8 @@ icon iconName =
     node "iconify-icon"
         [ class "button__icon"
         , attribute "icon" iconName
+        , attribute "width" "24"
+        , attribute "height" "24"
         , attribute "aria-hidden" "true"
         ]
         []
