@@ -43,11 +43,12 @@
         if(r.type==="silence"){for(let y=12;y<h;y+=16){for(let x=left+8;x<right;x+=16)ctx.fillRect(x,y,2,2);}}
         ctx.restore();
         if(!r.keep){ctx.save();ctx.globalAlpha=.24;ctx.fillStyle=color("--ink");for(let x=left;x<right;x+=12)ctx.fillRect(x,0,5,h);ctx.restore();}
-        if(index===renderModel.selected){ctx.save();ctx.strokeStyle=color("--ink");ctx.lineWidth=4;ctx.strokeRect(left+2,2,Math.max(0,width-4),h-4);ctx.restore();}
         if(width>72){ctx.save();ctx.fillStyle=color("--ink");ctx.globalAlpha=.8;ctx.font="600 12px system-ui, sans-serif";ctx.textAlign="center";ctx.fillText(r.type==="speaking"?"SPEECH":r.type.toUpperCase(),left+width/2,18);ctx.fillText(r.keep?"KEEP":"DELETE",left+width/2,h-10);ctx.restore();}
       });
       ctx.fillStyle = color("--ink"); const samples=renderModel.samples, first=Math.max(0,Math.floor(viewStart/duration*samples.length)),last=Math.min(samples.length,Math.ceil(viewEnd/duration*samples.length)),per=Math.max(1,Math.floor((last-first)/w));
       for(let x=0;x<w;x++){ let peak=0,start=first+Math.floor(x*(last-first)/w);for(let i=start;i<Math.min(last,start+per);i++)peak=Math.max(peak,Math.abs(samples[i]||0));ctx.fillRect(x,h/2-peak*h*.45,1,Math.max(1,peak*h*.9)); }
+      (renderModel.regions || []).forEach((r,index) => {if(index===renderModel.selected)return;const start=Math.max(viewStart,r.start),end=Math.min(viewEnd,r.end);if(end<=start)return;ctx.save();ctx.globalAlpha=.55;ctx.fillStyle=color("--card");ctx.fillRect((start-viewStart)/viewDuration*w,0,(end-start)/viewDuration*w,h);ctx.restore();});
+      const selected=(renderModel.regions || [])[renderModel.selected];if(selected){const start=Math.max(viewStart,selected.start),end=Math.min(viewEnd,selected.end);if(end>start){const left=(start-viewStart)/viewDuration*w,width=(end-start)/viewDuration*w;ctx.save();ctx.fillStyle=color("--ink");ctx.fillRect(left,0,width,5);ctx.fillRect(left,h-5,width,5);ctx.strokeStyle=color("--ink");ctx.lineWidth=2;ctx.strokeRect(left+1,1,Math.max(0,width-2),h-2);ctx.restore();}}
       const playhead=renderModel.playhead||0;if(playhead>=viewStart&&playhead<=viewEnd){ctx.strokeStyle=color("--green-dark");ctx.lineWidth=2;ctx.beginPath();ctx.moveTo((playhead-viewStart)/viewDuration*w,0);ctx.lineTo((playhead-viewStart)/viewDuration*w,h);ctx.stroke();}
       (renderModel.regions||[]).slice(1).filter((r)=>r.start>=viewStart&&r.start<=viewEnd).forEach((r)=>{ctx.fillStyle=color("--ink");ctx.fillRect((r.start-viewStart)/viewDuration*w-2,0,4,h);});
       if (!observer) { observer = new ResizeObserver(draw); observer.observe(canvas); canvas.addEventListener("pointerdown", pointer); }
