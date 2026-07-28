@@ -123,12 +123,6 @@ h2::after {
   margin-top: var(--space-lg);
 }
 
-.audio-preview__description {
-  color: var(--ink-soft);
-  font-size: 0.85rem;
-  margin: var(--space-xs) 0 var(--space-sm);
-}
-
 .audio-preview__label {
   display: block;
 }
@@ -346,16 +340,6 @@ h2::after {
   border-radius: var(--radius-md);
   cursor: pointer;
   touch-action: manipulation;
-}
-
-.timeline-controls {
-  margin-top: var(--space-sm);
-}
-
-.timeline-controls__buttons {
-  display: flex;
-  justify-content: center;
-  gap: var(--space-sm);
 }
 
 .timeline-stage {

@@ -489,7 +489,6 @@ viewBody model =
                     ]
                     []
                 ]
-            , viewTimelineControls model
             , viewAudioPreview model
             , viewStatus model
             , viewRegionInspector model
@@ -528,15 +527,6 @@ viewAudioPreview model =
 
                  else
                     "Edit preview"
-                )
-            ]
-        , p [ class "audio-preview__description" ]
-            [ text
-                (if model.finalReady then
-                    "This is the exact MP3 that will be approved."
-
-                 else
-                    "Deleted sections are skipped for a quick preview. Apply edits to render the exact final audio."
                 )
             ]
         , audio [ id "timeline-audio", class "editor__audio", controls True, src (audioSource model) ] []
@@ -712,28 +702,6 @@ busy model =
 
 loadFailed model =
     model.error /= Nothing && (model.waveform == Nothing || model.analysis == Nothing)
-
-
-viewTimelineControls model =
-    let
-        duration =
-            model.waveform |> Maybe.map .duration |> Maybe.withDefault 0
-
-        span =
-            visibleSpan model
-
-        viewEnd =
-            min duration (model.viewStart + span)
-    in
-    div [ class "timeline-controls" ]
-        [ div [ class "timeline-controls__buttons" ]
-            [ timelineIconButton "Earlier" "material-symbols:chevron-left-rounded" (Pan -1) (model.viewStart <= 0)
-            , timelineIconButton "Zoom out" "material-symbols:zoom-out-rounded" ZoomOut (model.zoom <= 1)
-            , timelineIconButton "Show all" "material-symbols:fit-screen-rounded" ShowAll (model.zoom <= 1)
-            , timelineIconButton "Zoom in" "material-symbols:zoom-in-rounded" ZoomIn (model.zoom >= 512)
-            , timelineIconButton "Later" "material-symbols:chevron-right-rounded" (Pan 1) (viewEnd >= duration)
-            ]
-        ]
 
 
 timelineIconButton label iconName message isDisabled =
