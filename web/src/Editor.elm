@@ -491,9 +491,7 @@ viewBody model =
                 , viewTimelineRange model
                 ]
             , viewTimelineControls model
-            , p [ class "timeline-key" ]
-                [ text "Tap a section to edit it. Patterns identify audio type; vertical hatching means delete." ]
-            , audio [ id "timeline-audio", class "editor__audio", controls True, src (audioSource model) ] []
+            , viewAudioPreview model
             , viewStatus model
             , viewRegionInspector model
             , div [ class "editor__actions" ]
@@ -520,6 +518,30 @@ viewBody model =
 
 validPlan model =
     valid (model.waveform |> Maybe.map .duration |> Maybe.withDefault 0) model.regions && List.any .keep model.regions
+
+
+viewAudioPreview model =
+    div [ class "audio-preview" ]
+        [ strong [ class "audio-preview__label" ]
+            [ text
+                (if model.finalReady then
+                    "Rendered final audio"
+
+                 else
+                    "Edit preview"
+                )
+            ]
+        , p [ class "audio-preview__description" ]
+            [ text
+                (if model.finalReady then
+                    "This is the exact MP3 that will be approved."
+
+                 else
+                    "Deleted sections are skipped for a quick preview. Apply edits to render the exact final audio."
+                )
+            ]
+        , audio [ id "timeline-audio", class "editor__audio", controls True, src (audioSource model) ] []
+        ]
 
 
 audioSource model =

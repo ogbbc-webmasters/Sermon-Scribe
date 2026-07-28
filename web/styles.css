@@ -119,6 +119,20 @@ h2::after {
 
 /* ------------------------------------------------- components (A → Z) */
 
+.audio-preview {
+  margin-top: var(--space-lg);
+}
+
+.audio-preview__description {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  margin: var(--space-xs) 0 var(--space-sm);
+}
+
+.audio-preview__label {
+  display: block;
+}
+
 .editor {
   max-width: var(--editor-width);
   margin: 0 auto;
@@ -141,8 +155,9 @@ h2::after {
 }
 
 .editor__audio {
+  display: block;
   width: 100%;
-  margin: var(--space-lg) 0;
+  margin: 0;
 }
 
 .editor__filename {
@@ -337,13 +352,6 @@ h2::after {
   display: flex;
   justify-content: center;
   gap: var(--space-sm);
-}
-
-.timeline-key {
-  color: var(--ink-soft);
-  font-size: 0.85rem;
-  margin: var(--space-sm) 0 0;
-  text-align: center;
 }
 
 .timeline-stage {
