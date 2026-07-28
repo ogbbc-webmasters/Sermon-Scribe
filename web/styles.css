@@ -325,8 +325,8 @@ h2::after {
   height: var(--timeline-height);
   border: 2px solid var(--line-strong);
   border-radius: var(--radius-md);
-  touch-action: none;
-  cursor: ew-resize;
+  cursor: pointer;
+  touch-action: manipulation;
 }
 
 .timeline-controls {

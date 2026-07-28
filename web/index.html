@@ -23,9 +23,9 @@
     });
     app.ports.clearTimelineDraft?.subscribe((id) => { try { localStorage.removeItem(draftKey(String(id))); } catch (_) {} });
 
-    let renderModel = null, observer = null, preview = null, frame = 0, lastReport = 0, stopAt = null, drag = null;
+    let renderModel = null, observer = null, preview = null, frame = 0, lastReport = 0, stopAt = null;
     const audio = () => document.getElementById("timeline-audio");
-    function cleanupCanvas() { observer?.disconnect(); observer = null; if (drag) drag.cleanup(); }
+    function cleanupCanvas() { observer?.disconnect(); observer = null; }
     function draw() {
       const canvas = document.getElementById("timeline-canvas");
       if (!canvas || !renderModel || !Array.isArray(renderModel.samples)) { cleanupCanvas(); return; }
@@ -52,7 +52,7 @@
       (renderModel.regions||[]).slice(1).filter((r)=>r.start>=viewStart&&r.start<=viewEnd).forEach((r)=>{ctx.fillStyle=color("--ink");ctx.fillRect((r.start-viewStart)/viewDuration*w-2,0,4,h);});
       if (!observer) { observer = new ResizeObserver(draw); observer.observe(canvas); canvas.addEventListener("pointerdown", pointer); }
     }
-    function pointer(event) { const canvas=event.currentTarget, regions=renderModel?.regions||[], rect=canvas.getBoundingClientRect(),viewStart=renderModel.view_start||0,viewEnd=renderModel.view_end||renderModel.duration,viewDuration=viewEnd-viewStart;if(!regions.length||canvas.dataset.busy==="true")return;const eventTime=viewStart+(event.clientX-rect.left)/rect.width*viewDuration;let boundary=0,best=Infinity;regions.slice(1).forEach((r,i)=>{if(r.start<viewStart||r.start>viewEnd)return;const d=Math.abs((r.start-viewStart)/viewDuration*rect.width-(event.clientX-rect.left));if(d<best){best=d;boundary=i+1;}});if(best>15){const index=regions.findIndex((r)=>eventTime>=r.start&&eventTime<=r.end);if(index>=0)app.ports.timelineRegionSelected?.send(index);return;}canvas.setPointerCapture(event.pointerId);const send=(e)=>{const box=canvas.getBoundingClientRect(),time=Math.max(viewStart,Math.min(viewEnd,viewStart+(e.clientX-box.left)/box.width*viewDuration));app.ports.timelineBoundary?.send({boundary,time});};const move=(e)=>send(e);const cleanup=()=>{canvas.removeEventListener("pointermove",move);canvas.removeEventListener("pointerup",cleanup);canvas.removeEventListener("pointercancel",cleanup);canvas.removeEventListener("lostpointercapture",cleanup);if(drag?.cleanup===cleanup)drag=null;};drag={cleanup};canvas.addEventListener("pointermove",move);canvas.addEventListener("pointerup",cleanup);canvas.addEventListener("pointercancel",cleanup);canvas.addEventListener("lostpointercapture",cleanup);send(event); }
+    function pointer(event) { const canvas=event.currentTarget,regions=renderModel?.regions||[],rect=canvas.getBoundingClientRect(),viewStart=renderModel.view_start||0,viewEnd=renderModel.view_end||renderModel.duration,viewDuration=viewEnd-viewStart;if(!regions.length||canvas.dataset.busy==="true")return;const eventTime=viewStart+(event.clientX-rect.left)/rect.width*viewDuration,index=regions.findIndex((region)=>eventTime>=region.start&&eventTime<=region.end);if(index>=0)app.ports.timelineRegionSelected?.send(index); }
     app.ports.renderTimeline?.subscribe((value)=>{renderModel=value; requestAnimationFrame(draw);});
     function loop(now){const player=audio();if(player&&preview){if(stopAt!=null&&player.currentTime>=stopAt){player.pause();stopAt=null;}if(preview.mode==="preview"&&!player.paused){const cut=(preview.regions||[]).find(r=>!r.keep&&player.currentTime>=r.start&&player.currentTime<r.end);if(cut)player.currentTime=cut.end;}if(now-lastReport>100){lastReport=now;app.ports.previewPlayhead?.send(player.currentTime||0);if(renderModel){renderModel.playhead=player.currentTime||0;draw();}}}frame=requestAnimationFrame(loop);}
     app.ports.configurePreview?.subscribe((value)=>{preview=value&&typeof value==="object"?value:null;if(!preview){cancelAnimationFrame(frame);frame=0;renderModel=null;stopAt=null;cleanupCanvas();}else if(!frame)frame=requestAnimationFrame(loop);});

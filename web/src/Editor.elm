@@ -40,7 +40,6 @@ type Msg
     | Toggle Int
     | SetKeep Int Bool
     | Nudge Int Float
-    | Boundary Decode.Value
     | CanvasSelect Decode.Value
     | Play Int
     | Playhead Decode.Value
@@ -204,18 +203,6 @@ update msg model =
 
             else
                 changeBoundary boundary (Timeline.boundaryTime boundary model.regions + delta) model
-
-        Boundary value ->
-            case Decode.decodeValue (Decode.map2 Tuple.pair (Decode.field "boundary" Decode.int) (Decode.field "time" Decode.float)) value of
-                Ok ( boundary, time ) ->
-                    if busy model then
-                        ( model, Cmd.none, None )
-
-                    else
-                        changeBoundary boundary time model
-
-                Err _ ->
-                    ( model, Cmd.none, None )
 
         CanvasSelect value ->
             case Decode.decodeValue Decode.int value of
@@ -489,7 +476,8 @@ viewBody model =
                     [ id "timeline-canvas"
                     , class "timeline focusable"
                     , attribute "role" "img"
-                    , attribute "aria-label" "Audio waveform with editable regions"
+                    , attribute "aria-label" "Read-only audio waveform. Tap a section to select it for editing below."
+                    , attribute "aria-readonly" "true"
                     , attribute "data-busy"
                         (if busy model then
                             "true"
@@ -716,11 +704,11 @@ viewTimelineControls model =
     in
     div [ class "timeline-controls" ]
         [ div [ class "timeline-controls__buttons" ]
-            [ timelineIconButton "Earlier" "mdi:chevron-left" (Pan -1) (model.viewStart <= 0)
-            , timelineIconButton "Zoom out" "mdi:magnify-minus-outline" ZoomOut (model.zoom <= 1)
-            , timelineIconButton "Show all" "mdi:fit-to-screen-outline" ShowAll (model.zoom <= 1)
-            , timelineIconButton "Zoom in" "mdi:magnify-plus-outline" ZoomIn (model.zoom >= 512)
-            , timelineIconButton "Later" "mdi:chevron-right" (Pan 1) (viewEnd >= duration)
+            [ timelineIconButton "Earlier" "material-symbols:chevron-left-rounded" (Pan -1) (model.viewStart <= 0)
+            , timelineIconButton "Zoom out" "material-symbols:zoom-out-rounded" ZoomOut (model.zoom <= 1)
+            , timelineIconButton "Show all" "material-symbols:fit-screen-rounded" ShowAll (model.zoom <= 1)
+            , timelineIconButton "Zoom in" "material-symbols:zoom-in-rounded" ZoomIn (model.zoom >= 512)
+            , timelineIconButton "Later" "material-symbols:chevron-right-rounded" (Pan 1) (viewEnd >= duration)
             ]
         ]
 

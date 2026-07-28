@@ -31,9 +31,6 @@ port clearTimelineDraft : String -> Cmd msg
 port renderTimeline : Decode.Value -> Cmd msg
 
 
-port timelineBoundary : (Decode.Value -> msg) -> Sub msg
-
-
 port timelineRegionSelected : (Decode.Value -> msg) -> Sub msg
 
 
@@ -341,7 +338,6 @@ subscriptions model =
     Sub.batch
         [ pipelineEvents PipelineEventReceived
         , timelineDraftLoaded (EditorMsg << Editor.GotDraft)
-        , timelineBoundary (EditorMsg << Editor.Boundary)
         , timelineRegionSelected (EditorMsg << Editor.CanvasSelect)
         , previewPlayhead (EditorMsg << Editor.Playhead)
         , case model.upload of
