@@ -543,9 +543,18 @@ viewBody model =
                     ]
                     []
                 ]
-            , viewAudioPreview model
+            , if model.finalReady then
+                text ""
+
+              else
+                viewAudioPreview model
             , viewStatus model
             , viewRegionInspector model
+            , if model.finalReady then
+                viewAudioPreview model
+
+              else
+                text ""
             , div [ class "editor__actions" ]
                 [ button [ Ui.primaryButton, onClick Apply, disabled (busy model || model.finalReady || not (validPlan model)) ]
                     [ text
