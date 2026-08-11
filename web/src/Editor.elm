@@ -47,6 +47,7 @@ type Msg
     | Playhead Decode.Value
     | ZoomIn
     | ZoomOut
+    | ZoomToSelected
     | Pan Float
     | ShowAll
     | SelectPrevious
@@ -249,6 +250,9 @@ update msg model =
 
         ZoomOut ->
             redraw (setZoom (model.zoom / 2) model)
+
+        ZoomToSelected ->
+            redraw (zoomToSelected model)
 
         Pan direction ->
             let
@@ -651,6 +655,14 @@ viewRegionInspector model =
                         ]
                     , timelineIconButton "Next section" "mdi:chevron-right" SelectNext (model.selected >= List.length model.regions - 1)
                     ]
+                , div [ class "region-inspector__view" ]
+                    [ button [ Ui.button, onClick ZoomToSelected, disabled (busy model) ] [ text "Zoom to section" ]
+                    , if model.zoom > 1 then
+                        button [ Ui.button, onClick ShowAll, disabled (busy model) ] [ text "Show full waveform" ]
+
+                      else
+                        text ""
+                    ]
                 , div [ class "region-inspector__preview" ]
                     [ strong [ class "region-inspector__preview-label" ] [ text "Section audio" ]
                     , audio
@@ -891,6 +903,31 @@ selectRegion requested model =
                 |> Maybe.withDefault model.viewStart
     in
     { model | selected = index, boundaryEdits = Dict.empty, viewStart = start }
+
+
+zoomToSelected model =
+    case ( model.waveform, get model.selected model.regions ) of
+        ( Just waveform, Just region ) ->
+            let
+                padding =
+                    max 0.5 ((region.end - region.start) * 0.1)
+
+                focusStart =
+                    max 0 (region.start - padding)
+
+                focusEnd =
+                    min waveform.duration (region.end + padding)
+
+                focusSpan =
+                    max 0.01 (focusEnd - focusStart)
+
+                next =
+                    { model | zoom = max 1 (min 512 (waveform.duration / focusSpan)) }
+            in
+            { next | viewStart = clampViewStart next ((focusStart + focusEnd - visibleSpan next) / 2) }
+
+        _ ->
+            model
 
 
 setZoom requested model =

@@ -388,6 +388,13 @@ h2::after {
   white-space: nowrap;
 }
 
+.region-inspector__view {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+}
+
 .timeline {
   display: block;
   width: 100%;
