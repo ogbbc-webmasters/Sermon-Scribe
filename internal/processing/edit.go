@@ -118,7 +118,7 @@ func runEditFFmpeg(ctx context.Context, input, output string, regions []Region, 
 // expose the section's duration rather than the full recording's duration.
 func RenderAudioSection(ctx context.Context, input, output string, start, end float64) error {
 	filter := fmt.Sprintf("atrim=start=%.6f:end=%.6f,asetpts=PTS-STARTPTS", start, end)
-	args := []string{"-hide_banner", "-nostdin", "-y", "-i", input, "-af", filter, "-ac", "1", "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "32k", output}
+	args := []string{"-hide_banner", "-nostdin", "-y", "-i", input, "-af", filter, "-ac", "1", "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "128k", output}
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr

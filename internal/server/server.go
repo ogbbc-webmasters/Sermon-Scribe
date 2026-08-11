@@ -451,7 +451,7 @@ func (s *Server) handleSermonAudio(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) sectionAudioPath(ctx context.Context, dir string, start, end float64) (string, error) {
-	input := filepath.Join(dir, "normalized.mp3")
+	input := filepath.Join(dir, "normalized.flac")
 	info, err := os.Stat(input)
 	if err != nil {
 		return "", err
@@ -459,7 +459,7 @@ func (s *Server) sectionAudioPath(ctx context.Context, dir string, start, end fl
 	startMicros := int64(math.Round(start * 1e6))
 	endMicros := int64(math.Round(end * 1e6))
 	cacheDir := filepath.Join(dir, ".sections")
-	path := filepath.Join(cacheDir, fmt.Sprintf("%d-%d-%d.mp3", info.ModTime().UnixNano(), startMicros, endMicros))
+	path := filepath.Join(cacheDir, fmt.Sprintf("v1-%d-%d-%d.mp3", info.ModTime().UnixNano(), startMicros, endMicros))
 	if _, err := os.Stat(path); err == nil {
 		return path, nil
 	} else if !errors.Is(err, os.ErrNotExist) {

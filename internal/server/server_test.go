@@ -289,7 +289,7 @@ func TestSermonAudio(t *testing.T) {
 	sectionRenders := 0
 	srv.renderSection = func(_ context.Context, input, output string, start, end float64) error {
 		sectionRenders++
-		if input != filepath.Join(dir, "normalized.mp3") || start != 1.25 || end != 3.75 {
+		if input != filepath.Join(dir, "normalized.flac") || start != 1.25 || end != 3.75 {
 			t.Errorf("section render = %q %.2f-%.2f", input, start, end)
 		}
 		return os.WriteFile(output, []byte("section audio"), 0o644)
