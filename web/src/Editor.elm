@@ -3,8 +3,8 @@ module Editor exposing (Effect(..), Model, Msg(..), init, pipeline, update, view
 import Api exposing (Region, Sermon, Timeline, Waveform)
 import Dict exposing (Dict)
 import Html exposing (Html, audio, button, canvas, div, h1, input, node, p, span, strong, text)
-import Html.Attributes exposing (attribute, class, controls, disabled, id, src, tabindex, title, type_, value)
-import Html.Events exposing (onBlur, onClick, onInput)
+import Html.Attributes exposing (attribute, autofocus, class, controls, disabled, id, src, tabindex, title, type_, value)
+import Html.Events exposing (on, onBlur, onClick, onInput)
 import Http
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -598,10 +598,38 @@ approval model =
 
 backWarning model =
     if model.backWarning then
-        div [ class "editor-warning" ] [ p [] [ strong [] [ text "You have unapplied changes. Your draft is saved in this browser." ] ], button [ Ui.button, onClick ForceClose ] [ text "Leave Editor" ], button [ Ui.button, onClick KeepEditing ] [ text "Keep Editing" ] ]
+        div
+            [ class "editor-modal"
+            , attribute "role" "dialog"
+            , attribute "aria-modal" "true"
+            , attribute "aria-labelledby" "leave-editor-title"
+            , attribute "aria-describedby" "leave-editor-description"
+            , on "keydown" escapeDecoder
+            ]
+            [ div [ class "editor-modal__dialog" ]
+                [ strong [ class "editor-modal__title", id "leave-editor-title" ] [ text "Leave without applying changes?" ]
+                , p [ class "editor-modal__description", id "leave-editor-description" ] [ text "Your draft is saved in this browser, but these changes have not been applied to the final audio." ]
+                , div [ class "editor-modal__actions" ]
+                    [ button [ Ui.dangerButton, onClick ForceClose ] [ text "Leave Editor" ]
+                    , button [ Ui.primaryButton, onClick KeepEditing, autofocus True ] [ text "Keep Editing" ]
+                    ]
+                ]
+            ]
 
     else
         text ""
+
+
+escapeDecoder =
+    Decode.field "key" Decode.string
+        |> Decode.andThen
+            (\key ->
+                if key == "Escape" then
+                    Decode.succeed KeepEditing
+
+                else
+                    Decode.fail "not escape"
+            )
 
 
 viewRegionInspector model =

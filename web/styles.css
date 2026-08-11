@@ -40,6 +40,7 @@
   --red-line: #ecd2cf;
   --red-line-strong: #dfb5b0;
   --on-accent: #ffffff;
+  --backdrop: rgba(43, 40, 32, 0.62);
 
   /* type */
   --font-body: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
@@ -68,10 +69,12 @@
   --timeline-height: 220px;
   --timeline-height-mobile: 180px;
   --editor-width: 820px;
+  --modal-width: 480px;
   --control-size: 48px;
   --control-size-small: 40px;
   --icon-size: 24px;
   --focus: #1769aa;
+  --layer-modal: 1000;
 }
 
 /* ------------------------------------------------------------ base/reset */
@@ -151,12 +154,46 @@ h2::after {
   padding: var(--space-xl);
 }
 
-.editor-warning {
-  background: var(--red-soft);
-  border: 1px solid var(--red-line);
-  border-radius: var(--radius-md);
-  padding: var(--space-lg);
-  margin: var(--space-lg) 0;
+.editor-modal {
+  align-items: center;
+  background: var(--backdrop);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  overflow: auto;
+  padding: var(--space-xl);
+  position: fixed;
+  z-index: var(--layer-modal);
+}
+
+.editor-modal__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  justify-content: flex-end;
+  margin-top: var(--space-xl);
+}
+
+.editor-modal__description {
+  color: var(--ink-soft);
+  margin: var(--space-sm) 0 0;
+}
+
+.editor-modal__dialog {
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  max-width: var(--modal-width);
+  padding: var(--space-2xl);
+  width: 100%;
+}
+
+.editor-modal__title {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  line-height: 1.25;
 }
 
 .editor__actions {
