@@ -70,6 +70,7 @@ func (s *Server) Routes(webFS fs.FS) http.Handler {
 	mux.HandleFunc("DELETE /api/sermons/{id}", s.handleDeleteSermon)
 	mux.HandleFunc("POST /api/sermons/{id}/retry", s.handleRetrySermon)
 	mux.HandleFunc("POST /api/sermons/{id}/normalize", s.handleRerunNormalization)
+	mux.HandleFunc("POST /api/sermons/{id}/review-normalization", s.handleReviewNormalization)
 	mux.HandleFunc("GET /api/sermons/{id}/waveform", s.handleWaveform)
 	mux.HandleFunc("POST /api/sermons/{id}/analyze", s.handleAnalyze)
 	mux.HandleFunc("POST /api/sermons/{id}/apply-edits", s.handleApplyEdits)
@@ -344,6 +345,28 @@ func (s *Server) handleRerunNormalization(w http.ResponseWriter, r *http.Request
 		s.Queue.Notify()
 	}
 	writeJSON(w, http.StatusAccepted, sm)
+}
+
+func (s *Server) handleReviewNormalization(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	sm, err := s.Store.MarkNormalizationReviewed(id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "sermon not found")
+		return
+	}
+	if errors.Is(err, store.ErrEditConflict) {
+		writeError(w, http.StatusConflict, "normalization is not ready for review")
+		return
+	}
+	if err != nil {
+		log.Printf("review normalization %s: %v", id, err)
+		writeError(w, http.StatusInternalServerError, "could not save normalization review")
+		return
+	}
+	if s.Events != nil {
+		s.Events.Publish(processing.Event{Name: processing.EventProgress, Sermon: sm})
+	}
+	writeJSON(w, http.StatusOK, sm)
 }
 
 func (s *Server) handleSermonAudio(w http.ResponseWriter, r *http.Request) {

@@ -22,6 +22,7 @@ type Sermon struct {
 	Error                         *string         `json:"error"`
 	NormalizationGateAdjustment   int             `json:"normalization_gate_adjustment"`
 	NormalizationVolumeAdjustment int             `json:"normalization_volume_adjustment"`
+	NormalizationReviewed         bool            `json:"normalization_reviewed"`
 	AppliedRegions                json.RawMessage `json:"applied_regions,omitempty"`
 	EditApproved                  bool            `json:"edit_approved"`
 }
@@ -76,7 +77,7 @@ const sermonViewSQL = `
 	SELECT s.id, s.original_filename, s.uploaded_at, s.uploaded_by,
 	       s.stage, s.status, COALESCE(j.progress, 0), j.last_error,
 	       s.normalization_gate_adjustment, s.normalization_volume_adjustment,
-	       s.applied_regions, s.edit_approved
+	       s.normalization_reviewed, s.applied_regions, s.edit_approved
 	FROM sermons s
 	LEFT JOIN jobs j ON j.id = (
 		SELECT id FROM jobs
@@ -129,12 +130,43 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 		&sm.ID, &sm.OriginalFilename, &sm.UploadedAt, &sm.UploadedBy,
 		&sm.Stage, &sm.Status, &sm.Progress, &sm.Error,
 		&sm.NormalizationGateAdjustment, &sm.NormalizationVolumeAdjustment,
-		&applied, &sm.EditApproved,
+		&sm.NormalizationReviewed, &applied, &sm.EditApproved,
 	)
 	if len(applied) > 0 {
 		sm.AppliedRegions = json.RawMessage(applied)
 	}
 	return err
+}
+
+// MarkNormalizationReviewed durably records that the user accepted the
+// completed normalization before entering the timeline editor.
+func (s *Store) MarkNormalizationReviewed(id string) (Sermon, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Sermon{}, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(
+		`UPDATE sermons SET normalization_reviewed = 1
+		 WHERE id = ? AND stage = 'normalization' AND status = 'done'`, id)
+	if err != nil {
+		return Sermon{}, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return Sermon{}, err
+	}
+	if n == 0 {
+		if _, err := getSermon(tx, id); err != nil {
+			return Sermon{}, err
+		}
+		return Sermon{}, ErrEditConflict
+	}
+	sm, err := getSermon(tx, id)
+	if err != nil {
+		return Sermon{}, err
+	}
+	return sm, tx.Commit()
 }
 
 // DeleteSermon removes the sermon row with the given id. It reports whether

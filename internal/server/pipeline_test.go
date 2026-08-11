@@ -110,6 +110,44 @@ func TestRerunNormalization(t *testing.T) {
 	}
 }
 
+func TestReviewNormalization(t *testing.T) {
+	srv, ts := newTestServer(t)
+	_, uploaded := uploadFile(t, ts, "review.wav", []byte("audio"), nil)
+
+	resp, err := http.Post(ts.URL+"/api/sermons/"+uploaded.ID+"/review-normalization", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("pending review status = %d, want 409", resp.StatusCode)
+	}
+
+	job, err := srv.Store.ClaimNextJob(context.Background(), []string{"normalize"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.Store.CompleteJob(job, nil, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	resp, err = http.Post(ts.URL+"/api/sermons/"+uploaded.ID+"/review-normalization", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("review status = %d, want 200: %s", resp.StatusCode, body)
+	}
+	var sm store.Sermon
+	if err := json.NewDecoder(resp.Body).Decode(&sm); err != nil {
+		t.Fatal(err)
+	}
+	if !sm.NormalizationReviewed {
+		t.Fatal("review response did not persist normalization_reviewed")
+	}
+}
+
 func TestRerunNormalizationRejectsInvalidStateAndPreset(t *testing.T) {
 	_, ts := newTestServer(t)
 	_, uploaded := uploadFile(t, ts, "pending.wav", []byte("audio"), nil)

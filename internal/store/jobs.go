@@ -129,7 +129,7 @@ func (s *Store) EnqueueNormalizationRerun(sermonID, jobID, parameters string, no
 	defer tx.Rollback()
 
 	res, err := tx.Exec(
-		`UPDATE sermons SET status = 'pending'
+		`UPDATE sermons SET status = 'pending', normalization_reviewed = 0
 		 WHERE id = ? AND stage = 'normalization' AND status = 'done'`, sermonID)
 	if err != nil {
 		return Sermon{}, err
