@@ -789,18 +789,28 @@ auditionButton model requested =
                 "Stop preview"
 
             else
-                case requested of
-                    StartAudition ->
-                        "Play first 1 second"
+                "Preview"
 
-                    EndAudition ->
-                        "Play last 1 second"
+        accessibleLabel =
+            case requested of
+                StartAudition ->
+                    "Preview first 1 second"
+
+                EndAudition ->
+                    "Preview last 1 second"
     in
     button
         [ Ui.button
         , class "precision-editor__audition"
         , onClick (ToggleAudition requested)
         , disabled (busy model)
+        , attribute "aria-label"
+            (if active then
+                "Stop boundary preview"
+
+             else
+                accessibleLabel
+            )
         , attribute "aria-pressed"
             (if active then
                 "true"
