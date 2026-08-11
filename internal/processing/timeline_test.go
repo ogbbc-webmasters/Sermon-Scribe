@@ -18,18 +18,20 @@ func TestAnalyzeWaveformClassificationAndInternalGap(t *testing.T) {
 	if regions[0].Type != "silence" || regions[0].Keep {
 		t.Fatalf("leading region = %+v", regions[0])
 	}
-	seenSinging := false
-	keptInternal := 0.0
-	for _, r := range regions {
-		if r.Type == "singing" {
-			seenSinging = true
-		}
-		if r.Type == "silence" && r.Keep {
-			keptInternal += r.End - r.Start
-		}
-	}
-	if !seenSinging || keptInternal != 1 {
+	if len(regions) != 5 {
 		t.Fatalf("regions = %+v", regions)
+	}
+	internal := regions[2]
+	if internal.Type != "silence" || internal.Keep || internal.Start != 2.5 || internal.End != 3.5 {
+		t.Fatalf("regions = %+v", regions)
+	}
+	if regions[1].End != 2.5 || regions[3].Start != 3.5 || regions[3].Type != "singing" {
+		t.Fatalf("one-second gap was not preserved: %+v", regions)
+	}
+	for i := 1; i < len(regions); i++ {
+		if regions[i-1].Type == "silence" && regions[i].Type == "silence" {
+			t.Fatalf("adjacent silence regions: %+v", regions)
+		}
 	}
 }
 

@@ -109,7 +109,7 @@ resolve model =
                             )
 
                 chosen =
-                    validDraft
+                    (validDraft
                         |> Maybe.withDefault
                             (if model.finalReady then
                                 model.sermon.appliedRegions |> Maybe.withDefault analyzed.regions
@@ -117,6 +117,8 @@ resolve model =
                              else
                                 analyzed.regions
                             )
+                    )
+                        |> Timeline.canonicalize
             in
             if List.isEmpty model.regions then
                 { model | regions = chosen, dirty = validDraft /= Nothing, finalReady = model.finalReady && validDraft == Nothing }

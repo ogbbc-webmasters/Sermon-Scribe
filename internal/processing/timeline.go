@@ -129,23 +129,22 @@ func AnalyzeWaveform(w Waveform) ([]Region, error) {
 			regions = append(regions, Region{Start: start, End: stop, Type: typ, Keep: keep})
 		}
 	}
-	// Preserve exactly one second across internal deleted silence (half at each edge).
-	withGaps := make([]Region, 0, len(regions)+4)
-	for i, region := range regions {
-		if i > 0 && i < len(regions)-1 && region.Type == "silence" {
-			length := region.End - region.Start
+	// Preserve exactly one second across internal deleted silence by extending
+	// the neighboring kept regions half a second into the gap. The remaining
+	// deleted silence stays one section in the editor.
+	for i := 1; i < len(regions)-1; i++ {
+		if regions[i].Type == "silence" {
+			length := regions[i].End - regions[i].Start
 			if length <= 1 {
-				region.Keep = true
+				regions[i].Keep = true
 			} else {
-				withGaps = append(withGaps, Region{Start: region.Start, End: region.Start + .5, Type: "silence", Keep: true})
-				withGaps = append(withGaps, Region{Start: region.Start + .5, End: region.End - .5, Type: "silence", Keep: false})
-				withGaps = append(withGaps, Region{Start: region.End - .5, End: region.End, Type: "silence", Keep: true})
-				continue
+				regions[i-1].End = regions[i].Start + .5
+				regions[i].Start += .5
+				regions[i].End -= .5
+				regions[i+1].Start = regions[i].End
 			}
 		}
-		withGaps = append(withGaps, region)
 	}
-	regions = withGaps
 	return regions, validateRegions(regions, w.Duration, false)
 }
 

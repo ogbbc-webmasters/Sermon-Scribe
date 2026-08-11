@@ -1,4 +1,4 @@
-module Timeline exposing (boundaryTime, changeBoundary, decoder, encodeRegions, timestamp, valid)
+module Timeline exposing (boundaryTime, canonicalize, changeBoundary, decoder, encodeRegions, timestamp, valid)
 
 import Api exposing (Region, Timeline)
 import Json.Decode as Decode
@@ -68,6 +68,50 @@ contiguous regions =
 close : Float -> Float -> Bool
 close left right =
     abs (left - right) < 0.01
+
+
+canonicalize : List Region -> List Region
+canonicalize regions =
+    case regions of
+        before :: keptStart :: deleted :: keptEnd :: after :: rest ->
+            if
+                before.regionType
+                    /= "silence"
+                    && keptStart.regionType
+                    == "silence"
+                    && keptStart.keep
+                    && deleted.regionType
+                    == "silence"
+                    && not deleted.keep
+                    && keptEnd.regionType
+                    == "silence"
+                    && keptEnd.keep
+                    && after.regionType
+                    /= "silence"
+            then
+                { before | end = keptStart.end }
+                    :: { deleted | start = keptStart.end, end = keptEnd.start }
+                    :: canonicalize ({ after | start = keptEnd.start } :: rest)
+
+            else
+                mergeAdjacent regions
+
+        _ ->
+            mergeAdjacent regions
+
+
+mergeAdjacent : List Region -> List Region
+mergeAdjacent regions =
+    case regions of
+        left :: right :: rest ->
+            if left.regionType == right.regionType && (left.keep == right.keep || left.regionType == "silence") then
+                canonicalize ({ left | end = right.end, keep = left.keep && right.keep } :: rest)
+
+            else
+                left :: canonicalize (right :: rest)
+
+        _ ->
+            regions
 
 
 changeBoundary : Int -> Float -> List Region -> List Region
