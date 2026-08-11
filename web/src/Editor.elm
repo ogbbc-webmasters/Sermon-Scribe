@@ -682,7 +682,7 @@ viewRegionInspector model =
                 , div [ class "region-inspector__view" ]
                     [ button [ Ui.button, onClick ZoomToSelected, disabled (busy model) ] [ text "Zoom to section" ]
                     , if model.zoom > 1 then
-                        button [ Ui.button, onClick ShowAll, disabled (busy model) ] [ text "Show full waveform" ]
+                        button [ Ui.button, onClick ShowAll, disabled (busy model) ] [ text "Show full audio" ]
 
                       else
                         text ""
