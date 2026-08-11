@@ -33,6 +33,7 @@ type alias Model =
     , retrying : Set String
     , retryError : Maybe String
     , rerunning : Set String
+    , reviewingNormalization : Set String
     , normalizationError : Maybe String
     , zone : Time.Zone
     }
@@ -49,6 +50,8 @@ type Msg
     | RetryFinished Sermon (Result Http.Error Sermon)
     | RerunNormalization Sermon String
     | RerunNormalizationFinished Sermon (Result Http.Error Sermon)
+    | ReviewNormalization Sermon
+    | NormalizationReviewed Sermon (Result Http.Error Sermon)
     | OpenEditor Sermon
     | EditorMsg Editor.Msg
     | AskDelete Sermon

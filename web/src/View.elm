@@ -143,10 +143,11 @@ viewSermon model sermon =
 
 viewNormalizedAudio : Model -> Sermon -> Html Msg
 viewNormalizedAudio model sermon =
-    if sermon.stage == "normalization" && sermon.status == "done" then
+    if sermon.stage == "normalization" && sermon.status == "done" && not sermon.normalizationReviewed then
         let
             isBusy =
                 Set.member sermon.id model.rerunning
+                    || Set.member sermon.id model.reviewingNormalization
                     || Set.member sermon.id model.deleting
                     || Set.member sermon.id model.retrying
 
@@ -174,10 +175,17 @@ viewNormalizedAudio model sermon =
             , div [ Ui.audioReviewControls ]
                 (button
                     [ Ui.primaryButton
-                    , onClick (OpenEditor sermon)
+                    , onClick (ReviewNormalization sermon)
                     , disabled isBusy
                     ]
-                    [ text "Continue" ]
+                    [ text
+                        (if Set.member sermon.id model.reviewingNormalization then
+                            "Continuing…"
+
+                         else
+                            "Continue"
+                        )
+                    ]
                     :: adjustmentButtons
                 )
             , p [ Ui.hint ]
@@ -278,10 +286,10 @@ viewActionButtons model sermon confirmationOpen =
     in
     div [ Ui.sermonActions ]
         (List.concat
-            [ if sermon.stage == "edit" && not sermon.editApproved then
+            [ if (sermon.stage == "edit" || (sermon.stage == "normalization" && sermon.status == "done" && sermon.normalizationReviewed)) && not sermon.editApproved then
                 [ button [ Ui.primaryButton, onClick (OpenEditor sermon), disabled (confirmationOpen || isDeleting) ]
                     [ text
-                        (if sermon.status == "done" then
+                        (if sermon.stage == "edit" && sermon.status == "done" then
                             "Review Final"
 
                          else

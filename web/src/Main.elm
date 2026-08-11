@@ -63,6 +63,7 @@ init _ =
       , retrying = Set.empty
       , retryError = Nothing
       , rerunning = Set.empty
+      , reviewingNormalization = Set.empty
       , normalizationError = Nothing
       , zone = Time.utc
       }
@@ -273,6 +274,36 @@ update msg model =
             ( { model
                 | rerunning = Set.remove original.id model.rerunning
                 , normalizationError = Just "Could not adjust the recording. Please try again."
+              }
+            , Cmd.none
+            )
+
+        ReviewNormalization sermon ->
+            ( { model
+                | reviewingNormalization = Set.insert sermon.id model.reviewingNormalization
+                , normalizationError = Nothing
+              }
+            , Api.reviewNormalization (NormalizationReviewed sermon) sermon.id
+            )
+
+        NormalizationReviewed _ (Ok sermon) ->
+            let
+                ( editor, command, effect ) =
+                    Editor.init sermon
+
+                updated =
+                    { model
+                        | sermons = upsertSermon sermon model.sermons
+                        , editing = Just editor
+                        , reviewingNormalization = Set.remove sermon.id model.reviewingNormalization
+                    }
+            in
+            performEditor effect updated (Cmd.map EditorMsg command)
+
+        NormalizationReviewed original (Err _) ->
+            ( { model
+                | reviewingNormalization = Set.remove original.id model.reviewingNormalization
+                , normalizationError = Just "Could not save the normalization review. Please try again."
               }
             , Cmd.none
             )
