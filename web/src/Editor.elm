@@ -540,6 +540,15 @@ proxyAudioSource model =
         ++ String.fromInt model.sermon.normalizationVolumeAdjustment
 
 
+sectionAudioSource model region =
+    "/api/sermons/"
+        ++ model.sermon.id
+        ++ "/audio/section?start="
+        ++ String.fromFloat region.start
+        ++ "&end="
+        ++ String.fromFloat region.end
+
+
 viewStatus model =
     if model.applying then
         p [ class "editor__status" ] [ text ("Rendering final audio… " ++ String.fromInt model.sermon.progress ++ "%") ]
@@ -597,9 +606,7 @@ viewRegionInspector model =
                         , class "region-inspector__audio"
                         , controls True
                         , attribute "preload" "metadata"
-                        , attribute "data-start" (String.fromFloat region.start)
-                        , attribute "data-end" (String.fromFloat region.end)
-                        , src (proxyAudioSource model)
+                        , src (sectionAudioSource model region)
                         ]
                         []
                     ]

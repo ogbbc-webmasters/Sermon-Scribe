@@ -3,15 +3,18 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +33,7 @@ type Server struct {
 	MaxUploadBytes int64 // 0 means defaultMaxUploadBytes
 	Events         *EventHub
 	Queue          interface{ Notify() }
+	renderSection  func(context.Context, string, string, float64, float64) error
 }
 
 // ReconcileTimelineArtifacts repairs interrupted legacy approval staging and
@@ -379,6 +383,30 @@ func (s *Server) handleSermonAudio(w http.ResponseWriter, r *http.Request) {
 		path = filepath.Join(dir, "normalized.mp3")
 		contentType = "audio/mpeg"
 		downloadName = "normalized.mp3"
+	case "section":
+		if sm.EditApproved || (sm.Stage == "normalization" && sm.Status != "done") || (sm.Stage != "normalization" && sm.Stage != "edit") {
+			writeError(w, http.StatusConflict, "normalized audio is not ready")
+			return
+		}
+		_, waveform, waveformErr := s.loadWaveform(id)
+		if waveformErr != nil {
+			writeError(w, http.StatusConflict, "waveform is not ready")
+			return
+		}
+		start, startErr := strconv.ParseFloat(r.URL.Query().Get("start"), 64)
+		end, endErr := strconv.ParseFloat(r.URL.Query().Get("end"), 64)
+		if startErr != nil || endErr != nil || math.IsNaN(start) || math.IsNaN(end) || math.IsInf(start, 0) || math.IsInf(end, 0) || start < 0 || end <= start || end > waveform.Duration+0.01 {
+			writeError(w, http.StatusBadRequest, "invalid section range")
+			return
+		}
+		path, err = s.sectionAudioPath(r.Context(), dir, start, min(end, waveform.Duration))
+		if err != nil {
+			log.Printf("render sermon audio section %s: %v", id, err)
+			writeError(w, http.StatusInternalServerError, "could not render audio section")
+			return
+		}
+		contentType = "audio/mpeg"
+		downloadName = "section.mp3"
 	case "final":
 		if sm.Stage != "edit" || sm.Status != "done" || sm.AppliedRegions == nil {
 			writeError(w, http.StatusConflict, "final audio is not ready")
@@ -420,6 +448,49 @@ func (s *Server) handleSermonAudio(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", downloadName))
 	}
 	http.ServeContent(w, r, downloadName, info.ModTime(), file)
+}
+
+func (s *Server) sectionAudioPath(ctx context.Context, dir string, start, end float64) (string, error) {
+	input := filepath.Join(dir, "normalized.mp3")
+	info, err := os.Stat(input)
+	if err != nil {
+		return "", err
+	}
+	startMicros := int64(math.Round(start * 1e6))
+	endMicros := int64(math.Round(end * 1e6))
+	cacheDir := filepath.Join(dir, ".sections")
+	path := filepath.Join(cacheDir, fmt.Sprintf("%d-%d-%d.mp3", info.ModTime().UnixNano(), startMicros, endMicros))
+	if _, err := os.Stat(path); err == nil {
+		return path, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		return "", err
+	}
+	temp, err := os.CreateTemp(cacheDir, ".section-*.mp3")
+	if err != nil {
+		return "", err
+	}
+	tempPath := temp.Name()
+	defer os.Remove(tempPath)
+	if err := temp.Close(); err != nil {
+		return "", err
+	}
+	render := s.renderSection
+	if render == nil {
+		render = processing.RenderAudioSection
+	}
+	if err := render(ctx, input, tempPath, float64(startMicros)/1e6, float64(endMicros)/1e6); err != nil {
+		return "", err
+	}
+	if info, err := os.Stat(tempPath); err != nil || info.Size() == 0 {
+		return "", fmt.Errorf("rendered audio section is empty")
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		return "", err
+	}
+	return path, nil
 }
 
 func (s *Server) loadWaveform(id string) (store.Sermon, processing.Waveform, error) {
@@ -576,7 +647,7 @@ func (s *Server) handleApproveEdit(w http.ResponseWriter, r *http.Request) {
 }
 
 func approvalSource(name string) bool {
-	return name == "normalized.flac" || name == "normalized.mp3" || name == "waveform.json" || name == "original" || strings.HasPrefix(name, "original.") || strings.HasPrefix(name, ".normalization-")
+	return name == "normalized.flac" || name == "normalized.mp3" || name == "waveform.json" || name == ".sections" || name == "original" || strings.HasPrefix(name, "original.") || strings.HasPrefix(name, ".normalization-")
 }
 
 func reconcileApprovalStaging(dir string, approved bool) error {
