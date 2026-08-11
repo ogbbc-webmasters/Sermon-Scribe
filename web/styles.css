@@ -144,6 +144,8 @@ h2::after {
 }
 
 .boundary-button:disabled {
+  background: var(--card);
+  border-color: var(--line);
   color: var(--ink-soft);
   cursor: default;
 }

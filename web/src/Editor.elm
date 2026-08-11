@@ -202,7 +202,7 @@ update msg model =
                 ( model, Cmd.none, None )
 
             else
-                changeBoundary boundary (Timeline.boundaryTime boundary model.regions + delta) model
+                changeBoundary boundary (editableBoundaryTime boundary model + delta) model
 
         EditBoundary boundary inputValue ->
             ( { model | boundaryEdits = Dict.insert boundary inputValue model.boundaryEdits }, Cmd.none, None )
@@ -760,12 +760,48 @@ nudgeButton model label boundary amount =
     in
     button
         [ class "boundary-button"
-        , onClick (Nudge boundary amount)
-        , disabled (busy model)
+        , on "pointerdown" (Decode.succeed (Nudge boundary amount))
+        , on "click" (keyboardClickDecoder (Nudge boundary amount))
+        , disabled (busy model || nudgeAtLimit boundary amount model)
         , attribute "aria-label" ("Move " ++ String.toLower label ++ " by " ++ amountLabel)
         , title ("Move " ++ String.toLower label ++ " by " ++ amountLabel)
         ]
         [ text amountLabel ]
+
+
+keyboardClickDecoder message =
+    Decode.field "detail" Decode.int
+        |> Decode.andThen
+            (\detail ->
+                if detail == 0 then
+                    Decode.succeed message
+
+                else
+                    Decode.fail "pointer click handled on pointerdown"
+            )
+
+
+editableBoundaryTime boundary model =
+    Dict.get boundary model.boundaryEdits
+        |> Maybe.andThen parseTimecode
+        |> Maybe.withDefault (Timeline.boundaryTime boundary model.regions)
+
+
+nudgeAtLimit boundary amount model =
+    case ( get (boundary - 1) model.regions, get boundary model.regions ) of
+        ( Just left, Just right ) ->
+            let
+                time =
+                    editableBoundaryTime boundary model
+            in
+            if amount < 0 then
+                time <= left.start + 0.010001
+
+            else
+                time >= right.end - 0.010001
+
+        _ ->
+            True
 
 
 parseTimecode inputValue =
