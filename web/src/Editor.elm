@@ -30,7 +30,13 @@ type alias Model =
     , playhead : Float
     , zoom : Float
     , viewStart : Float
+    , audition : Maybe BoundaryAudition
     }
+
+
+type BoundaryAudition
+    = StartAudition
+    | EndAudition
 
 
 type Msg
@@ -52,6 +58,8 @@ type Msg
     | ShowAll
     | SelectPrevious
     | SelectNext
+    | ToggleAudition BoundaryAudition
+    | AuditionEnded Decode.Value
     | Apply
     | Applied (Result Http.Error Sermon)
     | ConfirmApproval
@@ -71,13 +79,14 @@ type Effect
     | Render Encode.Value Encode.Value
     | Complete String Encode.Value Encode.Value
     | Preview Encode.Value
+    | Audition Encode.Value
     | Close
     | ApprovedSermon Sermon
 
 
 init : Sermon -> ( Model, Cmd Msg, Effect )
 init sermon =
-    ( { sermon = sermon, waveform = Nothing, analysis = Nothing, draft = Nothing, draftReceived = False, regions = [], selected = 0, boundaryEdits = Dict.empty, dirty = False, applying = False, finalReady = sermon.stage == "edit" && sermon.status == "done", confirmingApproval = False, error = Nothing, backWarning = False, playhead = 0, zoom = 1, viewStart = 0 }
+    ( { sermon = sermon, waveform = Nothing, analysis = Nothing, draft = Nothing, draftReceived = False, regions = [], selected = 0, boundaryEdits = Dict.empty, dirty = False, applying = False, finalReady = sermon.stage == "edit" && sermon.status == "done", confirmingApproval = False, error = Nothing, backWarning = False, playhead = 0, zoom = 1, viewStart = 0, audition = Nothing }
     , Cmd.batch [ Api.waveform GotWaveform sermon.id, Api.analyze GotAnalysis sermon.id ]
     , LoadDraft sermon.id
     )
@@ -273,6 +282,29 @@ update msg model =
         SelectNext ->
             redraw (selectRegion (model.selected + 1) model)
 
+        ToggleAudition requested ->
+            if model.audition == Just requested then
+                ( { model | audition = Nothing }, Cmd.none, Audition Encode.null )
+
+            else
+                case auditionRange requested model of
+                    Just ( start, end ) ->
+                        ( { model | audition = Just requested }
+                        , Cmd.none
+                        , Audition
+                            (Encode.object
+                                [ ( "start", Encode.float start )
+                                , ( "end", Encode.float end )
+                                ]
+                            )
+                        )
+
+                    Nothing ->
+                        ( model, Cmd.none, None )
+
+        AuditionEnded _ ->
+            ( { model | audition = Nothing }, Cmd.none, None )
+
         Apply ->
             if busy model then
                 ( model, Cmd.none, None )
@@ -370,6 +402,7 @@ changeBoundary boundary time model =
         { model
             | regions = Timeline.changeBoundary boundary time model.regions
             , boundaryEdits = Dict.remove boundary model.boundaryEdits
+            , audition = Nothing
         }
 
 
@@ -571,15 +604,6 @@ proxyAudioSource model =
         ++ String.fromInt model.sermon.normalizationVolumeAdjustment
 
 
-sectionAudioSource model region =
-    "/api/sermons/"
-        ++ model.sermon.id
-        ++ "/audio/section?start="
-        ++ String.fromFloat region.start
-        ++ "&end="
-        ++ String.fromFloat region.end
-
-
 viewStatus model =
     if model.applying then
         p [ class "editor__status" ] [ text ("Rendering final audio… " ++ String.fromInt model.sermon.progress ++ "%") ]
@@ -663,32 +687,28 @@ viewRegionInspector model =
                       else
                         text ""
                     ]
-                , div [ class "region-inspector__preview" ]
-                    [ strong [ class "region-inspector__preview-label" ] [ text "Section audio" ]
-                    , audio
-                        [ id "section-audio"
-                        , class "region-inspector__audio"
-                        , controls True
-                        , attribute "preload" "metadata"
-                        , src (sectionAudioSource model region)
-                        ]
-                        []
-                    ]
                 , div [ class "region-inspector__decision" ]
                     [ decisionButton "Keep" "mdi:check" (SetKeep model.selected True) region.keep (busy model)
                     , decisionButton "Delete" "mdi:content-cut" (SetKeep model.selected False) (not region.keep) (busy model)
                     ]
                 , div [ class "precision-editor" ]
                     [ if model.selected > 0 then
-                        boundaryRow model "Start" model.selected region.start
+                        boundaryRow model "Start" model.selected region.start StartAudition
 
                       else
                         text ""
                     , if model.selected < List.length model.regions - 1 then
-                        boundaryRow model "End" (model.selected + 1) region.end
+                        boundaryRow model "End" (model.selected + 1) region.end EndAudition
 
                       else
                         text ""
+                    , audio
+                        [ id "boundary-audio"
+                        , attribute "aria-hidden" "true"
+                        , attribute "preload" "auto"
+                        , src (proxyAudioSource model)
+                        ]
+                        []
                     ]
                 ]
 
@@ -729,7 +749,7 @@ decisionButton label iconName message selected isBusy =
         ]
 
 
-boundaryRow model label boundary time =
+boundaryRow model label boundary time audition =
     div [ class "precision-editor__row" ]
         [ span [ class "precision-editor__label" ] [ text label ]
         , div [ class "precision-editor__controls" ]
@@ -755,7 +775,62 @@ boundaryRow model label boundary time =
                 , nudgeButton model label boundary 1
                 ]
             ]
+        , auditionButton model audition
         ]
+
+
+auditionButton model requested =
+    let
+        active =
+            model.audition == Just requested
+
+        label =
+            if active then
+                "Stop preview"
+
+            else
+                case requested of
+                    StartAudition ->
+                        "Play first 1 second"
+
+                    EndAudition ->
+                        "Play last 1 second"
+    in
+    button
+        [ Ui.button
+        , class "precision-editor__audition"
+        , onClick (ToggleAudition requested)
+        , disabled (busy model)
+        , attribute "aria-pressed"
+            (if active then
+                "true"
+
+             else
+                "false"
+            )
+        ]
+        [ icon
+            (if active then
+                "mdi:stop"
+
+             else
+                "mdi:play"
+            )
+        , text label
+        ]
+
+
+auditionRange requested model =
+    get model.selected model.regions
+        |> Maybe.map
+            (\region ->
+                case requested of
+                    StartAudition ->
+                        ( region.start, min region.end (region.start + 1) )
+
+                    EndAudition ->
+                        ( max region.start (region.end - 1), region.end )
+            )
 
 
 nudgeButton model label boundary amount =
@@ -902,7 +977,7 @@ selectRegion requested model =
                     )
                 |> Maybe.withDefault model.viewStart
     in
-    { model | selected = index, boundaryEdits = Dict.empty, viewStart = start }
+    { model | selected = index, boundaryEdits = Dict.empty, viewStart = start, audition = Nothing }
 
 
 zoomToSelected model =

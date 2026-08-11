@@ -40,6 +40,12 @@ port configurePreview : Decode.Value -> Cmd msg
 port previewPlayhead : (Decode.Value -> msg) -> Sub msg
 
 
+port auditionBoundary : Decode.Value -> Cmd msg
+
+
+port boundaryAuditionEnded : (Decode.Value -> msg) -> Sub msg
+
+
 main : Program () Model Msg
 main =
     Browser.element
@@ -368,6 +374,7 @@ subscriptions model =
         , timelineDraftLoaded (EditorMsg << Editor.GotDraft)
         , timelineRegionSelected (EditorMsg << Editor.CanvasSelect)
         , previewPlayhead (EditorMsg << Editor.Playhead)
+        , boundaryAuditionEnded (EditorMsg << Editor.AuditionEnded)
         , case model.upload of
             Uploading _ ->
                 Http.track Api.uploadTracker UploadProgress
@@ -401,11 +408,14 @@ performEditor effect model command =
         Editor.Preview value ->
             ( model, Cmd.batch [ command, configurePreview value, clearTimelineDraft (model.editing |> Maybe.map (.sermon >> .id) |> Maybe.withDefault "") ] )
 
+        Editor.Audition value ->
+            ( model, Cmd.batch [ command, auditionBoundary value ] )
+
         Editor.Close ->
-            ( { model | editing = Nothing }, Cmd.batch [ command, configurePreview Encode.null ] )
+            ( { model | editing = Nothing }, Cmd.batch [ command, configurePreview Encode.null, auditionBoundary Encode.null ] )
 
         Editor.ApprovedSermon sermon ->
-            ( { model | editing = Nothing, sermons = upsertSermon sermon model.sermons }, Cmd.batch [ command, clearTimelineDraft sermon.id, configurePreview Encode.null ] )
+            ( { model | editing = Nothing, sermons = upsertSermon sermon model.sermons }, Cmd.batch [ command, clearTimelineDraft sermon.id, configurePreview Encode.null, auditionBoundary Encode.null ] )
 
 
 mergeFetchedSermons : Set.Set String -> List Api.Sermon -> SermonList -> SermonList
