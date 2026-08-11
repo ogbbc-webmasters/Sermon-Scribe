@@ -2,6 +2,7 @@ module View exposing (view)
 
 import Api exposing (Sermon)
 import DateFormat exposing (formatDate)
+import Editor
 import File
 import Html exposing (Html, a, audio, button, div, h1, h2, input, label, p, span, strong, text)
 import Html.Attributes exposing (accept, class, controls, disabled, download, href, id, src, style, type_)
@@ -15,8 +16,8 @@ import Ui
 view : Model -> Html Msg
 view model =
     case model.editing of
-        Just sermon ->
-            viewEditor sermon
+        Just editor ->
+            Html.map EditorMsg (Editor.view editor)
 
         Nothing ->
             div [ class "page" ]
@@ -29,22 +30,6 @@ view model =
                 , viewOptionalError model.normalizationError
                 , viewSermons model
                 ]
-
-
-viewEditor : Sermon -> Html Msg
-viewEditor sermon =
-    div [ class "page" ]
-        [ div [ class "masthead" ]
-            [ h1 [] [ text "Sermon Scribe" ] ]
-        , h2 [] [ text ("Editing " ++ sermon.originalFilename) ]
-        , div [ Ui.emptyState ]
-            [ strong [] [ text "Coming soon" ]
-            , p [ Ui.hint ]
-                [ text "The automatic audio timeline editor will appear here." ]
-            ]
-        , p []
-            [ button [ Ui.button, onClick CloseEditor ] [ text "Back to Sermons" ] ]
-        ]
 
 
 viewOptionalError : Maybe String -> Html Msg
@@ -63,7 +48,7 @@ viewUpload upload =
         Uploading fraction ->
             div [ class "upload-box" ]
                 [ p [ class "upload-box__status" ]
-                    [ text ("Uploading\u{2026} " ++ percent fraction) ]
+                    [ text ("Uploading… " ++ percent fraction) ]
                 , viewProgressBar fraction
                 , p [ Ui.hint ]
                     [ text "Please keep this page open until the upload finishes." ]
@@ -121,7 +106,7 @@ viewSermons : Model -> Html Msg
 viewSermons model =
     case model.sermons of
         Loading ->
-            p [ Ui.hint ] [ text "Loading\u{2026}" ]
+            p [ Ui.hint ] [ text "Loading…" ]
 
         LoadFailed ->
             p [ Ui.errorText ]
@@ -158,10 +143,11 @@ viewSermon model sermon =
 
 viewNormalizedAudio : Model -> Sermon -> Html Msg
 viewNormalizedAudio model sermon =
-    if sermon.stage == "normalization" && sermon.status == "done" then
+    if sermon.stage == "normalization" && sermon.status == "done" && not sermon.normalizationReviewed then
         let
             isBusy =
                 Set.member sermon.id model.rerunning
+                    || Set.member sermon.id model.reviewingNormalization
                     || Set.member sermon.id model.deleting
                     || Set.member sermon.id model.retrying
 
@@ -189,15 +175,23 @@ viewNormalizedAudio model sermon =
             , div [ Ui.audioReviewControls ]
                 (button
                     [ Ui.primaryButton
-                    , onClick (OpenEditor sermon)
+                    , onClick (ReviewNormalization sermon)
                     , disabled isBusy
                     ]
-                    [ text "Continue" ]
+                    [ text
+                        (if Set.member sermon.id model.reviewingNormalization then
+                            "Continuing…"
+
+                         else
+                            "Continue"
+                        )
+                    ]
                     :: adjustmentButtons
                 )
             , p [ Ui.hint ]
                 [ a
-                    [ href (normalizedAudioUrl sermon "proxy" ++ "&download=1")
+                    [ class "focusable"
+                    , href (normalizedAudioUrl sermon "proxy" ++ "&download=1")
                     , download "normalized.mp3"
                     ]
                     [ text "Download MP3" ]
@@ -292,7 +286,21 @@ viewActionButtons model sermon confirmationOpen =
     in
     div [ Ui.sermonActions ]
         (List.concat
-            [ if sermon.status == "failed" then
+            [ if (sermon.stage == "edit" || (sermon.stage == "normalization" && sermon.status == "done" && sermon.normalizationReviewed)) && not sermon.editApproved then
+                [ button [ Ui.primaryButton, onClick (OpenEditor sermon), disabled (confirmationOpen || isDeleting) ]
+                    [ text
+                        (if sermon.stage == "edit" && sermon.status == "done" then
+                            "Review Final"
+
+                         else
+                            "Open Editor"
+                        )
+                    ]
+                ]
+
+              else
+                []
+            , if sermon.status == "failed" then
                 [ button
                     [ Ui.button
                     , onClick (RetrySermon sermon)
@@ -300,7 +308,7 @@ viewActionButtons model sermon confirmationOpen =
                     ]
                     [ text
                         (if isRetrying then
-                            "Retrying\u{2026}"
+                            "Retrying…"
 
                          else
                             "Retry"
@@ -317,7 +325,7 @@ viewActionButtons model sermon confirmationOpen =
                     ]
                     [ text
                         (if isDeleting then
-                            "Deleting\u{2026}"
+                            "Deleting…"
 
                          else
                             "Delete"
@@ -347,7 +355,7 @@ describeStage sermon =
             "Waiting to upload"
 
         ( "upload", "running" ) ->
-            "Uploading\u{2026}"
+            "Uploading…"
 
         ( "upload", "done" ) ->
             "Uploaded"
@@ -357,10 +365,10 @@ describeStage sermon =
 
         ( "normalization", "running" ) ->
             if sermon.progress < 0 then
-                "Normalizing\u{2026}"
+                "Normalizing…"
 
             else
-                "Normalizing\u{2026} " ++ String.fromInt sermon.progress ++ "%"
+                "Normalizing… " ++ String.fromInt sermon.progress ++ "%"
 
         ( "normalization", "done" ) ->
             "Normalization finished"

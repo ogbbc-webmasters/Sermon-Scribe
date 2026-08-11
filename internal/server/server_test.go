@@ -15,6 +15,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/processing"
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 )
 
@@ -247,6 +248,13 @@ func TestSermonAudio(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "normalized.mp3"), []byte("mp3 audio"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	waveform, err := processing.EncodeWaveform(processing.Waveform{Duration: 10, SamplesPerSecond: 20, Samples: make([]float64, 200)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "waveform.json"), waveform, 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	req, err := http.NewRequest(http.MethodGet, ts.URL+"/api/sermons/"+sm.ID+"/audio/proxy?download=1", nil)
 	if err != nil {
@@ -276,6 +284,46 @@ func TestSermonAudio(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK || resp.Header.Get("Content-Type") != "audio/flac" {
 		t.Fatalf("normalized response = %d %q", resp.StatusCode, resp.Header.Get("Content-Type"))
+	}
+
+	sectionRenders := 0
+	srv.renderSection = func(_ context.Context, input, output string, start, end float64) error {
+		sectionRenders++
+		if input != filepath.Join(dir, "normalized.flac") || start != 1.25 || end != 3.75 {
+			t.Errorf("section render = %q %.2f-%.2f", input, start, end)
+		}
+		return os.WriteFile(output, []byte("section audio"), 0o644)
+	}
+	resp, err = http.Get(ts.URL + "/api/sermons/" + sm.ID + "/audio/section?start=1.25&end=3.75")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK || string(got) != "section audio" || resp.Header.Get("Content-Type") != "audio/mpeg" {
+		t.Fatalf("section response = %d %q %q", resp.StatusCode, got, resp.Header.Get("Content-Type"))
+	}
+	req, err = http.NewRequest(http.MethodGet, ts.URL+"/api/sermons/"+sm.ID+"/audio/section?start=1.25&end=3.75", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Range", "bytes=0-2")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusPartialContent || string(got) != "sec" || sectionRenders != 1 {
+		t.Fatalf("cached section range = %d %q, renders = %d", resp.StatusCode, got, sectionRenders)
+	}
+	resp, err = http.Get(ts.URL + "/api/sermons/" + sm.ID + "/audio/section?start=3&end=11")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("invalid section status = %d, want 400", resp.StatusCode)
 	}
 
 	resp, err = http.Get(ts.URL + "/api/sermons/" + sm.ID + "/audio/unknown")

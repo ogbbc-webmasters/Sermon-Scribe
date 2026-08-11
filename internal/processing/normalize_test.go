@@ -82,6 +82,9 @@ func TestNormalizeHandlerCommitsArtifactsAndAdjustments(t *testing.T) {
 		}
 		return nil
 	}
+	handler.waveform = func(context.Context, string) (Waveform, error) {
+		return Waveform{Duration: 1, SamplesPerSecond: 20, Samples: make([]float64, 20)}, nil
+	}
 	reporter := &recordingReporter{}
 	if _, err := handler.Run(context.Background(), job, reporter); err != nil {
 		t.Fatal(err)
@@ -89,7 +92,7 @@ func TestNormalizeHandlerCommitsArtifactsAndAdjustments(t *testing.T) {
 	if runs != 1 || !strings.Contains(lastFilter, "threshold=0.030") || !strings.Contains(lastFilter, "loudnorm=I=-14") {
 		t.Fatalf("ffmpeg runs/filter = %d %q", runs, lastFilter)
 	}
-	for _, name := range []string{"normalized.flac", "normalized.mp3", ".normalization-complete.json"} {
+	for _, name := range []string{"normalized.flac", "normalized.mp3", "waveform.json", ".normalization-complete.json"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Fatalf("missing %s: %v", name, err)
 		}

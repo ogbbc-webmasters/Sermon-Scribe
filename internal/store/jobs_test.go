@@ -107,6 +107,52 @@ func TestEnqueueNormalizationRerun(t *testing.T) {
 	}
 }
 
+func TestNormalizationReviewPersistsAndRerunResetsIt(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.db")
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)
+	seedNormalizeJob(t, st, "sermon-1", "job-1", now)
+	job, err := st.ClaimNextJob(context.Background(), []string{"normalize"}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.CompleteJob(job, nil, now); err != nil {
+		t.Fatal(err)
+	}
+	sm, err := st.MarkNormalizationReviewed("sermon-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !sm.NormalizationReviewed {
+		t.Fatal("normalization review was not marked")
+	}
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	sermons, err := st.ListSermons()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sermons) != 1 || !sermons[0].NormalizationReviewed {
+		t.Fatalf("persisted sermons = %+v", sermons)
+	}
+	sm, err = st.EnqueueNormalizationRerun("sermon-1", "job-2", `{"gate_adjustment":1,"volume_adjustment":0}`, now.Add(time.Minute))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sm.NormalizationReviewed {
+		t.Fatal("normalization rerun retained the previous review")
+	}
+}
+
 func TestClaimNextJobIsAtomicAndFiltersTypes(t *testing.T) {
 	st := openTestStore(t)
 	now := time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC)

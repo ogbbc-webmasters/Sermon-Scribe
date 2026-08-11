@@ -4,6 +4,7 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 
 	_ "modernc.org/sqlite"
@@ -11,16 +12,19 @@ import (
 
 // Sermon is one uploaded recording and its pipeline state.
 type Sermon struct {
-	ID                            string  `json:"id"`
-	OriginalFilename              string  `json:"original_filename"`
-	UploadedAt                    string  `json:"uploaded_at"`
-	UploadedBy                    *string `json:"uploaded_by"`
-	Stage                         string  `json:"stage"`
-	Status                        string  `json:"status"`
-	Progress                      int     `json:"progress"`
-	Error                         *string `json:"error"`
-	NormalizationGateAdjustment   int     `json:"normalization_gate_adjustment"`
-	NormalizationVolumeAdjustment int     `json:"normalization_volume_adjustment"`
+	ID                            string          `json:"id"`
+	OriginalFilename              string          `json:"original_filename"`
+	UploadedAt                    string          `json:"uploaded_at"`
+	UploadedBy                    *string         `json:"uploaded_by"`
+	Stage                         string          `json:"stage"`
+	Status                        string          `json:"status"`
+	Progress                      int             `json:"progress"`
+	Error                         *string         `json:"error"`
+	NormalizationGateAdjustment   int             `json:"normalization_gate_adjustment"`
+	NormalizationVolumeAdjustment int             `json:"normalization_volume_adjustment"`
+	NormalizationReviewed         bool            `json:"normalization_reviewed"`
+	AppliedRegions                json.RawMessage `json:"applied_regions,omitempty"`
+	EditApproved                  bool            `json:"edit_approved"`
 }
 
 // Store wraps the SQLite database.
@@ -72,7 +76,8 @@ func (s *Store) CreateSermon(sm Sermon) error {
 const sermonViewSQL = `
 	SELECT s.id, s.original_filename, s.uploaded_at, s.uploaded_by,
 	       s.stage, s.status, COALESCE(j.progress, 0), j.last_error,
-	       s.normalization_gate_adjustment, s.normalization_volume_adjustment
+	       s.normalization_gate_adjustment, s.normalization_volume_adjustment,
+	       s.normalization_reviewed, s.applied_regions, s.edit_approved
 	FROM sermons s
 	LEFT JOIN jobs j ON j.id = (
 		SELECT id FROM jobs
@@ -120,11 +125,48 @@ func getSermon(q interface {
 }
 
 func scanSermon(row rowScanner, sm *Sermon) error {
-	return row.Scan(
+	var applied []byte
+	err := row.Scan(
 		&sm.ID, &sm.OriginalFilename, &sm.UploadedAt, &sm.UploadedBy,
 		&sm.Stage, &sm.Status, &sm.Progress, &sm.Error,
 		&sm.NormalizationGateAdjustment, &sm.NormalizationVolumeAdjustment,
+		&sm.NormalizationReviewed, &applied, &sm.EditApproved,
 	)
+	if len(applied) > 0 {
+		sm.AppliedRegions = json.RawMessage(applied)
+	}
+	return err
+}
+
+// MarkNormalizationReviewed durably records that the user accepted the
+// completed normalization before entering the timeline editor.
+func (s *Store) MarkNormalizationReviewed(id string) (Sermon, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Sermon{}, err
+	}
+	defer tx.Rollback()
+	res, err := tx.Exec(
+		`UPDATE sermons SET normalization_reviewed = 1
+		 WHERE id = ? AND stage = 'normalization' AND status = 'done'`, id)
+	if err != nil {
+		return Sermon{}, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return Sermon{}, err
+	}
+	if n == 0 {
+		if _, err := getSermon(tx, id); err != nil {
+			return Sermon{}, err
+		}
+		return Sermon{}, ErrEditConflict
+	}
+	sm, err := getSermon(tx, id)
+	if err != nil {
+		return Sermon{}, err
+	}
+	return sm, tx.Commit()
 }
 
 // DeleteSermon removes the sermon row with the given id. It reports whether

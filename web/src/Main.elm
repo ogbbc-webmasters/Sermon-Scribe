@@ -2,8 +2,10 @@ port module Main exposing (main)
 
 import Api
 import Browser
+import Editor
 import Http
 import Json.Decode as Decode
+import Json.Encode as Encode
 import Set
 import Task
 import Time
@@ -12,6 +14,36 @@ import View
 
 
 port pipelineEvents : (Decode.Value -> msg) -> Sub msg
+
+
+port loadTimelineDraft : String -> Cmd msg
+
+
+port timelineDraftLoaded : (Decode.Value -> msg) -> Sub msg
+
+
+port saveTimelineDraft : Decode.Value -> Cmd msg
+
+
+port clearTimelineDraft : String -> Cmd msg
+
+
+port renderTimeline : Decode.Value -> Cmd msg
+
+
+port timelineRegionSelected : (Decode.Value -> msg) -> Sub msg
+
+
+port configurePreview : Decode.Value -> Cmd msg
+
+
+port previewPlayhead : (Decode.Value -> msg) -> Sub msg
+
+
+port auditionBoundary : Decode.Value -> Cmd msg
+
+
+port boundaryAuditionEnded : (Decode.Value -> msg) -> Sub msg
 
 
 main : Program () Model Msg
@@ -37,6 +69,7 @@ init _ =
       , retrying = Set.empty
       , retryError = Nothing
       , rerunning = Set.empty
+      , reviewingNormalization = Set.empty
       , normalizationError = Nothing
       , zone = Time.utc
       }
@@ -73,34 +106,90 @@ update msg model =
         PipelineEventReceived value ->
             case Decode.decodeValue Api.pipelineEventDecoder value of
                 Ok (Api.PipelineSnapshot sermons) ->
-                    ( { model
-                        | sermons =
-                            Loaded
-                                (List.filter
-                                    (\sermon -> not (Set.member sermon.id model.deletedSermons))
-                                    sermons
-                                )
-                        , hasPipelineSnapshot = True
-                      }
-                    , Cmd.none
-                    )
+                    let
+                        visible =
+                            List.filter (\sermon -> not (Set.member sermon.id model.deletedSermons)) sermons
+
+                        ( editing, effect ) =
+                            case model.editing of
+                                Just editor ->
+                                    case List.filter (\sermon -> sermon.id == editor.sermon.id) visible |> List.head of
+                                        Just sermon ->
+                                            let
+                                                ( next, editorEffect ) =
+                                                    Editor.pipeline sermon editor
+                                            in
+                                            ( Just next, editorEffect )
+
+                                        Nothing ->
+                                            ( Just editor, Editor.Close )
+
+                                Nothing ->
+                                    ( Nothing, Editor.None )
+
+                        updated =
+                            { model
+                                | sermons =
+                                    Loaded visible
+                                , hasPipelineSnapshot = True
+                                , editing = editing
+                            }
+                    in
+                    performEditor effect updated Cmd.none
 
                 Ok (Api.PipelineUpdate sermon) ->
                     if Set.member sermon.id model.deletedSermons then
                         ( model, Cmd.none )
 
                     else
-                        ( { model | sermons = upsertSermon sermon model.sermons }
-                        , Cmd.none
-                        )
+                        let
+                            ( editing, effect ) =
+                                case model.editing of
+                                    Just editor ->
+                                        let
+                                            ( next, editorEffect ) =
+                                                Editor.pipeline sermon editor
+                                        in
+                                        ( Just next, editorEffect )
+
+                                    Nothing ->
+                                        ( Nothing, Editor.None )
+
+                            updated =
+                                { model | sermons = upsertSermon sermon model.sermons, editing = editing }
+                        in
+                        performEditor effect updated Cmd.none
 
                 Ok (Api.PipelineDeleted id) ->
+                    let
+                        closesEditor =
+                            model.editing
+                                |> Maybe.map (\editor -> editor.sermon.id == id)
+                                |> Maybe.withDefault False
+
+                        remainingEditor =
+                            case model.editing of
+                                Just editor ->
+                                    if editor.sermon.id == id then
+                                        Nothing
+
+                                    else
+                                        model.editing
+
+                                Nothing ->
+                                    Nothing
+                    in
                     ( { model
                         | deleting = Set.remove id model.deleting
                         , deletedSermons = Set.insert id model.deletedSermons
                         , sermons = removeSermon id model.sermons
+                        , editing = remainingEditor
                       }
-                    , Cmd.none
+                    , if closesEditor then
+                        Cmd.batch [ configurePreview Encode.null, clearTimelineDraft id ]
+
+                      else
+                        Cmd.none
                     )
 
                 Err _ ->
@@ -195,11 +284,54 @@ update msg model =
             , Cmd.none
             )
 
-        OpenEditor sermon ->
-            ( { model | editing = Just sermon }, Cmd.none )
+        ReviewNormalization sermon ->
+            ( { model
+                | reviewingNormalization = Set.insert sermon.id model.reviewingNormalization
+                , normalizationError = Nothing
+              }
+            , Api.reviewNormalization (NormalizationReviewed sermon) sermon.id
+            )
 
-        CloseEditor ->
-            ( { model | editing = Nothing }, Cmd.none )
+        NormalizationReviewed _ (Ok sermon) ->
+            let
+                ( editor, command, effect ) =
+                    Editor.init sermon
+
+                updated =
+                    { model
+                        | sermons = upsertSermon sermon model.sermons
+                        , editing = Just editor
+                        , reviewingNormalization = Set.remove sermon.id model.reviewingNormalization
+                    }
+            in
+            performEditor effect updated (Cmd.map EditorMsg command)
+
+        NormalizationReviewed original (Err _) ->
+            ( { model
+                | reviewingNormalization = Set.remove original.id model.reviewingNormalization
+                , normalizationError = Just "Could not save the normalization review. Please try again."
+              }
+            , Cmd.none
+            )
+
+        OpenEditor sermon ->
+            let
+                ( editor, command, effect ) =
+                    Editor.init sermon
+            in
+            performEditor effect { model | editing = Just editor } (Cmd.map EditorMsg command)
+
+        EditorMsg editorMsg ->
+            case model.editing of
+                Just editor ->
+                    let
+                        ( next, command, effect ) =
+                            Editor.update editorMsg editor
+                    in
+                    performEditor effect { model | editing = Just next } (Cmd.map EditorMsg command)
+
+                Nothing ->
+                    ( model, Cmd.none )
 
         AskDelete sermon ->
             ( { model | confirmingDelete = Just sermon }, Cmd.none )
@@ -239,6 +371,10 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ pipelineEvents PipelineEventReceived
+        , timelineDraftLoaded (EditorMsg << Editor.GotDraft)
+        , timelineRegionSelected (EditorMsg << Editor.CanvasSelect)
+        , previewPlayhead (EditorMsg << Editor.Playhead)
+        , boundaryAuditionEnded (EditorMsg << Editor.AuditionEnded)
         , case model.upload of
             Uploading _ ->
                 Http.track Api.uploadTracker UploadProgress
@@ -246,6 +382,40 @@ subscriptions model =
             _ ->
                 Sub.none
         ]
+
+
+performEditor : Editor.Effect -> Model -> Cmd Msg -> ( Model, Cmd Msg )
+performEditor effect model command =
+    case effect of
+        Editor.None ->
+            ( model, command )
+
+        Editor.LoadDraft id ->
+            ( model, Cmd.batch [ command, loadTimelineDraft id ] )
+
+        Editor.SaveDraft id value render preview ->
+            ( model, Cmd.batch [ command, saveTimelineDraft (Encode.object [ ( "id", Encode.string id ), ( "draft", value ) ]), renderTimeline render, configurePreview preview ] )
+
+        Editor.ClearDraft id ->
+            ( model, Cmd.batch [ command, clearTimelineDraft id ] )
+
+        Editor.Render value preview ->
+            ( model, Cmd.batch [ command, renderTimeline value, configurePreview preview ] )
+
+        Editor.Complete id value preview ->
+            ( model, Cmd.batch [ command, renderTimeline value, configurePreview preview, clearTimelineDraft id ] )
+
+        Editor.Preview value ->
+            ( model, Cmd.batch [ command, configurePreview value, clearTimelineDraft (model.editing |> Maybe.map (.sermon >> .id) |> Maybe.withDefault "") ] )
+
+        Editor.Audition value ->
+            ( model, Cmd.batch [ command, auditionBoundary value ] )
+
+        Editor.Close ->
+            ( { model | editing = Nothing }, Cmd.batch [ command, configurePreview Encode.null, auditionBoundary Encode.null ] )
+
+        Editor.ApprovedSermon sermon ->
+            ( { model | editing = Nothing, sermons = upsertSermon sermon model.sermons }, Cmd.batch [ command, clearTimelineDraft sermon.id, configurePreview Encode.null, auditionBoundary Encode.null ] )
 
 
 mergeFetchedSermons : Set.Set String -> List Api.Sermon -> SermonList -> SermonList

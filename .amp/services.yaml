@@ -1,0 +1,12 @@
+services:
+  sermon-scribe:
+    command: >-
+      mkdir -p /tmp/sermon-scribe/uploads &&
+      just build-elm &&
+      go run ./cmd/sermon-scribe
+      -addr :$PORT
+      -db /tmp/sermon-scribe/sermons.db
+      -uploads /tmp/sermon-scribe/uploads
+    portal:
+      title: Sermon Scribe
+      description: Development server with persistent orb-local data.

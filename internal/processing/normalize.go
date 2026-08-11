@@ -117,13 +117,14 @@ type NormalizeHandler struct {
 	uploadsDir string
 	runFFmpeg  ffmpegRunner
 	probe      audioProbe
+	waveform   func(context.Context, string) (Waveform, error)
 }
 
 // NewNormalizeHandler builds the production FFmpeg-backed normalization handler.
 func NewNormalizeHandler(st *store.Store, uploadsDir string) *NormalizeHandler {
 	return &NormalizeHandler{
 		store: st, uploadsDir: uploadsDir,
-		runFFmpeg: runFFmpeg, probe: probeAudio,
+		runFFmpeg: runFFmpeg, probe: probeAudio, waveform: GenerateWaveform,
 	}
 }
 
@@ -143,9 +144,12 @@ func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Repo
 	mp3Final := filepath.Join(dir, "normalized.mp3")
 	flacTemp := filepath.Join(dir, ".normalize-"+job.ID+".flac")
 	mp3Temp := filepath.Join(dir, ".normalize-"+job.ID+".mp3")
+	waveformFinal := filepath.Join(dir, "waveform.json")
+	waveformTemp := filepath.Join(dir, ".normalize-"+job.ID+"-waveform.json")
 	markerPath := filepath.Join(dir, ".normalization-complete.json")
 	defer os.Remove(flacTemp)
 	defer os.Remove(mp3Temp)
+	defer os.Remove(waveformTemp)
 
 	marker := CompletionMarker{
 		JobID: job.ID, Parameters: job.Parameters,
@@ -158,6 +162,7 @@ func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Repo
 		{TemporaryPath: mp3Temp, FinalPath: mp3Final, Validate: func(path string) error {
 			return h.probe(path, audioSpec{codec: "mp3", sampleRate: 44100, channels: 1})
 		}},
+		{TemporaryPath: waveformTemp, FinalPath: waveformFinal, Validate: validateWaveformFile},
 	}
 	committed, err := HasCommittedArtifacts(markerPath, marker, artifacts)
 	if err != nil {
@@ -168,6 +173,17 @@ func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Repo
 		if err := h.runFFmpeg(ctx, input, flacTemp, mp3Temp, filter, func(percent int) error {
 			return reporter.Progress(percent, nil)
 		}); err != nil {
+			return Result{}, err
+		}
+		waveform, err := h.waveform(ctx, flacTemp)
+		if err != nil {
+			return Result{}, err
+		}
+		data, err := EncodeWaveform(waveform)
+		if err != nil {
+			return Result{}, err
+		}
+		if err := os.WriteFile(waveformTemp, data, 0o644); err != nil {
 			return Result{}, err
 		}
 		if err := CommitArtifacts(markerPath, marker, artifacts); err != nil {
@@ -183,6 +199,18 @@ func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Repo
 		return Result{}, err
 	}
 	return Result{}, nil
+}
+
+func validateWaveformFile(path string) error {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	var waveform Waveform
+	if err := json.Unmarshal(data, &waveform); err != nil {
+		return err
+	}
+	return ValidateWaveform(waveform)
 }
 
 func normalizationFilter(settings NormalizationSettings) string {

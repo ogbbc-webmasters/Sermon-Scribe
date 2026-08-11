@@ -110,6 +110,44 @@ func TestRerunNormalization(t *testing.T) {
 	}
 }
 
+func TestReviewNormalization(t *testing.T) {
+	srv, ts := newTestServer(t)
+	_, uploaded := uploadFile(t, ts, "review.wav", []byte("audio"), nil)
+
+	resp, err := http.Post(ts.URL+"/api/sermons/"+uploaded.ID+"/review-normalization", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("pending review status = %d, want 409", resp.StatusCode)
+	}
+
+	job, err := srv.Store.ClaimNextJob(context.Background(), []string{"normalize"}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := srv.Store.CompleteJob(job, nil, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	resp, err = http.Post(ts.URL+"/api/sermons/"+uploaded.ID+"/review-normalization", "application/json", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("review status = %d, want 200: %s", resp.StatusCode, body)
+	}
+	var sm store.Sermon
+	if err := json.NewDecoder(resp.Body).Decode(&sm); err != nil {
+		t.Fatal(err)
+	}
+	if !sm.NormalizationReviewed {
+		t.Fatal("review response did not persist normalization_reviewed")
+	}
+}
+
 func TestRerunNormalizationRejectsInvalidStateAndPreset(t *testing.T) {
 	_, ts := newTestServer(t)
 	_, uploaded := uploadFile(t, ts, "pending.wav", []byte("audio"), nil)
@@ -208,6 +246,52 @@ func TestEventHubDisconnectsSlowSubscriber(t *testing.T) {
 	}
 	if _, ok := <-events; ok {
 		t.Fatal("slow subscriber was not disconnected")
+	}
+}
+
+func TestEventHubSnapshotRegistrationOrdersPublishAfterSnapshot(t *testing.T) {
+	hub := NewEventHub()
+	loaderStarted := make(chan struct{})
+	releaseLoader := make(chan struct{})
+	type result struct {
+		events   <-chan streamEvent
+		snapshot []store.Sermon
+		cancel   func()
+	}
+	resultCh := make(chan result)
+	go func() {
+		events, snapshot, cancel, err := hub.subscribeWithSnapshot(func() ([]store.Sermon, error) {
+			close(loaderStarted)
+			<-releaseLoader
+			return []store.Sermon{{ID: "old"}}, nil
+		})
+		if err != nil {
+			t.Errorf("subscribeWithSnapshot: %v", err)
+			return
+		}
+		resultCh <- result{events, snapshot, cancel}
+	}()
+	<-loaderStarted
+	published := make(chan struct{})
+	go func() {
+		hub.Publish(processing.Event{Name: processing.EventProgress, Sermon: store.Sermon{ID: "new"}})
+		close(published)
+	}()
+	select {
+	case <-published:
+		t.Fatal("publish completed while snapshot lock was held")
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(releaseLoader)
+	got := <-resultCh
+	defer got.cancel()
+	<-published
+	if len(got.snapshot) != 1 || got.snapshot[0].ID != "old" {
+		t.Fatalf("snapshot = %+v", got.snapshot)
+	}
+	event := <-got.events
+	if sermon := event.Data.(store.Sermon); sermon.ID != "new" {
+		t.Fatalf("event sermon = %+v", sermon)
 	}
 }
 
