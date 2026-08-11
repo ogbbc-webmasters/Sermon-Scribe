@@ -1,9 +1,10 @@
 module Editor exposing (Effect(..), Model, Msg(..), init, pipeline, update, view)
 
 import Api exposing (Region, Sermon, Timeline, Waveform)
-import Html exposing (Html, audio, button, canvas, div, h1, node, p, span, strong, text)
-import Html.Attributes exposing (attribute, class, controls, disabled, id, src, tabindex, title)
-import Html.Events exposing (onClick)
+import Dict exposing (Dict)
+import Html exposing (Html, audio, button, canvas, div, h1, input, node, p, span, strong, text)
+import Html.Attributes exposing (attribute, class, controls, disabled, id, src, tabindex, title, type_, value)
+import Html.Events exposing (onBlur, onClick, onInput)
 import Http
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -19,6 +20,7 @@ type alias Model =
     , draftReceived : Bool
     , regions : List Region
     , selected : Int
+    , boundaryEdits : Dict Int String
     , dirty : Bool
     , applying : Bool
     , finalReady : Bool
@@ -28,7 +30,6 @@ type alias Model =
     , playhead : Float
     , zoom : Float
     , viewStart : Float
-    , nudgeStep : Float
     }
 
 
@@ -40,13 +41,14 @@ type Msg
     | Toggle Int
     | SetKeep Int Bool
     | Nudge Int Float
+    | EditBoundary Int String
+    | CommitBoundary Int
     | CanvasSelect Decode.Value
     | Playhead Decode.Value
     | ZoomIn
     | ZoomOut
     | Pan Float
     | ShowAll
-    | SetNudgeStep Float
     | SelectPrevious
     | SelectNext
     | Apply
@@ -74,7 +76,7 @@ type Effect
 
 init : Sermon -> ( Model, Cmd Msg, Effect )
 init sermon =
-    ( { sermon = sermon, waveform = Nothing, analysis = Nothing, draft = Nothing, draftReceived = False, regions = [], selected = 0, dirty = False, applying = False, finalReady = sermon.stage == "edit" && sermon.status == "done", confirmingApproval = False, error = Nothing, backWarning = False, playhead = 0, zoom = 1, viewStart = 0, nudgeStep = 0.01 }
+    ( { sermon = sermon, waveform = Nothing, analysis = Nothing, draft = Nothing, draftReceived = False, regions = [], selected = 0, boundaryEdits = Dict.empty, dirty = False, applying = False, finalReady = sermon.stage == "edit" && sermon.status == "done", confirmingApproval = False, error = Nothing, backWarning = False, playhead = 0, zoom = 1, viewStart = 0 }
     , Cmd.batch [ Api.waveform GotWaveform sermon.id, Api.analyze GotAnalysis sermon.id ]
     , LoadDraft sermon.id
     )
@@ -202,6 +204,30 @@ update msg model =
             else
                 changeBoundary boundary (Timeline.boundaryTime boundary model.regions + delta) model
 
+        EditBoundary boundary inputValue ->
+            ( { model | boundaryEdits = Dict.insert boundary inputValue model.boundaryEdits }, Cmd.none, None )
+
+        CommitBoundary boundary ->
+            if busy model then
+                ( model, Cmd.none, None )
+
+            else
+                case Dict.get boundary model.boundaryEdits of
+                    Nothing ->
+                        ( model, Cmd.none, None )
+
+                    Just inputValue ->
+                        case parseTimecode inputValue of
+                            Just time ->
+                                changeBoundary boundary time model
+
+                            Nothing ->
+                                redraw
+                                    { model
+                                        | boundaryEdits = Dict.remove boundary model.boundaryEdits
+                                        , error = Just "Enter a time as minutes:seconds, for example 0:07.04."
+                                    }
+
         CanvasSelect value ->
             case Decode.decodeValue Decode.int value of
                 Ok index ->
@@ -236,9 +262,6 @@ update msg model =
 
         ShowAll ->
             redraw { model | zoom = 1, viewStart = 0 }
-
-        SetNudgeStep step ->
-            ( { model | nudgeStep = step }, Cmd.none, None )
 
         SelectPrevious ->
             redraw (selectRegion (model.selected - 1) model)
@@ -339,7 +362,11 @@ changed model =
 
 
 changeBoundary boundary time model =
-    changed { model | regions = Timeline.changeBoundary boundary time model.regions }
+    changed
+        { model
+            | regions = Timeline.changeBoundary boundary time model.regions
+            , boundaryEdits = Dict.remove boundary model.boundaryEdits
+        }
 
 
 pipeline sermon model =
@@ -513,7 +540,7 @@ viewAudioPreview model =
         [ strong [ class "audio-preview__label" ]
             [ text
                 (if model.finalReady then
-                    "Rendered final audio"
+                    "Final audio"
 
                  else
                     "Edit preview"
@@ -552,9 +579,6 @@ sectionAudioSource model region =
 viewStatus model =
     if model.applying then
         p [ class "editor__status" ] [ text ("Rendering final audio… " ++ String.fromInt model.sermon.progress ++ "%") ]
-
-    else if model.finalReady then
-        p [ class "editor__status" ] [ strong [] [ text "Final audio is ready. Listen carefully, then approve or adjust sections and apply again." ] ]
 
     else
         text ""
@@ -615,15 +639,7 @@ viewRegionInspector model =
                     , decisionButton "Delete" "mdi:content-cut" (SetKeep model.selected False) (not region.keep) (busy model)
                     ]
                 , div [ class "precision-editor" ]
-                    [ div [ class "precision-editor__header" ]
-                        [ strong [] [ text "Boundary adjustment" ]
-                        , div [ class "precision-editor__steps" ]
-                            [ stepButton model 0.01
-                            , stepButton model 0.1
-                            , stepButton model 1
-                            ]
-                        ]
-                    , if model.selected > 0 then
+                    [ if model.selected > 0 then
                         boundaryRow model "Start" model.selected region.start
 
                       else
@@ -673,41 +689,84 @@ decisionButton label iconName message selected isBusy =
         ]
 
 
-stepButton model step =
-    button
-        [ class
-            (if model.nudgeStep == step then
-                "step-button step-button--selected"
-
-             else
-                "step-button"
-            )
-        , onClick (SetNudgeStep step)
-        , attribute "aria-pressed"
-            (if model.nudgeStep == step then
-                "true"
-
-             else
-                "false"
-            )
-        ]
-        [ text
-            (if step == 1 then
-                "1s"
-
-             else
-                String.fromFloat step ++ "s"
-            )
-        ]
-
-
 boundaryRow model label boundary time =
     div [ class "precision-editor__row" ]
         [ span [ class "precision-editor__label" ] [ text label ]
-        , timelineIconButton ("Move " ++ String.toLower label ++ " earlier") "mdi:minus" (Nudge boundary -model.nudgeStep) (busy model)
-        , strong [ class "precision-editor__time" ] [ text (Timeline.timestamp time) ]
-        , timelineIconButton ("Move " ++ String.toLower label ++ " later") "mdi:plus" (Nudge boundary model.nudgeStep) (busy model)
+        , div [ class "precision-editor__controls" ]
+            [ div [ class "precision-editor__nudge-group" ]
+                [ nudgeButton model label boundary -1
+                , nudgeButton model label boundary -0.1
+                , nudgeButton model label boundary -0.01
+                ]
+            , input
+                [ class "precision-editor__input focusable"
+                , type_ "text"
+                , attribute "inputmode" "decimal"
+                , attribute "aria-label" (label ++ " time")
+                , value (Dict.get boundary model.boundaryEdits |> Maybe.withDefault (Timeline.timestamp time))
+                , onInput (EditBoundary boundary)
+                , onBlur (CommitBoundary boundary)
+                , disabled (busy model)
+                ]
+                []
+            , div [ class "precision-editor__nudge-group" ]
+                [ nudgeButton model label boundary 0.01
+                , nudgeButton model label boundary 0.1
+                , nudgeButton model label boundary 1
+                ]
+            ]
         ]
+
+
+nudgeButton model label boundary amount =
+    let
+        amountLabel =
+            (if amount < 0 then
+                "−"
+
+             else
+                "+"
+            )
+                ++ String.fromFloat (abs amount)
+                ++ "s"
+    in
+    button
+        [ class "boundary-button"
+        , onClick (Nudge boundary amount)
+        , disabled (busy model)
+        , attribute "aria-label" ("Move " ++ String.toLower label ++ " by " ++ amountLabel)
+        , title ("Move " ++ String.toLower label ++ " by " ++ amountLabel)
+        ]
+        [ text amountLabel ]
+
+
+parseTimecode inputValue =
+    case String.split ":" (String.trim inputValue) of
+        [ minutesText, secondsText ] ->
+            case ( String.toInt minutesText, String.toFloat secondsText ) of
+                ( Just minutes, Just seconds ) ->
+                    if minutes >= 0 && seconds >= 0 && seconds < 60 then
+                        Just (toFloat minutes * 60 + seconds)
+
+                    else
+                        Nothing
+
+                _ ->
+                    Nothing
+
+        [ secondsText ] ->
+            String.toFloat secondsText
+                |> Maybe.andThen
+                    (\seconds ->
+                        if seconds >= 0 then
+                            Just seconds
+
+                        else
+                            Nothing
+                    )
+
+        _ ->
+            Nothing
 
 
 busy model =
@@ -767,7 +826,7 @@ selectRegion requested model =
                     )
                 |> Maybe.withDefault model.viewStart
     in
-    { model | selected = index, viewStart = start }
+    { model | selected = index, boundaryEdits = Dict.empty, viewStart = start }
 
 
 setZoom requested model =

@@ -127,6 +127,24 @@ h2::after {
   display: block;
 }
 
+.boundary-button {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  min-height: var(--control-size-small);
+  padding: 0 var(--space-xs);
+}
+
+.boundary-button:disabled {
+  color: var(--ink-soft);
+  cursor: default;
+}
+
 .editor {
   max-width: var(--editor-width);
   margin: 0 auto;
@@ -238,12 +256,24 @@ h2::after {
   padding-top: var(--space-lg);
 }
 
-.precision-editor__header {
+.precision-editor__controls {
   align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
+  display: grid;
   gap: var(--space-sm);
+  grid-template-columns: minmax(0, 1fr) minmax(85px, 0.55fr) minmax(0, 1fr);
+}
+
+.precision-editor__input {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  min-height: var(--control-size-small);
+  padding: 0 var(--space-sm);
+  text-align: center;
+  width: 100%;
 }
 
 .precision-editor__label {
@@ -252,21 +282,13 @@ h2::after {
 }
 
 .precision-editor__row {
-  align-items: center;
-  display: grid;
-  gap: var(--space-sm);
-  grid-template-columns: minmax(45px, 1fr) var(--control-size) minmax(90px, auto) var(--control-size);
   margin-top: var(--space-md);
 }
 
-.precision-editor__steps {
-  display: flex;
+.precision-editor__nudge-group {
+  display: grid;
   gap: var(--space-xs);
-}
-
-.precision-editor__time {
-  font-variant-numeric: tabular-nums;
-  text-align: center;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .region-inspector {
@@ -325,25 +347,6 @@ h2::after {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.step-button {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-  color: var(--ink);
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.85rem;
-  font-weight: 700;
-  min-height: var(--control-size-small);
-  padding: 0 var(--space-md);
-}
-
-.step-button--selected {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--card);
 }
 
 .timeline {
@@ -680,6 +683,10 @@ h2::after {
     padding: var(--space-lg);
   }
 
+  .precision-editor__controls {
+    grid-template-columns: 1fr;
+  }
+
   .region-inspector {
     margin-top: var(--space-lg);
     padding: var(--space-md);
@@ -693,7 +700,4 @@ h2::after {
     height: var(--timeline-height-mobile);
   }
 
-  .timeline-controls__buttons {
-    gap: var(--space-xs);
-  }
 }
