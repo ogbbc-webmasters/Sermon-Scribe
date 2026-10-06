@@ -184,13 +184,12 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 	content = strings.TrimSpace(strings.TrimPrefix(content, "json"))
 
 	var result struct {
-		Title           string            `json:"title"`
-		TitleGenerated  bool              `json:"title_generated"`
-		TitleReasoning  string            `json:"title_reasoning"`
-		Speaker         string            `json:"speaker"`
-		Scriptures      []string          `json:"scriptures"`
-		Topics          []string          `json:"topics"`
-		TopicsReasoning map[string]string `json:"topics_reasoning"`
+		Title          string   `json:"title"`
+		TitleGenerated bool     `json:"title_generated"`
+		TitleReasoning string   `json:"title_reasoning"`
+		Speaker        string   `json:"speaker"`
+		Scriptures     []string `json:"scriptures"`
+		Topics         []string `json:"topics"`
 	}
 	rawMetadata := json.RawMessage(content)
 	if len(rawMetadata) > 0 && rawMetadata[0] == '[' {
@@ -210,7 +209,7 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 	if err != nil {
 		return Result{}, err
 	}
-	if err := h.store.SaveMetadata(job.SermonID, result.Title, result.TitleGenerated, result.TitleReasoning, result.Speaker, result.Scriptures, result.Topics, result.TopicsReasoning, scores); err != nil {
+	if err := h.store.SaveMetadata(job.SermonID, result.Title, result.TitleGenerated, result.TitleReasoning, result.Speaker, result.Scriptures, result.Topics, scores); err != nil {
 		return Result{}, err
 	}
 	return Result{}, reporter.Progress(100, nil)
@@ -304,7 +303,6 @@ Extract:
 - speaker: the preacher's name, or an empty string
 - scriptures: normalized Bible references, deduplicated and kept in first-mention order
 - topics: 2-5 labels from the taxonomy below
-- topics_reasoning: an object explaining each selected topic
 
 Topic taxonomy:
 ` + topicsTaxonomy + `

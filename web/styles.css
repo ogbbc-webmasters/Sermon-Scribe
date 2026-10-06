@@ -845,11 +845,6 @@ h2::after {
   margin-bottom: var(--space-sm);
 }
 
-.sermon-detail__reasoning-text {
-  font-size: 0.95rem;
-  margin: var(--space-sm) 0 0;
-}
-
 .sermon-detail__search {
   align-items: center;
   display: flex;

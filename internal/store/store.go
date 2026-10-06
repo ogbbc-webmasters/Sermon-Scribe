@@ -32,7 +32,6 @@ type Sermon struct {
 	Speaker                       *string            `json:"speaker,omitempty"`
 	Scriptures                    []string           `json:"scriptures,omitempty"`
 	Topics                        []string           `json:"topics,omitempty"`
-	TopicsReasoning               map[string]string  `json:"topics_reasoning,omitempty"`
 	TopicScores                   map[string]float64 `json:"topic_scores,omitempty"`
 }
 
@@ -88,7 +87,7 @@ const sermonViewSQL = `
 	       s.normalization_gate_adjustment, s.normalization_volume_adjustment,
 	       s.normalization_reviewed, s.applied_regions, s.edit_approved,
 	       s.transcript, s.title, s.title_generated, s.title_reasoning,
-	       s.speaker, s.scriptures, s.topics, s.topics_reasoning, s.topic_scores
+	       s.speaker, s.scriptures, s.topics, s.topic_scores
 	FROM sermons s
 	LEFT JOIN jobs j ON j.id = (
 		SELECT id FROM jobs
@@ -137,7 +136,7 @@ func getSermon(q interface {
 
 func scanSermon(row rowScanner, sm *Sermon) error {
 	var applied []byte
-	var transcript, title, titleReasoning, speaker, scriptures, topics, topicsReasoning, topicScores sql.NullString
+	var transcript, title, titleReasoning, speaker, scriptures, topics, topicScores sql.NullString
 	var titleGenerated sql.NullBool
 	err := row.Scan(
 		&sm.ID, &sm.OriginalFilename, &sm.UploadedAt, &sm.UploadedBy,
@@ -145,7 +144,7 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 		&sm.NormalizationGateAdjustment, &sm.NormalizationVolumeAdjustment,
 		&sm.NormalizationReviewed, &applied, &sm.EditApproved,
 		&transcript, &title, &titleGenerated, &titleReasoning, &speaker,
-		&scriptures, &topics, &topicsReasoning, &topicScores,
+		&scriptures, &topics, &topicScores,
 	)
 	if len(applied) > 0 {
 		sm.AppliedRegions = json.RawMessage(applied)
@@ -167,7 +166,6 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 	}
 	_ = json.Unmarshal([]byte(scriptures.String), &sm.Scriptures)
 	_ = json.Unmarshal([]byte(topics.String), &sm.Topics)
-	_ = json.Unmarshal([]byte(topicsReasoning.String), &sm.TopicsReasoning)
 	_ = json.Unmarshal([]byte(topicScores.String), &sm.TopicScores)
 	return err
 }
@@ -179,7 +177,7 @@ func (s *Store) SaveTranscript(id, transcript string) error {
 }
 
 // SaveMetadata stores structured metadata produced by the extraction stage.
-func (s *Store) SaveMetadata(id, title string, generated bool, reasoning, speaker string, scriptures, topics []string, topicReasoning map[string]string, topicScores map[string]float64) error {
+func (s *Store) SaveMetadata(id, title string, generated bool, reasoning, speaker string, scriptures, topics []string, topicScores map[string]float64) error {
 	scripturesJSON, err := json.Marshal(scriptures)
 	if err != nil {
 		return err
@@ -188,16 +186,12 @@ func (s *Store) SaveMetadata(id, title string, generated bool, reasoning, speake
 	if err != nil {
 		return err
 	}
-	reasoningJSON, err := json.Marshal(topicReasoning)
-	if err != nil {
-		return err
-	}
 	scoreJSON, err := json.Marshal(topicScores)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`UPDATE sermons SET title=?, title_generated=?, title_reasoning=?, speaker=?, scriptures=?, topics=?, topics_reasoning=?, topic_scores=? WHERE id=?`,
-		title, generated, reasoning, speaker, string(scripturesJSON), string(topicsJSON), string(reasoningJSON), string(scoreJSON), id)
+	_, err = s.db.Exec(`UPDATE sermons SET title=?, title_generated=?, title_reasoning=?, speaker=?, scriptures=?, topics=?, topic_scores=? WHERE id=?`,
+		title, generated, reasoning, speaker, string(scripturesJSON), string(topicsJSON), string(scoreJSON), id)
 	return err
 }
 

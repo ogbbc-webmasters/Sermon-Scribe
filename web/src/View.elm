@@ -2,7 +2,6 @@ module View exposing (view)
 
 import Api exposing (Sermon)
 import DateFormat exposing (formatDate)
-import Dict
 import Editor
 import File
 import Html exposing (Html, a, audio, button, details, div, h1, h2, input, label, mark, p, span, strong, summary, text)
@@ -174,23 +173,11 @@ viewDetailMetadata sermon =
                             (\( topic, score ) ->
                                 span
                                     [ class "sermon-detail__pill sermon-detail__pill--topic"
-                                    , title (Dict.get topic (Dict.fromList sermon.topicsReasoning) |> Maybe.withDefault "")
                                     ]
                                     [ text (topic ++ " " ++ String.fromInt (round (score * 100)) ++ "%") ]
                             )
                             (highConfidenceTopics sermon.topicScores)
                         )
-                    , let
-                        reasons =
-                            sermon.topicsReasoning
-                                |> List.filter (\( topic, _ ) -> List.any (\( shown, _ ) -> shown == topic) (highConfidenceTopics sermon.topicScores))
-                      in
-                      if List.isEmpty reasons then
-                        text ""
-
-                      else
-                        viewReasoning "Why these topics?"
-                            (List.map (\( topic, reasoning ) -> p [ class "sermon-detail__reasoning-text" ] [ strong [] [ text (topic ++ ": ") ], text reasoning ]) reasons)
                     ]
                 ]
             ]
