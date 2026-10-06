@@ -2,11 +2,12 @@ module View exposing (view)
 
 import Api exposing (Sermon)
 import DateFormat exposing (formatDate)
+import Dict
 import Editor
 import File
-import Html exposing (Html, a, audio, button, div, h1, h2, input, label, p, span, strong, text)
-import Html.Attributes exposing (accept, attribute, class, controls, disabled, download, href, id, src, style, title, type_)
-import Html.Events exposing (on, onClick, stopPropagationOn)
+import Html exposing (Html, a, audio, button, details, div, h1, h2, input, label, mark, p, span, strong, summary, text)
+import Html.Attributes exposing (accept, attribute, class, controls, disabled, download, hidden, href, id, placeholder, src, style, title, type_, value)
+import Html.Events exposing (on, onClick, onInput, stopPropagationOn)
 import Json.Decode as Decode exposing (Decoder)
 import Set
 import Types exposing (Model, Msg(..), SermonList(..), UploadState(..))
@@ -49,7 +50,15 @@ view model =
 
 viewSermonDetail : Model -> Sermon -> Html Msg
 viewSermonDetail model sermon =
-    div [ class "page" ]
+    let
+        hasMetadata =
+            sermon.transcript /= Nothing
+                || sermon.title /= Nothing
+                || sermon.titleReasoning /= Nothing
+                || not (List.isEmpty sermon.scriptures)
+                || not (List.isEmpty (highConfidenceTopics sermon.topicScores))
+    in
+    div [ class "page page--detail" ]
         [ div [ class "masthead" ]
             [ h1 [] [ text "Sermon Scribe" ] ]
         , div [ class "sermon-detail" ]
@@ -60,7 +69,11 @@ viewSermonDetail model sermon =
                     , p [ class "sermon-detail__filename" ] [ text sermon.originalFilename ]
                     , case sermon.speaker of
                         Just speaker ->
-                            p [ class "sermon-detail__speaker" ] [ text ("Speaker: " ++ speaker) ]
+                            if String.isEmpty (String.trim speaker) then
+                                text ""
+
+                            else
+                                p [ class "sermon-detail__speaker" ] [ text ("Speaker: " ++ speaker) ]
 
                         Nothing ->
                             text ""
@@ -71,8 +84,37 @@ viewSermonDetail model sermon =
                     ]
                 ]
             , viewDetailStatus sermon
-            , viewDetailMetadata sermon
-            , viewDetailTranscript sermon
+            , div
+                [ class
+                    (if hasMetadata then
+                        "sermon-detail__columns"
+
+                     else
+                        "sermon-detail__columns sermon-detail__columns--single"
+                    )
+                ]
+                [ div [ class "sermon-detail__column", hidden (not hasMetadata) ]
+                    [ if sermon.transcript /= Nothing || sermon.title /= Nothing then
+                        div [ Ui.panel ]
+                            [ strong [ Ui.panelTitle ] [ text "Verify AI-generated content" ]
+                            , p [ Ui.panelText ] [ text "AI-generated to save you time. Please carefully verify the transcript and metadata before publishing." ]
+                            ]
+
+                      else
+                        text ""
+                    , case sermon.titleReasoning of
+                        Just reasoning ->
+                            div [ Ui.panel ] [ viewReasoning "Why this title?" [ p [ Ui.panelText ] [ text reasoning ] ] ]
+
+                        Nothing ->
+                            text ""
+                    , viewDetailMetadata sermon
+                    ]
+                , div [ class "sermon-detail__column" ]
+                    [ viewDetailAudio sermon
+                    , viewDetailTranscript model sermon
+                    ]
+                ]
             , div [ class "sermon-detail__footer" ]
                 [ viewOptionalError model.deleteError
                 , viewOptionalError model.retryError
@@ -98,6 +140,11 @@ viewDetailStatus sermon =
             div [ Ui.panel ]
                 [ strong [ Ui.panelTitle ] [ text (describeStage sermon) ]
                 , p [ Ui.panelText ] [ text "This sermon is still being processed." ]
+                , if sermon.status == "running" && sermon.progress >= 0 then
+                    viewProgressBar (toFloat sermon.progress / 100)
+
+                  else
+                    text ""
                 ]
 
 
@@ -125,24 +172,143 @@ viewDetailMetadata sermon =
                     , div [ class "sermon-detail__pills" ]
                         (List.map
                             (\( topic, score ) ->
-                                span [ class "sermon-detail__pill sermon-detail__pill--topic" ]
+                                span
+                                    [ class "sermon-detail__pill sermon-detail__pill--topic"
+                                    , title (Dict.get topic (Dict.fromList sermon.topicsReasoning) |> Maybe.withDefault "")
+                                    ]
                                     [ text (topic ++ " " ++ String.fromInt (round (score * 100)) ++ "%") ]
                             )
                             (highConfidenceTopics sermon.topicScores)
                         )
+                    , let
+                        reasons =
+                            sermon.topicsReasoning
+                                |> List.filter (\( topic, _ ) -> List.any (\( shown, _ ) -> shown == topic) (highConfidenceTopics sermon.topicScores))
+                      in
+                      if List.isEmpty reasons then
+                        text ""
+
+                      else
+                        viewReasoning "Why these topics?"
+                            (List.map (\( topic, reasoning ) -> p [ class "sermon-detail__reasoning-text" ] [ strong [] [ text (topic ++ ": ") ], text reasoning ]) reasons)
                     ]
                 ]
             ]
         )
 
 
-viewDetailTranscript : Sermon -> Html Msg
-viewDetailTranscript sermon =
+viewReasoning : String -> List (Html Msg) -> Html Msg
+viewReasoning heading body =
+    details [ class "sermon-detail__reasoning" ]
+        (summary [ class "sermon-detail__reasoning-summary focusable" ] [ text heading ] :: body)
+
+
+viewDetailAudio : Sermon -> Html Msg
+viewDetailAudio sermon =
+    let
+        source =
+            audioUrl sermon.id
+                (if sermon.editApproved || (sermon.stage == "edit" && sermon.status == "done") then
+                    "final"
+
+                 else
+                    "original"
+                )
+    in
     div [ Ui.panel ]
-        [ strong [ Ui.panelTitle ] [ text "Transcript" ]
+        [ strong [ Ui.panelTitle ] [ text "Audio" ]
+        , audio [ class "sermon-detail__audio", controls True, attribute "preload" "metadata", src source ] []
+        , a [ class "focusable", href (source ++ "?download=1"), download "" ] [ text "Download audio" ]
+        ]
+
+
+viewDetailTranscript : Model -> Sermon -> Html Msg
+viewDetailTranscript model sermon =
+    div [ Ui.panel ]
+        [ div [ class "sermon-detail__transcript-header" ]
+            [ strong [ Ui.panelTitle ] [ text "Transcript" ]
+            , case sermon.transcript of
+                Just transcript ->
+                    button [ Ui.button, onClick (CopyTranscript transcript) ]
+                        [ text
+                            (if model.transcriptCopyStatus == Just True then
+                                "Copied!"
+
+                             else
+                                "Copy Full Transcript"
+                            )
+                        ]
+
+                Nothing ->
+                    text ""
+            ]
+        , if model.transcriptCopyStatus == Just False then
+            p [ Ui.errorText, attribute "role" "status" ] [ text "Could not copy. Please select the transcript and copy it manually." ]
+
+          else
+            text ""
         , case sermon.transcript of
             Just transcript ->
-                p [ class "sermon-detail__transcript" ] [ text transcript ]
+                let
+                    matches =
+                        if String.isEmpty model.transcriptSearch then
+                            []
+
+                        else
+                            String.indexes (String.toLower model.transcriptSearch) (String.toLower transcript)
+
+                    count =
+                        List.length matches
+
+                    ( offset, reversed ) =
+                        List.indexedMap Tuple.pair matches
+                            |> List.foldl
+                                (\( index, start ) ( previousEnd, nodes ) ->
+                                    ( start + String.length model.transcriptSearch
+                                    , mark
+                                        [ class
+                                            (if index == model.transcriptMatch then
+                                                "sermon-detail__match sermon-detail__match--active"
+
+                                             else
+                                                "sermon-detail__match"
+                                            )
+                                        , attribute "data-transcript-match" (String.fromInt index)
+                                        ]
+                                        [ text (String.slice start (start + String.length model.transcriptSearch) transcript) ]
+                                        :: text (String.slice previousEnd start transcript)
+                                        :: nodes
+                                    )
+                                )
+                                ( 0, [] )
+                in
+                div []
+                    [ div [ class "sermon-detail__search" ]
+                        [ input
+                            [ class "sermon-detail__search-input focusable"
+                            , type_ "search"
+                            , attribute "aria-label" "Search transcript"
+                            , placeholder "Search transcript…"
+                            , value model.transcriptSearch
+                            , onInput SearchTranscript
+                            ]
+                            []
+                        , if count > 0 then
+                            div [ class "sermon-detail__search-navigation" ]
+                                [ button [ Ui.button, attribute "aria-label" "Previous match", onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch - 1))) ] [ text "Prev" ]
+                                , span [ Ui.panelText, attribute "role" "status" ] [ text (String.fromInt (model.transcriptMatch + 1) ++ " of " ++ String.fromInt count) ]
+                                , button [ Ui.button, attribute "aria-label" "Next match", onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch + 1))) ] [ text "Next" ]
+                                ]
+
+                          else if not (String.isEmpty model.transcriptSearch) then
+                            span [ Ui.panelText, attribute "role" "status" ] [ text "No matches" ]
+
+                          else
+                            text ""
+                        ]
+                    , div [ class "sermon-detail__transcript", attribute "tabindex" "0", attribute "aria-label" "Transcript", attribute "role" "region" ]
+                        (List.reverse reversed ++ [ text (String.dropLeft offset transcript) ])
+                    ]
 
             Nothing ->
                 p [ Ui.panelText ] [ text "Transcript not available yet." ]

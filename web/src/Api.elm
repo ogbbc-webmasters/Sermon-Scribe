@@ -148,11 +148,10 @@ decodeMetadata sermon =
         (Decode.oneOf [ Decode.field "topics" (Decode.list Decode.string), Decode.succeed [] ])
         |> Decode.andThen
             (\decodedSermon ->
-                Decode.oneOf
-                    [ Decode.field "topic_scores" (Decode.dict Decode.float)
-                        |> Decode.map (Dict.toList >> (\scores -> { decodedSermon | topicScores = scores }))
-                    , Decode.succeed decodedSermon
-                    ]
+                Decode.map2
+                    (\scores reasoning -> { decodedSermon | topicScores = Dict.toList scores, topicsReasoning = Dict.toList reasoning })
+                    (Decode.oneOf [ Decode.field "topic_scores" (Decode.dict Decode.float), Decode.succeed Dict.empty ])
+                    (Decode.oneOf [ Decode.field "topics_reasoning" (Decode.dict Decode.string), Decode.succeed Dict.empty ])
             )
 
 

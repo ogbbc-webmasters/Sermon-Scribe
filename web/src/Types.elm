@@ -25,6 +25,9 @@ type alias Model =
     { sermons : SermonList
     , editing : Maybe Editor.Model
     , selectedSermon : Maybe Sermon
+    , transcriptSearch : String
+    , transcriptMatch : Int
+    , transcriptCopyStatus : Maybe Bool
     , hasPipelineSnapshot : Bool
     , upload : UploadState
     , confirmingDelete : Maybe Sermon
@@ -57,6 +60,10 @@ type Msg
     | OpenEditor Sermon
     | OpenSermon Sermon
     | CloseSermon
+    | SearchTranscript String
+    | SelectTranscriptMatch Int
+    | CopyTranscript String
+    | TranscriptCopied Bool
     | EditorMsg Editor.Msg
     | AskDelete Sermon
     | CancelDelete

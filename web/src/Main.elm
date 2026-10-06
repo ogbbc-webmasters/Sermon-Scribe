@@ -16,6 +16,15 @@ import View
 port pipelineEvents : (Decode.Value -> msg) -> Sub msg
 
 
+port copyTranscript : String -> Cmd msg
+
+
+port transcriptCopied : (Bool -> msg) -> Sub msg
+
+
+port scrollTranscriptMatch : Int -> Cmd msg
+
+
 port loadTimelineDraft : String -> Cmd msg
 
 
@@ -61,6 +70,9 @@ init _ =
     ( { sermons = Loading
       , editing = Nothing
       , selectedSermon = Nothing
+      , transcriptSearch = ""
+      , transcriptMatch = 0
+      , transcriptCopyStatus = Nothing
       , hasPipelineSnapshot = False
       , upload = Idle
       , confirmingDelete = Nothing
@@ -326,10 +338,22 @@ update msg model =
             performEditor effect { model | editing = Just editor } (Cmd.map EditorMsg command)
 
         OpenSermon sermon ->
-            ( { model | selectedSermon = Just sermon }, Cmd.none )
+            ( { model | selectedSermon = Just sermon, transcriptSearch = "", transcriptMatch = 0, transcriptCopyStatus = Nothing }, Cmd.none )
 
         CloseSermon ->
             ( { model | selectedSermon = Nothing }, Cmd.none )
+
+        SearchTranscript query ->
+            ( { model | transcriptSearch = query, transcriptMatch = 0 }, scrollTranscriptMatch 0 )
+
+        SelectTranscriptMatch index ->
+            ( { model | transcriptMatch = index }, scrollTranscriptMatch index )
+
+        CopyTranscript transcript ->
+            ( { model | transcriptCopyStatus = Nothing }, copyTranscript transcript )
+
+        TranscriptCopied succeeded ->
+            ( { model | transcriptCopyStatus = Just succeeded }, Cmd.none )
 
         EditorMsg editorMsg ->
             case model.editing of
@@ -381,6 +405,7 @@ subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.batch
         [ pipelineEvents PipelineEventReceived
+        , transcriptCopied TranscriptCopied
         , timelineDraftLoaded (EditorMsg << Editor.GotDraft)
         , timelineRegionSelected (EditorMsg << Editor.CanvasSelect)
         , previewPlayhead (EditorMsg << Editor.Playhead)

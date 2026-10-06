@@ -12,6 +12,24 @@
   <script src="/elm.js"></script>
   <script>
     const app = Elm.Main.init({ node: document.getElementById("app") });
+    app.ports.copyTranscript?.subscribe(async (text) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        app.ports.transcriptCopied.send(true);
+      } catch (_) {
+        app.ports.transcriptCopied.send(false);
+      }
+    });
+    app.ports.scrollTranscriptMatch?.subscribe((index) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const match = document.querySelector(`[data-transcript-match="${index}"]`);
+        const transcript = document.querySelector(".sermon-detail__transcript");
+        if (match && transcript) {
+          transcript.scrollTop += match.getBoundingClientRect().top - transcript.getBoundingClientRect().top
+            - transcript.clientHeight / 2 + match.getBoundingClientRect().height / 2;
+        }
+      }));
+    });
     const draftKey = (id) => "sermon-scribe:timeline:" + id;
     app.ports.loadTimelineDraft?.subscribe((id) => {
       let value = null;
