@@ -46,7 +46,7 @@ viewSermonDetail model sermon =
             [ div [ class "sermon-detail__header" ]
                 [ button [ Ui.button, onClick CloseSermon ] [ text "← Back to Sermons" ]
                 , div [ class "sermon-detail__identity" ]
-                    [ h2 [ class "sermon-detail__title" ] [ text (Maybe.withDefault sermon.originalFilename sermon.title) ]
+                    [ h2 [ class "sermon-detail__title" ] [ text (Maybe.withDefault "Title Unknown" sermon.title) ]
                     , p [ class "sermon-detail__filename" ] [ text sermon.originalFilename ]
                     , case sermon.speaker of
                         Just speaker ->
