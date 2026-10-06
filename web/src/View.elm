@@ -20,16 +20,98 @@ view model =
             Html.map EditorMsg (Editor.view editor)
 
         Nothing ->
-            div [ class "page" ]
-                [ div [ class "masthead" ]
-                    [ h1 [] [ text "Sermon Scribe" ] ]
-                , viewUpload model.upload
-                , h2 [] [ text "Sermons" ]
-                , viewOptionalError model.deleteError
-                , viewOptionalError model.retryError
-                , viewOptionalError model.normalizationError
-                , viewSermons model
-                ]
+            case model.selectedSermon of
+                Just sermon ->
+                    viewSermonDetail model sermon
+
+                Nothing ->
+                    div [ class "page" ]
+                        [ div [ class "masthead" ]
+                            [ h1 [] [ text "Sermon Scribe" ] ]
+                        , viewUpload model.upload
+                        , h2 [] [ text "Sermons" ]
+                        , viewOptionalError model.deleteError
+                        , viewOptionalError model.retryError
+                        , viewOptionalError model.normalizationError
+                        , viewSermons model
+                        ]
+
+
+viewSermonDetail : Model -> Sermon -> Html Msg
+viewSermonDetail model sermon =
+    div [ class "page" ]
+        [ button [ Ui.button, onClick CloseSermon ] [ text "← Back to Sermons" ]
+        , h1 [] [ text (Maybe.withDefault sermon.originalFilename sermon.title) ]
+        , case sermon.speaker of
+            Just speaker ->
+                p [ Ui.hint ] [ text ("Speaker: " ++ speaker) ]
+
+            Nothing ->
+                text ""
+        , case sermon.scriptures of
+            [] ->
+                text ""
+
+            scriptures ->
+                div []
+                    [ h2 [] [ text "Scriptures" ]
+                    , p [] [ text (String.join ", " scriptures) ]
+                    ]
+        , h2 [] [ text "Topics" ]
+        , div []
+            (sermon.topicScores
+                |> List.sortBy (\( _, score ) -> -score)
+                |> List.map (\( topic, score ) -> p [] [ text (topic ++ " — " ++ String.fromInt (round (score * 100)) ++ "%") ])
+            )
+        , h2 [] [ text "Transcript" ]
+        , case sermon.transcript of
+            Just transcript ->
+                p [ class "sermon-detail__transcript" ] [ text transcript ]
+
+            Nothing ->
+                p [ Ui.hint ] [ text "Transcript not available yet." ]
+        , viewDetailActions model sermon
+        ]
+
+
+viewDetailActions : Model -> Sermon -> Html Msg
+viewDetailActions model sermon =
+    case model.confirmingDelete of
+        Just pending ->
+            if pending.id == sermon.id then
+                div [ Ui.sermonActions, Ui.confirmBox ]
+                    [ p [ Ui.confirmBoxQuestion ]
+                        [ strong [] [ text "Delete this sermon and its audio files?" ] ]
+                    , div [ Ui.confirmBoxButtons ]
+                        [ button [ Ui.dangerButton, onClick (ConfirmDelete sermon) ] [ text "Yes, Delete" ]
+                        , button [ Ui.button, onClick CancelDelete ] [ text "Cancel" ]
+                        ]
+                    ]
+
+            else
+                viewDetailDeleteButton model sermon
+
+        Nothing ->
+            viewDetailDeleteButton model sermon
+
+
+viewDetailDeleteButton : Model -> Sermon -> Html Msg
+viewDetailDeleteButton model sermon =
+    div [ Ui.sermonActions ]
+        [ button
+            [ Ui.dangerButton
+            , onClick (AskDelete sermon)
+            , disabled (Set.member sermon.id model.deleting)
+            ]
+            [ text
+                (if Set.member sermon.id model.deleting then
+                    "Deleting…"
+
+                 else
+                    "Delete Sermon"
+                )
+            ]
+        ]
 
 
 viewOptionalError : Maybe String -> Html Msg
@@ -319,7 +401,10 @@ viewActionButtons model sermon confirmationOpen =
     in
     div [ Ui.sermonActions ]
         (List.concat
-            [ if (sermon.stage == "edit" || (sermon.stage == "normalization" && sermon.status == "done" && sermon.normalizationReviewed)) && not sermon.editApproved then
+            [ [ button [ Ui.button, onClick (OpenSermon sermon), disabled confirmationOpen ]
+                    [ text "Open Sermon" ]
+              ]
+            , if (sermon.stage == "edit" || (sermon.stage == "normalization" && sermon.status == "done" && sermon.normalizationReviewed)) && not sermon.editApproved then
                 [ button [ Ui.primaryButton, onClick (OpenEditor sermon), disabled (confirmationOpen || isDeleting) ]
                     [ text
                         (if sermon.stage == "edit" && sermon.status == "done" then
@@ -351,20 +436,6 @@ viewActionButtons model sermon confirmationOpen =
 
               else
                 []
-            , [ button
-                    [ Ui.button
-                    , onClick (AskDelete sermon)
-                    , disabled (confirmationOpen || isRetrying || isDeleting)
-                    ]
-                    [ text
-                        (if isDeleting then
-                            "Deleting…"
-
-                         else
-                            "Delete"
-                        )
-                    ]
-              ]
             ]
         )
 

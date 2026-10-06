@@ -60,6 +60,7 @@ init : () -> ( Model, Cmd Msg )
 init _ =
     ( { sermons = Loading
       , editing = Nothing
+      , selectedSermon = Nothing
       , hasPipelineSnapshot = False
       , upload = Idle
       , confirmingDelete = Nothing
@@ -320,6 +321,12 @@ update msg model =
                     Editor.init sermon
             in
             performEditor effect { model | editing = Just editor } (Cmd.map EditorMsg command)
+
+        OpenSermon sermon ->
+            ( { model | selectedSermon = Just sermon }, Cmd.none )
+
+        CloseSermon ->
+            ( { model | selectedSermon = Nothing }, Cmd.none )
 
         EditorMsg editorMsg ->
             case model.editing of
