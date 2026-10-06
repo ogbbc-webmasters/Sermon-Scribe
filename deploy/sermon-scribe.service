@@ -11,6 +11,7 @@ After=network.target
 Type=simple
 User=exedev
 WorkingDirectory=/home/exedev/sermon-scribe-data
+EnvironmentFile=-/home/exedev/sermon-scribe-data/sermon-scribe.env
 ExecStart=/usr/local/bin/sermon-scribe -addr :8000 -db sermons.db -uploads uploads
 Restart=on-failure
 

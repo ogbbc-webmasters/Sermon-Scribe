@@ -49,11 +49,21 @@ func main() {
 	defer stop()
 
 	events := server.NewEventHub()
+	aiConfig := processing.AIConfig{
+		APIKey:             os.Getenv("OPENROUTER_API_KEY"),
+		TranscriptionModel: os.Getenv("SERMON_TRANSCRIPTION_MODEL"),
+		MetadataModel:      os.Getenv("SERMON_METADATA_MODEL"),
+		TopicModel:         os.Getenv("SERMON_TOPIC_MODEL"),
+	}
+	transcribe := processing.NewTranscriptionHandler(st, *uploadsDir, aiConfig)
+	metadata := processing.NewMetadataHandler(st, aiConfig)
 	normalize := processing.NewNormalizeHandler(st, *uploadsDir)
 	applyEdits := processing.NewApplyEditsHandler(st, *uploadsDir)
 	queue := processing.NewQueue(st, map[string]processing.Handler{
-		"normalize":   normalize,
-		"apply_edits": applyEdits,
+		"transcribe":       transcribe,
+		"extract_metadata": metadata,
+		"normalize":        normalize,
+		"apply_edits":      applyEdits,
 	}, processing.Config{Events: events})
 	queue.Start(ctx)
 	defer queue.Stop()

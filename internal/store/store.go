@@ -12,19 +12,28 @@ import (
 
 // Sermon is one uploaded recording and its pipeline state.
 type Sermon struct {
-	ID                            string          `json:"id"`
-	OriginalFilename              string          `json:"original_filename"`
-	UploadedAt                    string          `json:"uploaded_at"`
-	UploadedBy                    *string         `json:"uploaded_by"`
-	Stage                         string          `json:"stage"`
-	Status                        string          `json:"status"`
-	Progress                      int             `json:"progress"`
-	Error                         *string         `json:"error"`
-	NormalizationGateAdjustment   int             `json:"normalization_gate_adjustment"`
-	NormalizationVolumeAdjustment int             `json:"normalization_volume_adjustment"`
-	NormalizationReviewed         bool            `json:"normalization_reviewed"`
-	AppliedRegions                json.RawMessage `json:"applied_regions,omitempty"`
-	EditApproved                  bool            `json:"edit_approved"`
+	ID                            string             `json:"id"`
+	OriginalFilename              string             `json:"original_filename"`
+	UploadedAt                    string             `json:"uploaded_at"`
+	UploadedBy                    *string            `json:"uploaded_by"`
+	Stage                         string             `json:"stage"`
+	Status                        string             `json:"status"`
+	Progress                      int                `json:"progress"`
+	Error                         *string            `json:"error"`
+	NormalizationGateAdjustment   int                `json:"normalization_gate_adjustment"`
+	NormalizationVolumeAdjustment int                `json:"normalization_volume_adjustment"`
+	NormalizationReviewed         bool               `json:"normalization_reviewed"`
+	AppliedRegions                json.RawMessage    `json:"applied_regions,omitempty"`
+	EditApproved                  bool               `json:"edit_approved"`
+	Transcript                    *string            `json:"transcript,omitempty"`
+	Title                         *string            `json:"title,omitempty"`
+	TitleGenerated                *bool              `json:"title_generated,omitempty"`
+	TitleReasoning                *string            `json:"title_reasoning,omitempty"`
+	Speaker                       *string            `json:"speaker,omitempty"`
+	Scriptures                    []string           `json:"scriptures,omitempty"`
+	Topics                        []string           `json:"topics,omitempty"`
+	TopicsReasoning               map[string]string  `json:"topics_reasoning,omitempty"`
+	TopicScores                   map[string]float64 `json:"topic_scores,omitempty"`
 }
 
 // Store wraps the SQLite database.
@@ -77,7 +86,9 @@ const sermonViewSQL = `
 	SELECT s.id, s.original_filename, s.uploaded_at, s.uploaded_by,
 	       s.stage, s.status, COALESCE(j.progress, 0), j.last_error,
 	       s.normalization_gate_adjustment, s.normalization_volume_adjustment,
-	       s.normalization_reviewed, s.applied_regions, s.edit_approved
+	       s.normalization_reviewed, s.applied_regions, s.edit_approved,
+	       s.transcript, s.title, s.title_generated, s.title_reasoning,
+	       s.speaker, s.scriptures, s.topics, s.topics_reasoning, s.topic_scores
 	FROM sermons s
 	LEFT JOIN jobs j ON j.id = (
 		SELECT id FROM jobs
@@ -126,15 +137,67 @@ func getSermon(q interface {
 
 func scanSermon(row rowScanner, sm *Sermon) error {
 	var applied []byte
+	var transcript, title, titleReasoning, speaker, scriptures, topics, topicsReasoning, topicScores sql.NullString
+	var titleGenerated sql.NullBool
 	err := row.Scan(
 		&sm.ID, &sm.OriginalFilename, &sm.UploadedAt, &sm.UploadedBy,
 		&sm.Stage, &sm.Status, &sm.Progress, &sm.Error,
 		&sm.NormalizationGateAdjustment, &sm.NormalizationVolumeAdjustment,
 		&sm.NormalizationReviewed, &applied, &sm.EditApproved,
+		&transcript, &title, &titleGenerated, &titleReasoning, &speaker,
+		&scriptures, &topics, &topicsReasoning, &topicScores,
 	)
 	if len(applied) > 0 {
 		sm.AppliedRegions = json.RawMessage(applied)
 	}
+	if transcript.Valid {
+		sm.Transcript = &transcript.String
+	}
+	if title.Valid {
+		sm.Title = &title.String
+	}
+	if titleGenerated.Valid {
+		sm.TitleGenerated = &titleGenerated.Bool
+	}
+	if titleReasoning.Valid {
+		sm.TitleReasoning = &titleReasoning.String
+	}
+	if speaker.Valid {
+		sm.Speaker = &speaker.String
+	}
+	_ = json.Unmarshal([]byte(scriptures.String), &sm.Scriptures)
+	_ = json.Unmarshal([]byte(topics.String), &sm.Topics)
+	_ = json.Unmarshal([]byte(topicsReasoning.String), &sm.TopicsReasoning)
+	_ = json.Unmarshal([]byte(topicScores.String), &sm.TopicScores)
+	return err
+}
+
+// SaveTranscript stores the transcript produced by the transcription stage.
+func (s *Store) SaveTranscript(id, transcript string) error {
+	_, err := s.db.Exec(`UPDATE sermons SET transcript=? WHERE id=?`, transcript, id)
+	return err
+}
+
+// SaveMetadata stores structured metadata produced by the extraction stage.
+func (s *Store) SaveMetadata(id, title string, generated bool, reasoning, speaker string, scriptures, topics []string, topicReasoning map[string]string, topicScores map[string]float64) error {
+	scripturesJSON, err := json.Marshal(scriptures)
+	if err != nil {
+		return err
+	}
+	topicsJSON, err := json.Marshal(topics)
+	if err != nil {
+		return err
+	}
+	reasoningJSON, err := json.Marshal(topicReasoning)
+	if err != nil {
+		return err
+	}
+	scoreJSON, err := json.Marshal(topicScores)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE sermons SET title=?, title_generated=?, title_reasoning=?, speaker=?, scriptures=?, topics=?, topics_reasoning=?, topic_scores=? WHERE id=?`,
+		title, generated, reasoning, speaker, string(scripturesJSON), string(topicsJSON), string(reasoningJSON), string(scoreJSON), id)
 	return err
 }
 

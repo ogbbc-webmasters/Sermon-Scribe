@@ -26,6 +26,7 @@ import File exposing (File)
 import Http
 import Json.Decode as Decode exposing (Decoder)
 import Json.Encode as Encode
+import Dict
 
 
 type alias Sermon =
@@ -42,6 +43,15 @@ type alias Sermon =
     , normalizationReviewed : Bool
     , appliedRegions : Maybe (List Region)
     , editApproved : Bool
+    , transcript : Maybe String
+    , title : Maybe String
+    , titleGenerated : Maybe Bool
+    , titleReasoning : Maybe String
+    , speaker : Maybe String
+    , scriptures : List String
+    , topics : List String
+    , topicsReasoning : List ( String, String )
+    , topicScores : List ( String, Float )
     }
 
 
@@ -83,11 +93,20 @@ sermonDecoder =
                 , normalizationReviewed = reviewed
                 , appliedRegions = applied
                 , editApproved = approved
+                , transcript = Nothing
+                , title = Nothing
+                , titleGenerated = Nothing
+                , titleReasoning = Nothing
+                , speaker = Nothing
+                , scriptures = []
+                , topics = []
+                , topicsReasoning = []
+                , topicScores = []
             }
         )
         (Decode.map8
             (\id originalFilename uploadedAt uploadedBy stage status progress error ->
-                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0 False Nothing False
+                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0 False Nothing False Nothing Nothing Nothing Nothing Nothing [] [] [] []
             )
             (Decode.field "id" Decode.string)
             (Decode.field "original_filename" Decode.string)
@@ -103,6 +122,38 @@ sermonDecoder =
         (Decode.oneOf [ Decode.field "normalization_reviewed" Decode.bool, Decode.succeed False ])
         (Decode.maybe (Decode.field "applied_regions" (Decode.nullable (Decode.list regionDecoder))) |> Decode.map (Maybe.withDefault Nothing))
         (Decode.oneOf [ Decode.field "edit_approved" Decode.bool, Decode.succeed False ])
+        |> Decode.andThen decodeMetadata
+
+
+decodeMetadata : Sermon -> Decoder Sermon
+decodeMetadata sermon =
+    Decode.map7
+        (\transcript title generated reasoning speaker scriptures topics ->
+            { sermon
+                | transcript = transcript
+                , title = title
+                , titleGenerated = generated
+                , titleReasoning = reasoning
+                , speaker = speaker
+                , scriptures = scriptures
+                , topics = topics
+            }
+        )
+        (Decode.maybe (Decode.field "transcript" Decode.string))
+        (Decode.maybe (Decode.field "title" Decode.string))
+        (Decode.maybe (Decode.field "title_generated" Decode.bool))
+        (Decode.maybe (Decode.field "title_reasoning" Decode.string))
+        (Decode.maybe (Decode.field "speaker" Decode.string))
+        (Decode.oneOf [ Decode.field "scriptures" (Decode.list Decode.string), Decode.succeed [] ])
+        (Decode.oneOf [ Decode.field "topics" (Decode.list Decode.string), Decode.succeed [] ])
+        |> Decode.andThen
+            (\decodedSermon ->
+                Decode.oneOf
+                    [ Decode.field "topic_scores" (Decode.dict Decode.float)
+                        |> Decode.map (Dict.toList >> (\scores -> { decodedSermon | topicScores = scores }))
+                    , Decode.succeed decodedSermon
+                    ]
+            )
 
 
 waveform : (Result Http.Error Waveform -> msg) -> String -> Cmd msg

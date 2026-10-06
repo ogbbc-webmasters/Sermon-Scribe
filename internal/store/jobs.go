@@ -73,8 +73,8 @@ func (s *Store) StartUpload(id string) error {
 	return nil
 }
 
-// CompleteUpload atomically advances a stored upload to normalization/pending
-// and enqueues its normalize job.
+// CompleteUpload atomically advances a stored upload to transcription/pending
+// and enqueues its transcription job.
 func (s *Store) CompleteUpload(sermonID, jobID string, now time.Time) (Sermon, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -83,7 +83,7 @@ func (s *Store) CompleteUpload(sermonID, jobID string, now time.Time) (Sermon, e
 	defer tx.Rollback()
 
 	res, err := tx.Exec(
-		`UPDATE sermons SET stage = 'normalization', status = 'pending'
+		`UPDATE sermons SET stage = 'transcription', status = 'pending'
 		 WHERE id = ? AND stage = 'upload' AND status = 'running'`, sermonID)
 	if err != nil {
 		return Sermon{}, err
@@ -97,8 +97,8 @@ func (s *Store) CompleteUpload(sermonID, jobID string, now time.Time) (Sermon, e
 	}
 
 	job := NewJob{
-		ID: jobID, SermonID: sermonID, Type: "normalize", Stage: "normalization",
-		Parameters: `{"gate_adjustment":0,"volume_adjustment":0}`,
+		ID: jobID, SermonID: sermonID, Type: "transcribe", Stage: "transcription",
+		Parameters: `{}`,
 	}
 	if err := enqueueJobTx(tx, job, now); err != nil {
 		return Sermon{}, err

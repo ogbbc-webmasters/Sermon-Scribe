@@ -125,6 +125,7 @@ viewSermon model sermon =
     div [ Ui.card ]
         [ div [ Ui.cardInfo ]
             [ p [ Ui.cardName ] [ text sermon.originalFilename ]
+            , viewMetadata sermon
             , p [ Ui.cardMeta ]
                 [ span [ badgeAttribute sermon ] [ text (describeStage sermon) ]
                 , text (formatDate model.zone sermon.uploadedAt)
@@ -139,6 +140,38 @@ viewSermon model sermon =
         , viewNormalizedAudio model sermon
         , viewSermonActions model sermon
         ]
+
+
+viewMetadata : Sermon -> Html Msg
+viewMetadata sermon =
+    case ( sermon.title, sermon.speaker ) of
+        ( Nothing, Nothing ) ->
+            text ""
+
+        _ ->
+            div [ class "sermon-card__metadata" ]
+                [ case sermon.title of
+                    Just title ->
+                        p [] [ strong [] [ text title ] ]
+
+                    Nothing ->
+                        text ""
+                , case sermon.speaker of
+                    Just speaker ->
+                        p [ Ui.hint ] [ text ("Speaker: " ++ speaker) ]
+
+                    Nothing ->
+                        text ""
+                , div [ class "sermon-card__topics" ]
+                    (sermon.topicScores
+                        |> List.sortBy (\( _, score ) -> -score)
+                        |> List.take 8
+                        |> List.map
+                            (\( topic, score ) ->
+                                p [ Ui.hint ] [ text (topic ++ " " ++ String.fromInt (round (score * 100)) ++ "%") ]
+                            )
+                    )
+                ]
 
 
 viewNormalizedAudio : Model -> Sermon -> Html Msg
