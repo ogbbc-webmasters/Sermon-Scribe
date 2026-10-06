@@ -19,6 +19,7 @@ import (
 )
 
 const openRouterURL = "https://openrouter.ai/api/v1"
+const openRouterDecisionsURL = "https://openrouter.ai/api/alpha/decisions"
 
 type AIConfig struct {
 	APIKey             string
@@ -236,7 +237,7 @@ func (h *MetadataHandler) classifyTopics(ctx context.Context, transcript string)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openRouterURL+"/alpha/decisions", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openRouterDecisionsURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
