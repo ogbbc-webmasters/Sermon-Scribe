@@ -70,6 +70,7 @@
   --timeline-height-mobile: 180px;
   --editor-width: 820px;
   --modal-width: 480px;
+  --transcript-height: 360px;
   --control-size: 48px;
   --control-size-small: 40px;
   --icon-size: 24px;
@@ -686,9 +687,40 @@ h2::after {
 .sermon-detail__header {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
+  flex-direction: column;
   gap: var(--space-xl);
   margin-bottom: var(--space-2xl);
+}
+
+.sermon-detail__identity {
+  min-width: 0;
+  width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.sermon-detail__title {
+  display: block;
+  font-size: 1.5rem;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.sermon-detail__title::after {
+  content: none;
+}
+
+.sermon-detail__filename {
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  margin: var(--space-sm) 0 0;
+}
+
+.sermon-detail__footer {
+  border-top: 1px solid var(--line);
+  display: grid;
+  gap: var(--space-lg);
+  margin-top: var(--space-2xl);
+  padding-top: var(--space-xl);
 }
 
 .sermon-detail__speaker {
@@ -704,7 +736,7 @@ h2::after {
   margin-bottom: var(--space-xl);
 }
 
-.sermon-detail__status p {
+.sermon-detail__status-description {
   margin: var(--space-xs) 0 0;
 }
 
@@ -722,6 +754,8 @@ h2::after {
 .sermon-detail__section {
   background: var(--wash);
   border-radius: var(--radius-sm);
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: var(--space-lg);
 }
 
@@ -739,18 +773,20 @@ h2::after {
 
 .sermon-detail__pill {
   border-radius: var(--radius-pill);
-  color: var(--on-accent);
   display: inline-block;
   font-size: 0.9rem;
-  padding: 4px 12px;
+  max-width: 100%;
+  padding: var(--space-xs) var(--space-md);
 }
 
 .sermon-detail__pill--scripture {
   background: var(--red);
+  color: var(--on-accent);
 }
 
 .sermon-detail__pill--topic {
   background: var(--green);
+  color: var(--on-accent);
 }
 
 .sermon-detail__transcript-section {
@@ -758,7 +794,7 @@ h2::after {
 }
 
 .sermon-detail__transcript {
-  max-height: 360px;
+  max-height: var(--transcript-height);
   overflow-y: auto;
   white-space: pre-wrap;
   line-height: 1.7;
@@ -822,6 +858,10 @@ h2::after {
 
   .sermon-card {
     padding: 16px 18px;
+  }
+
+  .sermon-detail {
+    padding: var(--space-lg);
   }
 
   .timeline {

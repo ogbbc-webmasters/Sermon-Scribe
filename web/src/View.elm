@@ -40,23 +40,33 @@ view model =
 viewSermonDetail : Model -> Sermon -> Html Msg
 viewSermonDetail model sermon =
     div [ class "page" ]
-        [ div [ class "sermon-detail" ]
+        [ div [ class "masthead" ]
+            [ h1 [] [ text "Sermon Scribe" ] ]
+        , div [ class "sermon-detail" ]
             [ div [ class "sermon-detail__header" ]
-                [ div []
-                    [ h1 [] [ text (Maybe.withDefault sermon.originalFilename sermon.title) ]
+                [ button [ Ui.button, onClick CloseSermon ] [ text "← Back to Sermons" ]
+                , div [ class "sermon-detail__identity" ]
+                    [ h2 [ class "sermon-detail__title" ] [ text (Maybe.withDefault sermon.originalFilename sermon.title) ]
+                    , p [ class "sermon-detail__filename" ] [ text sermon.originalFilename ]
                     , case sermon.speaker of
                         Just speaker ->
                             p [ class "sermon-detail__speaker" ] [ text ("Speaker: " ++ speaker) ]
 
                         Nothing ->
                             text ""
+                    , p [ Ui.cardMeta ]
+                        [ span [ badgeAttribute sermon ] [ text (describeStage sermon) ]
+                        , text (formatDate model.zone sermon.uploadedAt)
+                        ]
                     ]
-                , button [ Ui.button, onClick CloseSermon ] [ text "← Back" ]
                 ]
             , viewDetailStatus sermon
             , viewDetailMetadata sermon
             , viewDetailTranscript sermon
-            , viewDetailActions model sermon
+            , div [ class "sermon-detail__footer" ]
+                [ viewOptionalError model.deleteError
+                , viewDetailActions model sermon
+                ]
             ]
         ]
 
@@ -74,7 +84,7 @@ viewDetailStatus sermon =
         _ ->
             div [ class "sermon-detail__status" ]
                 [ strong [] [ text (describeStage sermon) ]
-                , p [] [ text "This sermon is still being processed." ]
+                , p [ class "sermon-detail__status-description" ] [ text "This sermon is still being processed." ]
                 ]
 
 
@@ -138,7 +148,7 @@ viewDetailActions model sermon =
     case model.confirmingDelete of
         Just pending ->
             if pending.id == sermon.id then
-                div [ Ui.sermonActions, Ui.confirmBox ]
+                div [ Ui.confirmBox ]
                     [ p [ Ui.confirmBoxQuestion ]
                         [ strong [] [ text "Delete this sermon and its audio files?" ] ]
                     , div [ Ui.confirmBoxButtons ]
