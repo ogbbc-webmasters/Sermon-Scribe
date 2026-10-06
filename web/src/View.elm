@@ -62,7 +62,10 @@ viewSermonDetail model sermon =
             [ h1 [] [ text "Sermon Scribe" ] ]
         , div [ class "sermon-detail" ]
             [ div [ class "sermon-detail__header" ]
-                [ button [ Ui.button, onClick CloseSermon ] [ text "← Back to Sermons" ]
+                [ div [ class "sermon-detail__navigation" ]
+                    [ button [ Ui.button, onClick CloseSermon ] [ text "← Back to Sermons" ]
+                    , viewAIWarning
+                    ]
                 , div [ class "sermon-detail__identity" ]
                     [ div [ Ui.headingRow ]
                         [ h2 [ class "sermon-detail__title" ] [ text (Maybe.withDefault "Title Unknown" sermon.title) ]
@@ -96,15 +99,7 @@ viewSermonDetail model sermon =
                     )
                 ]
                 [ div [ class "sermon-detail__column", hidden (not hasMetadata) ]
-                    [ if sermon.transcript /= Nothing || sermon.title /= Nothing then
-                        div [ Ui.panel ]
-                            [ strong [ Ui.panelTitle ] [ text "Verify AI-generated content" ]
-                            , p [ Ui.panelText ] [ text "AI-generated to save you time. Please carefully verify the transcript and metadata before publishing." ]
-                            ]
-
-                      else
-                        text ""
-                    , case sermon.titleReasoning of
+                    [ case sermon.titleReasoning of
                         Just reasoning ->
                             div [ Ui.panel ] [ viewReasoning "Why this title?" [ p [ Ui.panelText ] [ text reasoning ] ] ]
 
@@ -121,6 +116,24 @@ viewSermonDetail model sermon =
                 [ viewOptionalError model.deleteError
                 , viewOptionalError model.retryError
                 , viewDetailActions model sermon
+                ]
+            ]
+        ]
+
+
+viewAIWarning : Html Msg
+viewAIWarning =
+    details [ class "sermon-detail__warning" ]
+        [ summary
+            [ Ui.smallQuietIconButton
+            , title "Verify AI-generated content"
+            , attribute "aria-label" "Verify AI-generated content"
+            ]
+            [ Ui.icon "ph:warning" ]
+        , div [ class "sermon-detail__warning-content" ]
+            [ div [ Ui.panel ]
+                [ strong [ Ui.panelTitle ] [ text "Verify AI-generated content" ]
+                , p [ Ui.panelText ] [ text "AI-generated to save you time. Please carefully verify the transcript and metadata before publishing." ]
                 ]
             ]
         ]

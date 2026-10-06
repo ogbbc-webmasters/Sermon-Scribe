@@ -73,11 +73,13 @@
   --editor-width: 820px;
   --detail-width: 1120px;
   --modal-width: 480px;
+  --warning-width: 320px;
   --transcript-height: 360px;
   --control-size: 48px;
   --control-size-small: 40px;
   --icon-size: 24px;
   --focus: #1769aa;
+  --layer-popover: 10;
   --layer-modal: 1000;
 }
 
@@ -802,6 +804,14 @@ h2::after {
   overflow-wrap: anywhere;
 }
 
+.sermon-detail__navigation {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  width: 100%;
+}
+
 .sermon-detail__title {
   display: block;
   font-size: 1.5rem;
@@ -913,6 +923,20 @@ h2::after {
   flex-wrap: wrap;
   gap: var(--space-sm);
   justify-content: space-between;
+}
+
+.sermon-detail__warning {
+  flex-shrink: 0;
+  position: relative;
+}
+
+.sermon-detail__warning-content {
+  max-width: calc(100vw - var(--space-2xl) * 2);
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-xs));
+  width: var(--warning-width);
+  z-index: var(--layer-popover);
 }
 
 /* upload-box — drop-zone-styled upload panel */
