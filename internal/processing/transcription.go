@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -118,6 +119,12 @@ type MetadataHandler struct {
 	client *http.Client
 }
 
+type titleCandidate struct {
+	Title          string `json:"title"`
+	TitleGenerated bool   `json:"title_generated"`
+	TitleReasoning string `json:"title_reasoning"`
+}
+
 func NewMetadataHandler(st *store.Store, config AIConfig) *MetadataHandler {
 	if config.MetadataModel == "" {
 		config.MetadataModel = "google/gemini-3-flash-preview"
@@ -184,12 +191,10 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 	content = strings.TrimSpace(strings.TrimPrefix(content, "json"))
 
 	var result struct {
-		Title          string   `json:"title"`
-		TitleGenerated bool     `json:"title_generated"`
-		TitleReasoning string   `json:"title_reasoning"`
-		Speaker        string   `json:"speaker"`
-		Scriptures     []string `json:"scriptures"`
-		Topics         []string `json:"topics"`
+		TitleCandidates []titleCandidate `json:"title_candidates"`
+		Speaker         string           `json:"speaker"`
+		Scriptures      []string         `json:"scriptures"`
+		Topics          []string         `json:"topics"`
 	}
 	rawMetadata := json.RawMessage(content)
 	if len(rawMetadata) > 0 && rawMetadata[0] == '[' {
@@ -202,21 +207,43 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 	if err := json.Unmarshal(rawMetadata, &result); err != nil {
 		return Result{}, fmt.Errorf("parse metadata: %w", err)
 	}
-	if result.Title == "" {
-		return Result{}, fmt.Errorf("metadata response did not include a title")
+	if len(result.TitleCandidates) != 5 {
+		return Result{}, fmt.Errorf("metadata response must include exactly five title candidates")
 	}
-	scores, err := h.classifyTopics(ctx, *sermon.Transcript)
+	seen := make(map[string]bool)
+	for i := range result.TitleCandidates {
+		candidate := &result.TitleCandidates[i]
+		candidate.Title = strings.TrimSpace(candidate.Title)
+		key := strings.ToLower(candidate.Title)
+		if key == "" || seen[key] {
+			return Result{}, fmt.Errorf("metadata response must include five distinct non-empty title candidates")
+		}
+		seen[key] = true
+	}
+	title, scores, err := h.classifyMetadata(ctx, *sermon.Transcript, result.TitleCandidates)
 	if err != nil {
 		return Result{}, err
 	}
-	if err := h.store.SaveMetadata(job.SermonID, result.Title, result.TitleGenerated, result.TitleReasoning, result.Speaker, result.Scriptures, result.Topics, scores); err != nil {
+	if err := h.store.SaveMetadata(job.SermonID, title.Title, title.TitleGenerated, title.TitleReasoning, result.Speaker, result.Scriptures, result.Topics, scores); err != nil {
 		return Result{}, err
 	}
 	return Result{}, reporter.Progress(100, nil)
 }
 
-func (h *MetadataHandler) classifyTopics(ctx context.Context, transcript string) (map[string]float64, error) {
+func (h *MetadataHandler) classifyMetadata(ctx context.Context, transcript string, candidates []titleCandidate) (titleCandidate, map[string]float64, error) {
 	questions := make(map[string]any)
+	titles := make([]string, len(candidates))
+	for i, candidate := range candidates {
+		titles[i] = candidate.Title
+		questions[fmt.Sprintf("title_%d", i+1)] = map[string]any{
+			"type":         "noul",
+			"instructions": "How likely is " + strconv.Quote(candidate.Title) + " to be the best title for this sermon? Compare the five candidates using the transcript. Prefer an explicitly announced title; otherwise prefer a verbatim quote that best represents the sermon's central message.",
+			"criteria": map[string]string{
+				"true":  "This is the speaker's explicitly announced title, or, when no title was announced, the best representative quote for the sermon's central message.",
+				"false": "This is not a verbatim quote, is an incidental remark, misrepresents the central message, or is less suitable than another candidate.",
+			},
+		}
+	}
 	for name, detail := range topicDetails() {
 		key := strings.ToLower(strings.ReplaceAll(name, " ", "_"))
 		questions[key] = map[string]any{
@@ -230,45 +257,57 @@ func (h *MetadataHandler) classifyTopics(ctx context.Context, transcript string)
 	}
 	body, err := json.Marshal(map[string]any{
 		"model":     h.config.TopicModel,
-		"state":     map[string]string{"transcript": transcript},
+		"state":     map[string]any{"transcript": transcript, "title_candidates": titles},
 		"questions": questions,
 	})
 	if err != nil {
-		return nil, err
+		return titleCandidate{}, nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openRouterDecisionsURL, bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return titleCandidate{}, nil, err
 	}
 	setAIHeaders(req, h.config.APIKey, "application/json")
 	resp, err := h.client.Do(req)
 	if err != nil {
-		return nil, err
+		return titleCandidate{}, nil, err
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return titleCandidate{}, nil, err
 	}
 	if resp.StatusCode/100 != 2 {
-		return nil, apiError(resp.StatusCode, data)
+		return titleCandidate{}, nil, apiError(resp.StatusCode, data)
 	}
 	var response struct {
 		Answers map[string]struct {
-			Noul float64 `json:"noul"`
+			Noul *float64 `json:"noul"`
 		} `json:"answers"`
 	}
 	if err := json.Unmarshal(data, &response); err != nil {
-		return nil, fmt.Errorf("decode topic response: %w", err)
+		return titleCandidate{}, nil, fmt.Errorf("decode decision response: %w", err)
+	}
+	best, bestScore := 0, -1.0
+	for i := range candidates {
+		key := fmt.Sprintf("title_%d", i+1)
+		answer := response.Answers[key]
+		if answer.Noul == nil || *answer.Noul < 0 || *answer.Noul > 1 {
+			return titleCandidate{}, nil, fmt.Errorf("decision response missing or invalid score for %s", key)
+		}
+		// Keep extraction order as the deterministic tie-breaker.
+		if *answer.Noul > bestScore {
+			best, bestScore = i, *answer.Noul
+		}
 	}
 	scores := make(map[string]float64, len(response.Answers))
 	for name := range topicDetails() {
 		key := strings.ToLower(strings.ReplaceAll(name, " ", "_"))
-		if answer, ok := response.Answers[key]; ok {
-			scores[name] = answer.Noul
+		if answer, ok := response.Answers[key]; ok && answer.Noul != nil {
+			scores[name] = *answer.Noul
 		}
 	}
-	return scores, nil
+	return candidates[best], scores, nil
 }
 
 func setAIHeaders(req *http.Request, key, contentType string) {
@@ -297,9 +336,12 @@ func metadataPrompt(transcript string) string {
 	return `You are analyzing a sermon transcript. Return only valid JSON.
 
 Extract:
-- title: an exact quote from the speaker that works as a sermon title
-- title_generated: false only when the speaker explicitly announced the title
-- title_reasoning: briefly explain the choice
+- title_candidates: exactly five distinct candidate titles, each an object with:
+  - title: an exact quote from the speaker that works as a sermon title; do not compose or paraphrase
+  - title_generated: false only when the speaker explicitly announced this title
+  - title_reasoning: briefly explain why this quote is a suitable title
+  Include the explicitly announced title if present, then quotes that best represent the central message.
+  A separate decision model will choose the most likely title from these five candidates.
 - speaker: the preacher's name, or an empty string
 - scriptures: normalized Bible references, deduplicated and kept in first-mention order
 - topics: 2-5 labels from the taxonomy below
