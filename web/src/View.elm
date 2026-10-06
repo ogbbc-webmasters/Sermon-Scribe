@@ -59,8 +59,7 @@ viewSermonDetail model sermon =
                     ]
         , h2 [] [ text "Topics" ]
         , div []
-            (sermon.topicScores
-                |> List.sortBy (\( _, score ) -> -score)
+            (highConfidenceTopics sermon.topicScores
                 |> List.map (\( topic, score ) -> p [] [ text (topic ++ " — " ++ String.fromInt (round (score * 100)) ++ "%") ])
             )
         , h2 [] [ text "Transcript" ]
@@ -72,6 +71,13 @@ viewSermonDetail model sermon =
                 p [ Ui.hint ] [ text "Transcript not available yet." ]
         , viewDetailActions model sermon
         ]
+
+
+highConfidenceTopics : List ( String, Float ) -> List ( String, Float )
+highConfidenceTopics scores =
+    scores
+        |> List.filter (\( _, score ) -> score >= 0.8)
+        |> List.sortBy (\( _, score ) -> -score)
 
 
 viewDetailActions : Model -> Sermon -> Html Msg
@@ -245,9 +251,7 @@ viewMetadata sermon =
                     Nothing ->
                         text ""
                 , div [ class "sermon-card__topics" ]
-                    (sermon.topicScores
-                        |> List.sortBy (\( _, score ) -> -score)
-                        |> List.take 8
+                    (highConfidenceTopics sermon.topicScores
                         |> List.map
                             (\( topic, score ) ->
                                 p [ Ui.hint ] [ text (topic ++ " " ++ String.fromInt (round (score * 100)) ++ "%") ]
