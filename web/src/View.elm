@@ -131,8 +131,8 @@ viewSermon model sermon =
                 , text (formatDate model.zone sermon.uploadedAt)
                 ]
             , case ( sermon.status, sermon.error ) of
-                ( "failed", Just message ) ->
-                    p [ Ui.errorText ] [ text message ]
+                ( "failed", Just _ ) ->
+                    p [ Ui.errorText ] [ text "Processing failed. Please retry or contact an administrator." ]
 
                 _ ->
                     text ""

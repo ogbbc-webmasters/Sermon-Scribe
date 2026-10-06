@@ -220,6 +220,7 @@ func runHandler(ctx context.Context, handler Handler, job store.Job, reporter Re
 
 func (q *Queue) handleFailure(job store.Job, runErr error) error {
 	message := runErr.Error()
+	log.Printf("job failed jobID=%s sermonID=%s type=%s attempt=%d: %v", job.ID, job.SermonID, job.Type, job.Attempts, runErr)
 	if job.Attempts < store.MaxJobAttempts() {
 		available := q.now().Add(q.backoff(job.Attempts))
 		sm, err := q.store.RequeueJob(job, message, available, q.now())
