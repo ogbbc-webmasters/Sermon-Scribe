@@ -40,6 +40,7 @@
   --red-line: #ecd2cf;
   --red-line-strong: #dfb5b0;
   --on-accent: #ffffff;
+  --clear: transparent;
   --backdrop: rgba(43, 40, 32, 0.62);
 
   /* type */
@@ -540,6 +541,30 @@ h2::after {
   color: var(--ink);
 }
 
+.button--quiet {
+  background: var(--clear);
+  border-color: var(--clear);
+  color: var(--ink);
+}
+
+.button--quiet:hover {
+  background: var(--wash);
+  border-color: var(--clear);
+  color: var(--ink);
+}
+
+.button--quiet:active {
+  background: var(--wash);
+  border-color: var(--clear);
+  color: var(--ink);
+}
+
+.button--quiet:disabled {
+  background: var(--clear);
+  border-color: var(--clear);
+  color: var(--ink-soft);
+}
+
 .button--primary {
   background: linear-gradient(160deg, var(--green) 0%, var(--green-dark) 100%);
   border-color: var(--green-dark);
@@ -682,7 +707,7 @@ h2::after {
   margin-bottom: var(--space-lg);
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--control-size);
-  align-items: start;
+  align-items: center;
   gap: var(--space-md);
   box-shadow: var(--shadow);
 }

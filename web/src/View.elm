@@ -318,7 +318,7 @@ viewSermon model sermon =
             , viewSermonActions model sermon
             ]
         , button
-            [ Ui.iconButton
+            [ Ui.quietIconButton
             , onClick (OpenSermon sermon)
             , disabled (model.confirmingDelete /= Nothing || Set.member sermon.id model.deleting)
             , attribute "aria-label" "Open Sermon"

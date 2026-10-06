@@ -27,6 +27,7 @@ module Ui exposing
     , primaryButton
     , progress
     , progressFill
+    , quietIconButton
     , sermonActions
     )
 
@@ -105,6 +106,11 @@ dangerButton =
 iconButton : Html.Attribute msg
 iconButton =
     class "button button--icon"
+
+
+quietIconButton : Html.Attribute msg
+quietIconButton =
+    class "button button--icon button--quiet"
 
 
 {-| Decorative icon; its button supplies the accessible name.
