@@ -40,36 +40,89 @@ view model =
 viewSermonDetail : Model -> Sermon -> Html Msg
 viewSermonDetail model sermon =
     div [ class "page" ]
-        [ button [ Ui.button, onClick CloseSermon ] [ text "← Back to Sermons" ]
-        , h1 [] [ text (Maybe.withDefault sermon.originalFilename sermon.title) ]
-        , case sermon.speaker of
-            Just speaker ->
-                p [ Ui.hint ] [ text ("Speaker: " ++ speaker) ]
+        [ div [ class "sermon-detail" ]
+            [ div [ class "sermon-detail__header" ]
+                [ div []
+                    [ h1 [] [ text (Maybe.withDefault sermon.originalFilename sermon.title) ]
+                    , case sermon.speaker of
+                        Just speaker ->
+                            p [ class "sermon-detail__speaker" ] [ text ("Speaker: " ++ speaker) ]
 
-            Nothing ->
-                text ""
-        , case sermon.scriptures of
-            [] ->
-                text ""
-
-            scriptures ->
-                div []
-                    [ h2 [] [ text "Scriptures" ]
-                    , p [] [ text (String.join ", " scriptures) ]
+                        Nothing ->
+                            text ""
                     ]
-        , h2 [] [ text "Topics" ]
-        , div []
-            (highConfidenceTopics sermon.topicScores
-                |> List.map (\( topic, score ) -> p [] [ text (topic ++ " — " ++ String.fromInt (round (score * 100)) ++ "%") ])
-            )
-        , h2 [] [ text "Transcript" ]
+                , button [ Ui.button, onClick CloseSermon ] [ text "← Back" ]
+                ]
+            , viewDetailStatus sermon
+            , viewDetailMetadata sermon
+            , viewDetailTranscript sermon
+            , viewDetailActions model sermon
+            ]
+        ]
+
+
+viewDetailStatus : Sermon -> Html Msg
+viewDetailStatus sermon =
+    case sermon.status of
+        "failed" ->
+            div [ class "sermon-detail__status sermon-detail__status--error" ]
+                [ strong [] [ text "Processing failed" ] ]
+
+        "done" ->
+            text ""
+
+        _ ->
+            div [ class "sermon-detail__status" ]
+                [ strong [] [ text (describeStage sermon) ]
+                , p [] [ text "This sermon is still being processed." ]
+                ]
+
+
+viewDetailMetadata : Sermon -> Html Msg
+viewDetailMetadata sermon =
+    div [ class "sermon-detail__sections" ]
+        (List.concat
+            [ case sermon.scriptures of
+                [] ->
+                    []
+
+                scriptures ->
+                    [ div [ class "sermon-detail__section" ]
+                        [ strong [ class "sermon-detail__section-title" ] [ text "📖 Scripture References" ]
+                        , div [ class "sermon-detail__pills" ]
+                            (List.map (\scripture -> span [ class "sermon-detail__pill sermon-detail__pill--scripture" ] [ text scripture ]) scriptures)
+                        ]
+                    ]
+            , if List.isEmpty (highConfidenceTopics sermon.topicScores) then
+                []
+
+              else
+                [ div [ class "sermon-detail__section" ]
+                    [ strong [ class "sermon-detail__section-title" ] [ text "🏷️ Topics" ]
+                    , div [ class "sermon-detail__pills" ]
+                        (List.map
+                            (\( topic, score ) ->
+                                span [ class "sermon-detail__pill sermon-detail__pill--topic" ]
+                                    [ text (topic ++ " " ++ String.fromInt (round (score * 100)) ++ "%") ]
+                            )
+                            (highConfidenceTopics sermon.topicScores)
+                        )
+                    ]
+                ]
+            ]
+        )
+
+
+viewDetailTranscript : Sermon -> Html Msg
+viewDetailTranscript sermon =
+    div [ class "sermon-detail__section sermon-detail__transcript-section" ]
+        [ strong [ class "sermon-detail__section-title" ] [ text "📝 Transcript" ]
         , case sermon.transcript of
             Just transcript ->
                 p [ class "sermon-detail__transcript" ] [ text transcript ]
 
             Nothing ->
                 p [ Ui.hint ] [ text "Transcript not available yet." ]
-        , viewDetailActions model sermon
         ]
 
 

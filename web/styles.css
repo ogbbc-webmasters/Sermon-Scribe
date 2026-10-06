@@ -673,6 +673,98 @@ h2::after {
   gap: var(--space-sm);
 }
 
+/* sermon-detail — full sermon metadata and transcript view */
+
+.sermon-detail {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2xl);
+  box-shadow: var(--shadow);
+}
+
+.sermon-detail__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-xl);
+  margin-bottom: var(--space-2xl);
+}
+
+.sermon-detail__speaker {
+  color: var(--ink-soft);
+  margin: var(--space-xs) 0 0;
+}
+
+.sermon-detail__status {
+  background: var(--green-soft);
+  border: 1px solid var(--green-line);
+  border-radius: var(--radius-sm);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-xl);
+}
+
+.sermon-detail__status p {
+  margin: var(--space-xs) 0 0;
+}
+
+.sermon-detail__status--error {
+  background: var(--red-soft);
+  border-color: var(--red-line);
+  color: var(--red);
+}
+
+.sermon-detail__sections {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.sermon-detail__section {
+  background: var(--wash);
+  border-radius: var(--radius-sm);
+  padding: var(--space-lg);
+}
+
+.sermon-detail__section-title {
+  display: block;
+  color: var(--ink);
+  margin-bottom: var(--space-sm);
+}
+
+.sermon-detail__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.sermon-detail__pill {
+  border-radius: var(--radius-pill);
+  color: var(--on-accent);
+  display: inline-block;
+  font-size: 0.9rem;
+  padding: 4px 12px;
+}
+
+.sermon-detail__pill--scripture {
+  background: var(--red);
+}
+
+.sermon-detail__pill--topic {
+  background: var(--green);
+}
+
+.sermon-detail__transcript-section {
+  margin-top: var(--space-lg);
+}
+
+.sermon-detail__transcript {
+  max-height: 360px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  line-height: 1.7;
+  margin: 0;
+}
+
 /* upload-box — drop-zone-styled upload panel */
 
 .upload-box {
