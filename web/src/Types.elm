@@ -41,7 +41,8 @@ type alias Model =
 
 
 type Msg
-    = GotZone Time.Zone
+    = NoOp
+    | GotZone Time.Zone
     | GotSermons (Result Http.Error (List Sermon))
     | PipelineEventReceived Decode.Value
     | FilePicked File

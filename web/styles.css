@@ -710,6 +710,7 @@ h2::after {
   align-items: center;
   gap: var(--space-md);
   box-shadow: var(--shadow);
+  cursor: pointer;
 }
 
 .sermon-card__info {

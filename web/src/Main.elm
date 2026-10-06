@@ -85,6 +85,9 @@ init _ =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        NoOp ->
+            ( model, Cmd.none )
+
         GotZone zone ->
             ( { model | zone = zone }, Cmd.none )
 

@@ -6,7 +6,7 @@ import Editor
 import File
 import Html exposing (Html, a, audio, button, div, h1, h2, input, label, p, span, strong, text)
 import Html.Attributes exposing (accept, attribute, class, controls, disabled, download, href, id, src, style, title, type_)
-import Html.Events exposing (on, onClick)
+import Html.Events exposing (on, onClick, stopPropagationOn)
 import Json.Decode as Decode exposing (Decoder)
 import Set
 import Types exposing (Model, Msg(..), SermonList(..), UploadState(..))
@@ -307,19 +307,27 @@ viewSermons model =
 
 viewSermon : Model -> Sermon -> Html Msg
 viewSermon model sermon =
-    div [ Ui.card ]
+    div
+        [ Ui.card
+        , on "click"
+            (if model.confirmingDelete /= Nothing || Set.member sermon.id model.deleting then
+                Decode.fail "Card navigation is disabled"
+
+             else
+                Decode.succeed (OpenSermon sermon)
+            )
+        ]
         [ div [ Ui.cardInfo ]
-            [ p [ Ui.cardName ] [ text sermon.originalFilename ]
-            , viewMetadata sermon
+            [ p [ Ui.cardName ] [ text (Maybe.withDefault "Title Unknown" sermon.title) ]
             , p [ Ui.cardMeta ]
                 [ span [ badgeAttribute sermon ] [ text (describeStage sermon) ]
                 , text (formatDate model.zone sermon.uploadedAt)
                 ]
-            , viewSermonActions model sermon
+            , div [ stopPropagationOn "click" (Decode.succeed ( NoOp, True )) ] [ viewSermonActions model sermon ]
             ]
         , button
             [ Ui.quietIconButton
-            , onClick (OpenSermon sermon)
+            , stopPropagationOn "click" (Decode.succeed ( OpenSermon sermon, True ))
             , disabled (model.confirmingDelete /= Nothing || Set.member sermon.id model.deleting)
             , attribute "aria-label" "Open Sermon"
             , title "Open Sermon"
@@ -327,36 +335,6 @@ viewSermon model sermon =
             [ Ui.icon "ph:caret-right" ]
         , viewNormalizedAudio model sermon
         ]
-
-
-viewMetadata : Sermon -> Html Msg
-viewMetadata sermon =
-    case ( sermon.title, sermon.speaker ) of
-        ( Nothing, Nothing ) ->
-            text ""
-
-        _ ->
-            div [ class "sermon-card__metadata" ]
-                [ case sermon.title of
-                    Just title ->
-                        p [] [ strong [] [ text title ] ]
-
-                    Nothing ->
-                        text ""
-                , case sermon.speaker of
-                    Just speaker ->
-                        p [ Ui.hint ] [ text ("Speaker: " ++ speaker) ]
-
-                    Nothing ->
-                        text ""
-                , div [ class "sermon-card__topics" ]
-                    (highConfidenceTopics sermon.topicScores
-                        |> List.map
-                            (\( topic, score ) ->
-                                p [ Ui.hint ] [ text (topic ++ " " ++ String.fromInt (round (score * 100)) ++ "%") ]
-                            )
-                    )
-                ]
 
 
 viewNormalizedAudio : Model -> Sermon -> Html Msg
@@ -381,7 +359,7 @@ viewNormalizedAudio model sermon =
                                 [ text adjustment.label ]
                         )
         in
-        div [ Ui.audioReview ]
+        div [ Ui.audioReview, stopPropagationOn "click" (Decode.succeed ( NoOp, True )) ]
             [ audio
                 [ Ui.audioReviewPlayer
                 , controls True
