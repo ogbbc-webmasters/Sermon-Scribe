@@ -69,7 +69,7 @@ viewSermonDetail model sermon =
                 , div [ class "sermon-detail__identity" ]
                     [ div [ Ui.headingRow ]
                         [ h2 [ class "sermon-detail__title" ] [ text (Maybe.withDefault "Title Unknown" sermon.title) ]
-                        , viewProcessingRetry model sermon "title" "Retry Title"
+                        , viewProcessingRetry model sermon "title" "Regenerate Title"
                         ]
                     , p [ class "sermon-detail__filename" ] [ text sermon.originalFilename ]
                     , case sermon.speaker of
@@ -145,7 +145,7 @@ viewDetailStatus sermon =
         "failed" ->
             div [ Ui.errorPanel ]
                 [ strong [ Ui.panelTitle ] [ text "Processing failed" ]
-                , p [ Ui.panelText ] [ text "Please retry or contact an administrator." ]
+                , p [ Ui.panelText ] [ text "Please regenerate or contact an administrator." ]
                 ]
 
         "done" ->
@@ -181,7 +181,7 @@ viewDetailMetadata model sermon =
             , [ div [ Ui.panel ]
                     [ div [ Ui.headingRow ]
                         [ strong [ Ui.inlinePanelTitle ] [ text "Topics" ]
-                        , viewProcessingRetry model sermon "topics" "Retry Topics"
+                        , viewProcessingRetry model sermon "topics" "Regenerate Topics"
                         ]
                     , if List.isEmpty (highConfidenceTopics sermon.topicScores) then
                         p [ Ui.panelText ] [ text "No high-confidence topics yet." ]
@@ -235,7 +235,7 @@ viewDetailTranscript model sermon =
         [ div [ class "sermon-detail__transcript-header" ]
             [ div [ Ui.headingRow ]
                 [ strong [ Ui.inlinePanelTitle ] [ text "Transcript" ]
-                , viewProcessingRetry model sermon "transcription" "Retry Transcription"
+                , viewProcessingRetry model sermon "transcription" "Regenerate Transcription"
                 ]
             , case sermon.transcript of
                 Just transcript ->
@@ -387,10 +387,10 @@ viewDetailActionButtons model sermon =
                     ]
                     [ text
                         (if Set.member sermon.id model.retrying then
-                            "Retrying…"
+                            "Regenerating…"
 
                          else
-                            "Retry"
+                            "Regenerate"
                         )
                     ]
                 ]

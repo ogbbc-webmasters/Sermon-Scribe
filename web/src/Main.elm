@@ -273,7 +273,7 @@ update msg model =
         RetryFinished original (Err _) ->
             ( { model
                 | retrying = Set.remove original.id model.retrying
-                , retryError = Just "Could not retry. Please try again."
+                , retryError = Just "Could not regenerate. Please try again."
               }
             , Cmd.none
             )
