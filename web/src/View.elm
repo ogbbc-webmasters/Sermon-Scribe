@@ -5,7 +5,7 @@ import DateFormat exposing (formatDate)
 import Editor
 import File
 import Html exposing (Html, a, audio, button, div, h1, h2, input, label, p, span, strong, text)
-import Html.Attributes exposing (accept, class, controls, disabled, download, href, id, src, style, type_)
+import Html.Attributes exposing (accept, attribute, class, controls, disabled, download, href, id, src, style, title, type_)
 import Html.Events exposing (on, onClick)
 import Json.Decode as Decode exposing (Decoder)
 import Set
@@ -22,7 +22,18 @@ view model =
         Nothing ->
             case model.selectedSermon of
                 Just sermon ->
-                    viewSermonDetail model sermon
+                    let
+                        current =
+                            case model.sermons of
+                                Loaded sermons ->
+                                    List.filter (\candidate -> candidate.id == sermon.id) sermons
+                                        |> List.head
+                                        |> Maybe.withDefault sermon
+
+                                _ ->
+                                    sermon
+                    in
+                    viewSermonDetail model current
 
                 Nothing ->
                     div [ class "page" ]
@@ -31,7 +42,6 @@ view model =
                         , viewUpload model.upload
                         , h2 [] [ text "Sermons" ]
                         , viewOptionalError model.deleteError
-                        , viewOptionalError model.retryError
                         , viewOptionalError model.normalizationError
                         , viewSermons model
                         ]
@@ -65,6 +75,7 @@ viewSermonDetail model sermon =
             , viewDetailTranscript sermon
             , div [ class "sermon-detail__footer" ]
                 [ viewOptionalError model.deleteError
+                , viewOptionalError model.retryError
                 , viewDetailActions model sermon
                 ]
             ]
@@ -75,16 +86,18 @@ viewDetailStatus : Sermon -> Html Msg
 viewDetailStatus sermon =
     case sermon.status of
         "failed" ->
-            div [ class "sermon-detail__status sermon-detail__status--error" ]
-                [ strong [] [ text "Processing failed" ] ]
+            div [ Ui.errorPanel ]
+                [ strong [ Ui.panelTitle ] [ text "Processing failed" ]
+                , p [ Ui.panelText ] [ text "Please retry or contact an administrator." ]
+                ]
 
         "done" ->
             text ""
 
         _ ->
-            div [ class "sermon-detail__status" ]
-                [ strong [] [ text (describeStage sermon) ]
-                , p [ class "sermon-detail__status-description" ] [ text "This sermon is still being processed." ]
+            div [ Ui.panel ]
+                [ strong [ Ui.panelTitle ] [ text (describeStage sermon) ]
+                , p [ Ui.panelText ] [ text "This sermon is still being processed." ]
                 ]
 
 
@@ -97,8 +110,8 @@ viewDetailMetadata sermon =
                     []
 
                 scriptures ->
-                    [ div [ class "sermon-detail__section" ]
-                        [ strong [ class "sermon-detail__section-title" ] [ text "📖 Scripture References" ]
+                    [ div [ Ui.panel ]
+                        [ strong [ Ui.panelTitle ] [ text "Scripture References" ]
                         , div [ class "sermon-detail__pills" ]
                             (List.map (\scripture -> span [ class "sermon-detail__pill sermon-detail__pill--scripture" ] [ text scripture ]) scriptures)
                         ]
@@ -107,8 +120,8 @@ viewDetailMetadata sermon =
                 []
 
               else
-                [ div [ class "sermon-detail__section" ]
-                    [ strong [ class "sermon-detail__section-title" ] [ text "🏷️ Topics" ]
+                [ div [ Ui.panel ]
+                    [ strong [ Ui.panelTitle ] [ text "Topics" ]
                     , div [ class "sermon-detail__pills" ]
                         (List.map
                             (\( topic, score ) ->
@@ -125,14 +138,14 @@ viewDetailMetadata sermon =
 
 viewDetailTranscript : Sermon -> Html Msg
 viewDetailTranscript sermon =
-    div [ class "sermon-detail__section sermon-detail__transcript-section" ]
-        [ strong [ class "sermon-detail__section-title" ] [ text "📝 Transcript" ]
+    div [ Ui.panel ]
+        [ strong [ Ui.panelTitle ] [ text "Transcript" ]
         , case sermon.transcript of
             Just transcript ->
                 p [ class "sermon-detail__transcript" ] [ text transcript ]
 
             Nothing ->
-                p [ Ui.hint ] [ text "Transcript not available yet." ]
+                p [ Ui.panelText ] [ text "Transcript not available yet." ]
         ]
 
 
@@ -158,29 +171,50 @@ viewDetailActions model sermon =
                     ]
 
             else
-                viewDetailDeleteButton model sermon
+                viewDetailActionButtons model sermon
 
         Nothing ->
-            viewDetailDeleteButton model sermon
+            viewDetailActionButtons model sermon
 
 
-viewDetailDeleteButton : Model -> Sermon -> Html Msg
-viewDetailDeleteButton model sermon =
+viewDetailActionButtons : Model -> Sermon -> Html Msg
+viewDetailActionButtons model sermon =
     div [ Ui.sermonActions ]
-        [ button
-            [ Ui.dangerButton
-            , onClick (AskDelete sermon)
-            , disabled (Set.member sermon.id model.deleting)
-            ]
-            [ text
-                (if Set.member sermon.id model.deleting then
-                    "Deleting…"
+        (List.concat
+            [ if sermon.status == "failed" then
+                [ button
+                    [ Ui.button
+                    , onClick (RetrySermon sermon)
+                    , disabled (Set.member sermon.id model.retrying || Set.member sermon.id model.deleting)
+                    ]
+                    [ text
+                        (if Set.member sermon.id model.retrying then
+                            "Retrying…"
 
-                 else
-                    "Delete Sermon"
-                )
+                         else
+                            "Retry"
+                        )
+                    ]
+                ]
+
+              else
+                []
+            , [ button
+                    [ Ui.dangerButton
+                    , onClick (AskDelete sermon)
+                    , disabled (Set.member sermon.id model.deleting || Set.member sermon.id model.retrying)
+                    ]
+                    [ text
+                        (if Set.member sermon.id model.deleting then
+                            "Deleting…"
+
+                         else
+                            "Delete Sermon"
+                        )
+                    ]
+              ]
             ]
-        ]
+        )
 
 
 viewOptionalError : Maybe String -> Html Msg
@@ -281,15 +315,17 @@ viewSermon model sermon =
                 [ span [ badgeAttribute sermon ] [ text (describeStage sermon) ]
                 , text (formatDate model.zone sermon.uploadedAt)
                 ]
-            , case ( sermon.status, sermon.error ) of
-                ( "failed", Just _ ) ->
-                    p [ Ui.errorText ] [ text "Processing failed. Please retry or contact an administrator." ]
-
-                _ ->
-                    text ""
+            , viewSermonActions model sermon
             ]
+        , button
+            [ Ui.iconButton
+            , onClick (OpenSermon sermon)
+            , disabled (model.confirmingDelete /= Nothing || Set.member sermon.id model.deleting)
+            , attribute "aria-label" "Open Sermon"
+            , title "Open Sermon"
+            ]
+            [ Ui.icon "ph:caret-right" ]
         , viewNormalizedAudio model sermon
-        , viewSermonActions model sermon
         ]
 
 
@@ -460,18 +496,12 @@ viewSermonActions model sermon =
 viewActionButtons : Model -> Sermon -> Bool -> Html Msg
 viewActionButtons model sermon confirmationOpen =
     let
-        isRetrying =
-            Set.member sermon.id model.retrying
-
         isDeleting =
             Set.member sermon.id model.deleting
     in
     div [ Ui.sermonActions ]
         (List.concat
-            [ [ button [ Ui.button, onClick (OpenSermon sermon), disabled confirmationOpen ]
-                    [ text "Open Sermon" ]
-              ]
-            , if (sermon.stage == "edit" || (sermon.stage == "normalization" && sermon.status == "done" && sermon.normalizationReviewed)) && not sermon.editApproved then
+            [ if (sermon.stage == "edit" || (sermon.stage == "normalization" && sermon.status == "done" && sermon.normalizationReviewed)) && not sermon.editApproved then
                 [ button [ Ui.primaryButton, onClick (OpenEditor sermon), disabled (confirmationOpen || isDeleting) ]
                     [ text
                         (if sermon.stage == "edit" && sermon.status == "done" then
@@ -479,24 +509,6 @@ viewActionButtons model sermon confirmationOpen =
 
                          else
                             "Open Editor"
-                        )
-                    ]
-                ]
-
-              else
-                []
-            , if sermon.status == "failed" then
-                [ button
-                    [ Ui.button
-                    , onClick (RetrySermon sermon)
-                    , disabled (confirmationOpen || isRetrying || isDeleting)
-                    ]
-                    [ text
-                        (if isRetrying then
-                            "Retrying…"
-
-                         else
-                            "Retry"
                         )
                     ]
                 ]

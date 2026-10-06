@@ -414,6 +414,7 @@ h2::after {
 
 .audio-review {
   flex-basis: 100%;
+  grid-column: 1 / -1;
   border-top: 1px solid var(--line);
   padding-top: var(--space-xl);
   margin-top: var(--space-xs);
@@ -490,6 +491,12 @@ h2::after {
   transform: none;
   background: var(--card);
   border-color: var(--line);
+}
+
+.button--with-icon {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--space-sm);
 }
 
 .button--danger {
@@ -611,6 +618,35 @@ h2::after {
   padding: 40px var(--space-xl) 80px;
 }
 
+/* panel — shared content and status surface */
+
+.panel {
+  background: var(--wash);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  margin-bottom: var(--space-lg);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: var(--space-lg);
+}
+
+.panel--error {
+  background: var(--red-soft);
+  border-color: var(--red-line);
+  color: var(--red);
+}
+
+.panel__title {
+  display: block;
+  margin-bottom: var(--space-sm);
+}
+
+.panel__text {
+  font-size: 0.95rem;
+  margin: 0;
+}
+
 /* progress — determinate progress bar */
 
 .progress {
@@ -644,10 +680,9 @@ h2::after {
   border-radius: var(--radius-lg);
   padding: 20px 24px;
   margin-bottom: var(--space-lg);
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--control-size);
+  align-items: start;
   gap: var(--space-md);
   box-shadow: var(--shadow);
 }
@@ -728,43 +763,6 @@ h2::after {
   margin: var(--space-xs) 0 0;
 }
 
-.sermon-detail__status {
-  background: var(--green-soft);
-  border: 1px solid var(--green-line);
-  border-radius: var(--radius-sm);
-  padding: var(--space-lg);
-  margin-bottom: var(--space-xl);
-}
-
-.sermon-detail__status-description {
-  margin: var(--space-xs) 0 0;
-}
-
-.sermon-detail__status--error {
-  background: var(--red-soft);
-  border-color: var(--red-line);
-  color: var(--red);
-}
-
-.sermon-detail__sections {
-  display: grid;
-  gap: var(--space-lg);
-}
-
-.sermon-detail__section {
-  background: var(--wash);
-  border-radius: var(--radius-sm);
-  min-width: 0;
-  overflow-wrap: anywhere;
-  padding: var(--space-lg);
-}
-
-.sermon-detail__section-title {
-  display: block;
-  color: var(--ink);
-  margin-bottom: var(--space-sm);
-}
-
 .sermon-detail__pills {
   display: flex;
   flex-wrap: wrap;
@@ -780,17 +778,13 @@ h2::after {
 }
 
 .sermon-detail__pill--scripture {
-  background: var(--red);
-  color: var(--on-accent);
+  background: var(--track);
+  color: var(--ink);
 }
 
 .sermon-detail__pill--topic {
   background: var(--green);
   color: var(--on-accent);
-}
-
-.sermon-detail__transcript-section {
-  margin-top: var(--space-lg);
 }
 
 .sermon-detail__transcript {

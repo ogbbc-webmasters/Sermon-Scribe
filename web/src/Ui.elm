@@ -6,6 +6,7 @@ module Ui exposing
     , badge
     , badgeFailed
     , button
+    , buttonWithIcon
     , card
     , cardInfo
     , cardMeta
@@ -16,8 +17,13 @@ module Ui exposing
     , dangerButton
     , emptyState
     , errorText
+    , errorPanel
     , hint
+    , icon
     , iconButton
+    , panel
+    , panelText
+    , panelTitle
     , primaryButton
     , progress
     , progressFill
@@ -37,7 +43,7 @@ See docs/styling.md for the naming and state-ownership conventions.
 -}
 
 import Html
-import Html.Attributes exposing (class)
+import Html.Attributes exposing (attribute, class)
 
 
 
@@ -75,6 +81,11 @@ button =
     class "button"
 
 
+buttonWithIcon : Html.Attribute msg
+buttonWithIcon =
+    class "button button--with-icon"
+
+
 {-| Prominent call-to-action button (green).
 -}
 primaryButton : Html.Attribute msg
@@ -94,6 +105,41 @@ dangerButton =
 iconButton : Html.Attribute msg
 iconButton =
     class "button button--icon"
+
+
+{-| Decorative icon; its button supplies the accessible name.
+-}
+icon : String -> Html.Html msg
+icon iconName =
+    Html.node "iconify-icon"
+        [ class "button__icon"
+        , attribute "icon" iconName
+        , attribute "aria-hidden" "true"
+        ]
+        []
+
+
+-- PANELS
+
+
+panel : Html.Attribute msg
+panel =
+    class "panel"
+
+
+errorPanel : Html.Attribute msg
+errorPanel =
+    class "panel panel--error"
+
+
+panelTitle : Html.Attribute msg
+panelTitle =
+    class "panel__title"
+
+
+panelText : Html.Attribute msg
+panelText =
+    class "panel__text"
 
 
 

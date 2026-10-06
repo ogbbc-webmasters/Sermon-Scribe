@@ -2,7 +2,7 @@ module Editor exposing (Effect(..), Model, Msg(..), init, pipeline, update, view
 
 import Api exposing (Region, Sermon, Timeline, Waveform)
 import Dict exposing (Dict)
-import Html exposing (Html, audio, button, canvas, div, h1, input, node, p, span, strong, text)
+import Html exposing (Html, audio, button, canvas, div, h1, input, p, span, strong, text)
 import Html.Attributes exposing (attribute, autofocus, class, controls, disabled, id, src, tabindex, title, type_, value)
 import Html.Events exposing (on, onBlur, onClick, onInput)
 import Http
@@ -504,7 +504,7 @@ renderEffect model =
 view model =
     div [ class "editor" ]
         [ div [ class "editor__header" ]
-            [ timelineIconButton "Back to sermons" "mdi:arrow-left" Back (busy model)
+            [ timelineIconButton "Back to sermons" "ph:arrow-left" Back (busy model)
             , div []
                 [ h1 [ class "editor__title" ] [ text "Edit audio" ]
                 , p [ class "editor__filename" ] [ text model.sermon.originalFilename ]
@@ -679,7 +679,7 @@ viewRegionInspector model =
         Just region ->
             div [ class "region-inspector" ]
                 [ div [ class "region-inspector__nav" ]
-                    [ timelineIconButton "Previous section" "mdi:chevron-left" SelectPrevious (model.selected <= 0)
+                    [ timelineIconButton "Previous section" "ph:caret-left" SelectPrevious (model.selected <= 0)
                     , div [ class "region-inspector__identity" ]
                         [ strong [ class "region-inspector__title" ]
                             [ text (regionLabel region.regionType) ]
@@ -688,7 +688,7 @@ viewRegionInspector model =
                         , span [ class "region-inspector__time" ]
                             [ text (Timeline.timestamp region.start ++ " – " ++ Timeline.timestamp region.end) ]
                         ]
-                    , timelineIconButton "Next section" "mdi:chevron-right" SelectNext (model.selected >= List.length model.regions - 1)
+                    , timelineIconButton "Next section" "ph:caret-right" SelectNext (model.selected >= List.length model.regions - 1)
                     ]
                 , div [ class "region-inspector__view" ]
                     [ button [ Ui.button, onClick ZoomToSelected, disabled (busy model) ] [ text "Zoom to section" ]
@@ -699,8 +699,8 @@ viewRegionInspector model =
                         text ""
                     ]
                 , div [ class "region-inspector__decision" ]
-                    [ decisionButton "Keep" "mdi:check" (SetKeep model.selected True) region.keep (busy model)
-                    , decisionButton "Delete" "mdi:content-cut" (SetKeep model.selected False) (not region.keep) (busy model)
+                    [ decisionButton "Keep" "ph:check" (SetKeep model.selected True) region.keep (busy model)
+                    , decisionButton "Delete" "ph:scissors" (SetKeep model.selected False) (not region.keep) (busy model)
                     ]
                 , div [ class "precision-editor" ]
                     [ if model.selected > 0 then
@@ -755,7 +755,7 @@ decisionButton label iconName message selected isBusy =
                 "false"
             )
         ]
-        [ icon iconName
+        [ Ui.icon iconName
         , text label
         ]
 
@@ -811,7 +811,7 @@ auditionButton model requested =
                     "Preview last 1 second"
     in
     button
-        [ Ui.button
+        [ Ui.buttonWithIcon
         , class "precision-editor__audition"
         , onClick (ToggleAudition requested)
         , disabled (busy model)
@@ -830,12 +830,12 @@ auditionButton model requested =
                 "false"
             )
         ]
-        [ icon
+        [ Ui.icon
             (if active then
-                "mdi:stop"
+                "ph:stop"
 
              else
-                "mdi:play"
+                "ph:play"
             )
         , text label
         ]
@@ -957,18 +957,7 @@ timelineIconButton label iconName message isDisabled =
         , attribute "aria-label" label
         , title label
         ]
-        [ icon iconName ]
-
-
-icon iconName =
-    node "iconify-icon"
-        [ class "button__icon"
-        , attribute "icon" iconName
-        , attribute "width" "24"
-        , attribute "height" "24"
-        , attribute "aria-hidden" "true"
-        ]
-        []
+        [ Ui.icon iconName ]
 
 
 redraw model =
