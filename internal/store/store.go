@@ -6,6 +6,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strings"
+	"unicode"
 
 	_ "modernc.org/sqlite"
 )
@@ -153,6 +156,7 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 		sm.Transcript = &transcript.String
 	}
 	if title.Valid {
+		title.String = titleCase(title.String)
 		sm.Title = &title.String
 	}
 	if titleGenerated.Valid {
@@ -178,6 +182,7 @@ func (s *Store) SaveTranscript(id, transcript string) error {
 
 // SaveMetadata stores structured metadata produced by the extraction stage.
 func (s *Store) SaveMetadata(id, title string, generated bool, reasoning, speaker string, scriptures, topics []string, topicScores map[string]float64) error {
+	title = titleCase(title)
 	scripturesJSON, err := json.Marshal(scriptures)
 	if err != nil {
 		return err
@@ -197,8 +202,39 @@ func (s *Store) SaveMetadata(id, title string, generated bool, reasoning, speake
 
 // SaveTitle replaces only title metadata after a targeted retry.
 func (s *Store) SaveTitle(id, title string, generated bool, reasoning string) error {
-	_, err := s.db.Exec(`UPDATE sermons SET title=?, title_generated=?, title_reasoning=? WHERE id=?`, title, generated, reasoning, id)
+	_, err := s.db.Exec(`UPDATE sermons SET title=?, title_generated=?, title_reasoning=? WHERE id=?`, titleCase(title), generated, reasoning, id)
 	return err
+}
+
+var titleWords = regexp.MustCompile(`[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*`)
+
+// titleCase applies English headline casing without rewriting the quote's
+// punctuation, spacing, or existing acronyms.
+func titleCase(title string) string {
+	words := titleWords.FindAllStringIndex(title, -1)
+	var result strings.Builder
+	end := 0
+	for i, word := range words {
+		separator := title[end:word[0]]
+		result.WriteString(separator)
+		value := title[word[0]:word[1]]
+		small := false
+		switch strings.ToLower(value) {
+		case "a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "nor", "of", "on", "or", "the", "to", "via", "with":
+			small = true
+		}
+		if small && i > 0 && i < len(words)-1 && !strings.ContainsAny(separator, ":.!?") {
+			value = strings.ToLower(value)
+		} else {
+			runes := []rune(value)
+			runes[0] = unicode.ToUpper(runes[0])
+			value = string(runes)
+		}
+		result.WriteString(value)
+		end = word[1]
+	}
+	result.WriteString(title[end:])
+	return result.String()
 }
 
 // SaveTopics replaces only topic labels and scores after a targeted retry.

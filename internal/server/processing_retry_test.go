@@ -48,7 +48,7 @@ func TestRetryProcessingParts(t *testing.T) {
 			if err := json.NewDecoder(resp.Body).Decode(&sm); err != nil {
 				t.Fatal(err)
 			}
-			if sm.Stage != part || sm.Status != "pending" || *sm.Title != "Existing title" || *sm.Transcript != "Existing transcript" || sm.TopicScores["Assurance"] != 0.9 || notifier.calls.Load() != 1 {
+			if sm.Stage != part || sm.Status != "pending" || *sm.Title != "Existing Title" || *sm.Transcript != "Existing transcript" || sm.TopicScores["Assurance"] != 0.9 || notifier.calls.Load() != 1 {
 				t.Fatalf("unexpected queued sermon: %+v", sm)
 			}
 			duplicate, err := http.Post(url, "application/json", nil)

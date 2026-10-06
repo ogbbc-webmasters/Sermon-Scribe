@@ -68,11 +68,11 @@ func TestMetadataHandlerSelectsTitleAndPreservesTopics(t *testing.T) {
 		generated  bool
 		wantError  string
 	}{
-		{name: "highest score is third", wantTitle: "God gives generously", wantReason: "Explicitly announced subject."},
-		{name: "array wrapped metadata", wrapped: true, wantTitle: "God gives generously", wantReason: "Explicitly announced subject."},
-		{name: "last candidate at one", answers: `{"title_1":{"noul":0.1},"title_2":{"noul":0.6},"title_3":{"noul":0.97},"title_4":{"noul":0.2},"title_5":{"noul":1}}`, wantTitle: "Receive wisdom", wantReason: "Closing exhortation.", generated: true},
-		{name: "ties keep extraction order", answers: `{"title_1":{"noul":0.1},"title_2":{"noul":0.97},"title_3":{"noul":0.97},"title_4":{"noul":0.2},"title_5":{"noul":0.7}}`, wantTitle: "Faith asks", wantReason: "Describes faithful prayer.", generated: true},
-		{name: "zero is a valid score", answers: `{"title_1":{"noul":0},"title_2":{"noul":0},"title_3":{"noul":0},"title_4":{"noul":0},"title_5":{"noul":0}}`, wantTitle: "The gift of wisdom", wantReason: "Describes God's gift.", generated: true},
+		{name: "highest score is third", wantTitle: "God Gives Generously", wantReason: "Explicitly announced subject."},
+		{name: "array wrapped metadata", wrapped: true, wantTitle: "God Gives Generously", wantReason: "Explicitly announced subject."},
+		{name: "last candidate at one", answers: `{"title_1":{"noul":0.1},"title_2":{"noul":0.6},"title_3":{"noul":0.97},"title_4":{"noul":0.2},"title_5":{"noul":1}}`, wantTitle: "Receive Wisdom", wantReason: "Closing exhortation.", generated: true},
+		{name: "ties keep extraction order", answers: `{"title_1":{"noul":0.1},"title_2":{"noul":0.97},"title_3":{"noul":0.97},"title_4":{"noul":0.2},"title_5":{"noul":0.7}}`, wantTitle: "Faith Asks", wantReason: "Describes faithful prayer.", generated: true},
+		{name: "zero is a valid score", answers: `{"title_1":{"noul":0},"title_2":{"noul":0},"title_3":{"noul":0},"title_4":{"noul":0},"title_5":{"noul":0}}`, wantTitle: "The Gift of Wisdom", wantReason: "Describes God's gift.", generated: true},
 		{name: "too few candidates", candidates: `[ {"title":"One"}, {"title":"Two"}, {"title":"Three"}, {"title":"Four"} ]`, wantError: "exactly five"},
 		{name: "too many candidates", candidates: `[ {"title":"One"}, {"title":"Two"}, {"title":"Three"}, {"title":"Four"}, {"title":"Five"}, {"title":"Six"} ]`, wantError: "exactly five"},
 		{name: "empty candidate", candidates: `[ {"title":"One"}, {"title":"Two"}, {"title":"Three"}, {"title":"Four"}, {"title":"   "} ]`, wantError: "distinct non-empty"},
@@ -205,7 +205,7 @@ func TestMetadataHandlerSelectsTitleAndPreservesTopics(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tt.wantError != "" {
-				if sm.Title == nil || *sm.Title != "Existing title" || sm.TitleReasoning == nil || *sm.TitleReasoning != "Existing reason" || sm.TopicScores["Assurance"] != 0.3 || len(reporter.progress) != 0 {
+				if sm.Title == nil || *sm.Title != "Existing Title" || sm.TitleReasoning == nil || *sm.TitleReasoning != "Existing reason" || sm.TopicScores["Assurance"] != 0.3 || len(reporter.progress) != 0 {
 					t.Fatal("failed classification overwrote metadata or reported completion")
 				}
 				if tt.candidates != "" && calls != 1 {
@@ -319,7 +319,7 @@ func TestMetadataTargetedRetryPreservesOtherFields(t *testing.T) {
 				if *sm.Title != "Three" || *sm.TitleGenerated || *sm.TitleReasoning != "New reason" || !reflect.DeepEqual(sm.Topics, []string{"Assurance"}) || !reflect.DeepEqual(sm.TopicScores, map[string]float64{"Assurance": 0.3}) {
 					t.Fatalf("incorrect title-only update: %+v", sm)
 				}
-			} else if *sm.Title != "Existing title" || !*sm.TitleGenerated || *sm.TitleReasoning != "Existing reason" || !reflect.DeepEqual(sm.Topics, []string{"Atonement", "Assurance"}) || len(sm.TopicScores) != 79 || sm.TopicScores["Assurance"] != 0.83 || sm.TopicScores["Atonement"] != 0.2 {
+			} else if *sm.Title != "Existing Title" || !*sm.TitleGenerated || *sm.TitleReasoning != "Existing reason" || !reflect.DeepEqual(sm.Topics, []string{"Atonement", "Assurance"}) || len(sm.TopicScores) != 79 || sm.TopicScores["Assurance"] != 0.83 || sm.TopicScores["Atonement"] != 0.2 {
 				t.Fatalf("incorrect topics-only update: %+v", sm)
 			}
 		})
