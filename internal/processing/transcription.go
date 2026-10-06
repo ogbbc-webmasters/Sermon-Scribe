@@ -191,7 +191,15 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 		Topics          []string          `json:"topics"`
 		TopicsReasoning map[string]string `json:"topics_reasoning"`
 	}
-	if err := json.Unmarshal([]byte(content), &result); err != nil {
+	rawMetadata := json.RawMessage(content)
+	if len(rawMetadata) > 0 && rawMetadata[0] == '[' {
+		var items []json.RawMessage
+		if err := json.Unmarshal(rawMetadata, &items); err != nil || len(items) == 0 {
+			return Result{}, fmt.Errorf("parse metadata: expected a non-empty JSON array")
+		}
+		rawMetadata = items[0]
+	}
+	if err := json.Unmarshal(rawMetadata, &result); err != nil {
 		return Result{}, fmt.Errorf("parse metadata: %w", err)
 	}
 	if result.Title == "" {
