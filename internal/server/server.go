@@ -69,6 +69,7 @@ func (s *Server) Routes(webFS fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/sermons", s.handleListSermons)
 	mux.HandleFunc("DELETE /api/sermons/{id}", s.handleDeleteSermon)
 	mux.HandleFunc("POST /api/sermons/{id}/retry", s.handleRetrySermon)
+	mux.HandleFunc("POST /api/sermons/{id}/retry/{part}", s.handleRetryProcessing)
 	mux.HandleFunc("POST /api/sermons/{id}/normalize", s.handleRerunNormalization)
 	mux.HandleFunc("POST /api/sermons/{id}/review-normalization", s.handleReviewNormalization)
 	mux.HandleFunc("GET /api/sermons/{id}/waveform", s.handleWaveform)
@@ -275,6 +276,51 @@ func (s *Server) handleRetrySermon(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("retry sermon %s: %v", id, err)
 		writeError(w, http.StatusInternalServerError, "could not retry sermon")
+		return
+	}
+	if s.Events != nil {
+		s.Events.Publish(processing.Event{Name: processing.EventProgress, Sermon: sm})
+	}
+	if s.Queue != nil {
+		s.Queue.Notify()
+	}
+	writeJSON(w, http.StatusAccepted, sm)
+}
+
+func (s *Server) handleRetryProcessing(w http.ResponseWriter, r *http.Request) {
+	id, part := r.PathValue("id"), r.PathValue("part")
+	if part != "title" && part != "topics" && part != "transcription" {
+		writeError(w, http.StatusBadRequest, "unknown processing part")
+		return
+	}
+	if _, err := s.Store.GetSermon(id); errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "sermon not found")
+		return
+	} else if err != nil {
+		log.Printf("load sermon for processing retry %s: %v", id, err)
+		writeError(w, http.StatusInternalServerError, "could not retry processing")
+		return
+	}
+	if part == "transcription" {
+		if _, err := originalAudioPath(filepath.Join(s.UploadsDir, id)); errors.Is(err, os.ErrNotExist) {
+			writeError(w, http.StatusConflict, "original audio is not available for transcription")
+			return
+		} else if err != nil {
+			log.Printf("load original audio for retry %s: %v", id, err)
+			writeError(w, http.StatusInternalServerError, "could not retry transcription")
+			return
+		}
+	}
+	sm, err := s.Store.EnqueueProcessingRerun(id, newUUID(), part, time.Now())
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "sermon not found")
+		return
+	} else if errors.Is(err, store.ErrNotRetryable) {
+		writeError(w, http.StatusConflict, "processing is busy or the required input is unavailable")
+		return
+	} else if err != nil {
+		log.Printf("retry %s for sermon %s: %v", part, id, err)
+		writeError(w, http.StatusInternalServerError, "could not retry processing")
 		return
 	}
 	if s.Events != nil {

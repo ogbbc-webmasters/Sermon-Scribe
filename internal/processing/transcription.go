@@ -108,7 +108,7 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 			ID:         uuid.New().String(),
 			Type:       "extract_metadata",
 			Stage:      "metadata",
-			Parameters: `{}`,
+			Parameters: job.Parameters,
 		},
 	}, reporter.Progress(100, nil)
 }
@@ -151,7 +151,7 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 		"model": h.config.MetadataModel,
 		"messages": []map[string]string{{
 			"role":    "user",
-			"content": metadataPrompt(*sermon.Transcript),
+			"content": metadataPrompt(*sermon.Transcript, job.Type),
 		}},
 		"response_format": map[string]string{"type": "json_object"},
 	}
@@ -207,7 +207,10 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 	if err := json.Unmarshal(rawMetadata, &result); err != nil {
 		return Result{}, fmt.Errorf("parse metadata: %w", err)
 	}
-	if len(result.TitleCandidates) != 5 {
+	if job.Type == "extract_topics" {
+		result.TitleCandidates = nil
+	}
+	if job.Type != "extract_topics" && len(result.TitleCandidates) != 5 {
 		return Result{}, fmt.Errorf("metadata response must include exactly five title candidates")
 	}
 	seen := make(map[string]bool)
@@ -220,17 +223,25 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 		}
 		seen[key] = true
 	}
-	title, scores, err := h.classifyMetadata(ctx, *sermon.Transcript, result.TitleCandidates)
+	title, scores, err := h.classifyMetadata(ctx, *sermon.Transcript, result.TitleCandidates, job.Type != "extract_title")
 	if err != nil {
 		return Result{}, err
 	}
-	if err := h.store.SaveMetadata(job.SermonID, title.Title, title.TitleGenerated, title.TitleReasoning, result.Speaker, result.Scriptures, result.Topics, scores); err != nil {
+	switch job.Type {
+	case "extract_title":
+		err = h.store.SaveTitle(job.SermonID, title.Title, title.TitleGenerated, title.TitleReasoning)
+	case "extract_topics":
+		err = h.store.SaveTopics(job.SermonID, result.Topics, scores)
+	default:
+		err = h.store.SaveMetadata(job.SermonID, title.Title, title.TitleGenerated, title.TitleReasoning, result.Speaker, result.Scriptures, result.Topics, scores)
+	}
+	if err != nil {
 		return Result{}, err
 	}
 	return Result{}, reporter.Progress(100, nil)
 }
 
-func (h *MetadataHandler) classifyMetadata(ctx context.Context, transcript string, candidates []titleCandidate) (titleCandidate, map[string]float64, error) {
+func (h *MetadataHandler) classifyMetadata(ctx context.Context, transcript string, candidates []titleCandidate, includeTopics bool) (titleCandidate, map[string]float64, error) {
 	questions := make(map[string]any)
 	titles := make([]string, len(candidates))
 	for i, candidate := range candidates {
@@ -244,15 +255,17 @@ func (h *MetadataHandler) classifyMetadata(ctx context.Context, transcript strin
 			},
 		}
 	}
-	for name, detail := range topicDetails() {
-		key := strings.ToLower(strings.ReplaceAll(name, " ", "_"))
-		questions[key] = map[string]any{
-			"type":         "noul",
-			"instructions": "Does this sermon substantially address the topic " + name + "?",
-			"criteria": map[string]string{
-				"true":  detail,
-				"false": "The sermon does not substantially teach or focus on this topic.",
-			},
+	if includeTopics {
+		for name, detail := range topicDetails() {
+			key := strings.ToLower(strings.ReplaceAll(name, " ", "_"))
+			questions[key] = map[string]any{
+				"type":         "noul",
+				"instructions": "Does this sermon substantially address the topic " + name + "?",
+				"criteria": map[string]string{
+					"true":  detail,
+					"false": "The sermon does not substantially teach or focus on this topic.",
+				},
+			}
 		}
 	}
 	body, err := json.Marshal(map[string]any{
@@ -288,24 +301,30 @@ func (h *MetadataHandler) classifyMetadata(ctx context.Context, transcript strin
 	if err := json.Unmarshal(data, &response); err != nil {
 		return titleCandidate{}, nil, fmt.Errorf("decode decision response: %w", err)
 	}
-	best, bestScore := 0, -1.0
-	for i := range candidates {
-		key := fmt.Sprintf("title_%d", i+1)
+	for key := range questions {
 		answer := response.Answers[key]
 		if answer.Noul == nil || *answer.Noul < 0 || *answer.Noul > 1 {
 			return titleCandidate{}, nil, fmt.Errorf("decision response missing or invalid score for %s", key)
 		}
+	}
+	best, bestScore := 0, -1.0
+	for i := range candidates {
+		key := fmt.Sprintf("title_%d", i+1)
+		answer := response.Answers[key]
 		// Keep extraction order as the deterministic tie-breaker.
 		if *answer.Noul > bestScore {
 			best, bestScore = i, *answer.Noul
 		}
 	}
 	scores := make(map[string]float64, len(response.Answers))
-	for name := range topicDetails() {
-		key := strings.ToLower(strings.ReplaceAll(name, " ", "_"))
-		if answer, ok := response.Answers[key]; ok && answer.Noul != nil {
-			scores[name] = *answer.Noul
+	if includeTopics {
+		for name := range topicDetails() {
+			key := strings.ToLower(strings.ReplaceAll(name, " ", "_"))
+			scores[name] = *response.Answers[key].Noul
 		}
+	}
+	if len(candidates) == 0 {
+		return titleCandidate{}, scores, nil
 	}
 	return candidates[best], scores, nil
 }
@@ -332,25 +351,26 @@ func apiError(status int, body []byte) error {
 //go:embed topics.md
 var topicsTaxonomy string
 
-func metadataPrompt(transcript string) string {
-	return `You are analyzing a sermon transcript. Return only valid JSON.
-
-Extract:
-- title_candidates: exactly five distinct candidate titles, each an object with:
+func metadataPrompt(transcript, jobType string) string {
+	prompt := "You are analyzing a sermon transcript. Return only valid JSON.\n\nExtract:\n"
+	if jobType != "extract_topics" {
+		prompt += `- title_candidates: exactly five distinct candidate titles, each an object with:
   - title: an exact quote from the speaker that works as a sermon title; do not compose or paraphrase
   - title_generated: false only when the speaker explicitly announced this title
   - title_reasoning: briefly explain why this quote is a suitable title
   Include the explicitly announced title if present, then quotes that best represent the central message.
   A separate decision model will choose the most likely title from these five candidates.
-- speaker: the preacher's name, or an empty string
+`
+	}
+	if jobType != "extract_title" && jobType != "extract_topics" {
+		prompt += `- speaker: the preacher's name, or an empty string
 - scriptures: normalized Bible references, deduplicated and kept in first-mention order
-- topics: 2-5 labels from the taxonomy below
-
-Topic taxonomy:
-` + topicsTaxonomy + `
-
-Transcript:
-` + transcript
+`
+	}
+	if jobType != "extract_title" {
+		prompt += "- topics: 2-5 labels from the taxonomy below\n\nTopic taxonomy:\n" + topicsTaxonomy
+	}
+	return prompt + "\n\nTranscript:\n" + transcript
 }
 
 func topicDetails() map[string]string {

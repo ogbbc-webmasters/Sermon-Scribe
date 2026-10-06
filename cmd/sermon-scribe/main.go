@@ -62,6 +62,8 @@ func main() {
 	queue := processing.NewQueue(st, map[string]processing.Handler{
 		"transcribe":       transcribe,
 		"extract_metadata": metadata,
+		"extract_title":    metadata,
+		"extract_topics":   metadata,
 		"normalize":        normalize,
 		"apply_edits":      applyEdits,
 	}, processing.Config{Events: events})

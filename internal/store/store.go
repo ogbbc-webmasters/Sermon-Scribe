@@ -195,6 +195,26 @@ func (s *Store) SaveMetadata(id, title string, generated bool, reasoning, speake
 	return err
 }
 
+// SaveTitle replaces only title metadata after a targeted retry.
+func (s *Store) SaveTitle(id, title string, generated bool, reasoning string) error {
+	_, err := s.db.Exec(`UPDATE sermons SET title=?, title_generated=?, title_reasoning=? WHERE id=?`, title, generated, reasoning, id)
+	return err
+}
+
+// SaveTopics replaces only topic labels and scores after a targeted retry.
+func (s *Store) SaveTopics(id string, topics []string, scores map[string]float64) error {
+	labels, err := json.Marshal(topics)
+	if err != nil {
+		return err
+	}
+	values, err := json.Marshal(scores)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE sermons SET topics=?, topic_scores=? WHERE id=?`, string(labels), string(values), id)
+	return err
+}
+
 // MarkNormalizationReviewed durably records that the user accepted the
 // completed normalization before entering the timeline editor.
 func (s *Store) MarkNormalizationReviewed(id string) (Sermon, error) {

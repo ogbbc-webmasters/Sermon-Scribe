@@ -52,6 +52,7 @@ type Msg
     | UploadProgress Http.Progress
     | UploadFinished (Result Http.Error Sermon)
     | RetrySermon Sermon
+    | RetryProcessing Sermon String
     | RetryFinished Sermon (Result Http.Error Sermon)
     | RerunNormalization Sermon String
     | RerunNormalizationFinished Sermon (Result Http.Error Sermon)

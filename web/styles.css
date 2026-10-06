@@ -567,6 +567,12 @@ h2::after {
   color: var(--ink-soft);
 }
 
+.button--small {
+  flex-shrink: 0;
+  height: var(--control-size-small);
+  width: var(--control-size-small);
+}
+
 .button--primary {
   background: linear-gradient(160deg, var(--green) 0%, var(--green-dark) 100%);
   border-color: var(--green-dark);
@@ -630,6 +636,13 @@ h2::after {
   font-size: 1rem;
 }
 
+.heading-row {
+  align-items: center;
+  display: flex;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
 /* masthead — page title banner */
 
 .masthead {
@@ -671,6 +684,10 @@ h2::after {
 .panel__title {
   display: block;
   margin-bottom: var(--space-sm);
+}
+
+.panel__title--inline {
+  margin-bottom: 0;
 }
 
 .panel__text {

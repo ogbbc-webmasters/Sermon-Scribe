@@ -64,7 +64,10 @@ viewSermonDetail model sermon =
             [ div [ class "sermon-detail__header" ]
                 [ button [ Ui.button, onClick CloseSermon ] [ text "← Back to Sermons" ]
                 , div [ class "sermon-detail__identity" ]
-                    [ h2 [ class "sermon-detail__title" ] [ text (Maybe.withDefault "Title Unknown" sermon.title) ]
+                    [ div [ Ui.headingRow ]
+                        [ h2 [ class "sermon-detail__title" ] [ text (Maybe.withDefault "Title Unknown" sermon.title) ]
+                        , viewProcessingRetry model sermon "title" "Retry Title"
+                        ]
                     , p [ class "sermon-detail__filename" ] [ text sermon.originalFilename ]
                     , case sermon.speaker of
                         Just speaker ->
@@ -107,7 +110,7 @@ viewSermonDetail model sermon =
 
                         Nothing ->
                             text ""
-                    , viewDetailMetadata sermon
+                    , viewDetailMetadata model sermon
                     ]
                 , div [ class "sermon-detail__column" ]
                     [ viewDetailAudio sermon
@@ -147,8 +150,8 @@ viewDetailStatus sermon =
                 ]
 
 
-viewDetailMetadata : Sermon -> Html Msg
-viewDetailMetadata sermon =
+viewDetailMetadata : Model -> Sermon -> Html Msg
+viewDetailMetadata model sermon =
     div [ class "sermon-detail__sections" ]
         (List.concat
             [ case sermon.scriptures of
@@ -162,12 +165,16 @@ viewDetailMetadata sermon =
                             (List.map (\scripture -> span [ class "sermon-detail__pill sermon-detail__pill--scripture" ] [ text scripture ]) scriptures)
                         ]
                     ]
-            , if List.isEmpty (highConfidenceTopics sermon.topicScores) then
-                []
+            , [ div [ Ui.panel ]
+                    [ div [ Ui.headingRow ]
+                        [ strong [ Ui.inlinePanelTitle ] [ text "Topics" ]
+                        , viewProcessingRetry model sermon "topics" "Retry Topics"
+                        ]
+                    , if List.isEmpty (highConfidenceTopics sermon.topicScores) then
+                        p [ Ui.panelText ] [ text "No high-confidence topics yet." ]
 
-              else
-                [ div [ Ui.panel ]
-                    [ strong [ Ui.panelTitle ] [ text "Topics" ]
+                      else
+                        text ""
                     , div [ class "sermon-detail__pills" ]
                         (List.map
                             (\( topic, score ) ->
@@ -213,7 +220,10 @@ viewDetailTranscript : Model -> Sermon -> Html Msg
 viewDetailTranscript model sermon =
     div [ Ui.panel ]
         [ div [ class "sermon-detail__transcript-header" ]
-            [ strong [ Ui.panelTitle ] [ text "Transcript" ]
+            [ div [ Ui.headingRow ]
+                [ strong [ Ui.inlinePanelTitle ] [ text "Transcript" ]
+                , viewProcessingRetry model sermon "transcription" "Retry Transcription"
+                ]
             , case sermon.transcript of
                 Just transcript ->
                     button [ Ui.button, onClick (CopyTranscript transcript) ]
@@ -307,6 +317,28 @@ highConfidenceTopics scores =
     scores
         |> List.filter (\( _, score ) -> score >= 0.8)
         |> List.sortBy (\( _, score ) -> -score)
+
+
+viewProcessingRetry : Model -> Sermon -> String -> String -> Html Msg
+viewProcessingRetry model sermon part label =
+    button
+        [ Ui.smallQuietIconButton
+        , title label
+        , attribute "aria-label" label
+        , onClick (RetryProcessing sermon part)
+        , disabled
+            (Set.member sermon.id model.retrying
+                || Set.member sermon.id model.deleting
+                || Set.member sermon.id model.rerunning
+                || Set.member sermon.id model.reviewingNormalization
+                || model.confirmingDelete /= Nothing
+                || (sermon.status /= "done" && sermon.status /= "failed")
+                || sermon.stage == "upload"
+                || (part /= "transcription" && sermon.transcript == Nothing)
+                || (part == "transcription" && sermon.editApproved)
+            )
+        ]
+        [ Ui.icon "ph:arrow-clockwise" ]
 
 
 viewDetailActions : Model -> Sermon -> Html Msg

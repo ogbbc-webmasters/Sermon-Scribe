@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -117,6 +118,74 @@ func (s *Store) CompleteUpload(sermonID, jobID string, now time.Time) (Sermon, e
 // completed stage schedules another machine stage.
 func (s *Store) EnqueueJob(job NewJob, now time.Time) error {
 	return enqueueJobTx(s.db, job, now)
+}
+
+type processingReturnState struct {
+	Stage  string `json:"return_stage"`
+	Status string `json:"return_status"`
+}
+
+// EnqueueProcessingRerun queues one requested part without discarding the
+// existing output. The original pipeline state is restored on success.
+func (s *Store) EnqueueProcessingRerun(sermonID, jobID, part string, now time.Time) (Sermon, error) {
+	jobType := map[string]string{"title": "extract_title", "topics": "extract_topics", "transcription": "transcribe"}[part]
+	if jobType == "" {
+		return Sermon{}, ErrNotRetryable
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Sermon{}, err
+	}
+	defer tx.Rollback()
+	sm, err := getSermon(tx, sermonID)
+	if err != nil {
+		return Sermon{}, err
+	}
+	if sm.Stage == "upload" || (sm.Status != "done" && sm.Status != "failed") ||
+		(part != "transcription" && (sm.Transcript == nil || strings.TrimSpace(*sm.Transcript) == "")) {
+		return Sermon{}, ErrNotRetryable
+	}
+	resume := processingReturnState{Stage: sm.Stage, Status: sm.Status}
+	if sm.Stage == "metadata" || sm.Stage == "transcription" || sm.Stage == "title" || sm.Stage == "topics" {
+		resume = processingReturnState{Stage: "metadata", Status: "done"}
+	}
+	// A failed rerun retains the state it was originally meant to restore.
+	if sm.Status == "failed" {
+		var previous string
+		err := tx.QueryRow(`SELECT parameters FROM jobs WHERE sermon_id=? AND stage=? ORDER BY created_at DESC, id DESC LIMIT 1`, sermonID, sm.Stage).Scan(&previous)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return Sermon{}, err
+		}
+		var prior processingReturnState
+		if err == nil && json.Unmarshal([]byte(previous), &prior) == nil && prior.Stage != "" {
+			resume = prior
+		}
+	}
+	parameters, err := json.Marshal(resume)
+	if err != nil {
+		return Sermon{}, err
+	}
+	res, err := tx.Exec(`UPDATE sermons SET stage=?, status='pending'
+		WHERE id=? AND status IN ('done','failed')
+		AND NOT EXISTS (SELECT 1 FROM jobs WHERE sermon_id=? AND state IN ('queued','running'))`, part, sermonID, sermonID)
+	if err != nil {
+		return Sermon{}, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return Sermon{}, err
+	}
+	if n == 0 {
+		return Sermon{}, ErrNotRetryable
+	}
+	if err := enqueueJobTx(tx, NewJob{ID: jobID, SermonID: sermonID, Type: jobType, Stage: part, Parameters: string(parameters)}, now); err != nil {
+		return Sermon{}, err
+	}
+	sm, err = getSermon(tx, sermonID)
+	if err != nil {
+		return Sermon{}, err
+	}
+	return sm, tx.Commit()
 }
 
 // EnqueueNormalizationRerun returns a completed normalization stage to pending
@@ -488,9 +557,17 @@ func (s *Store) CompleteJob(job Job, next *NewJob, now time.Time) (Sermon, error
 	}
 
 	if next == nil {
+		stage, status := job.Stage, "done"
+		var resume processingReturnState
+		if err := json.Unmarshal([]byte(job.Parameters), &resume); err != nil {
+			return Sermon{}, err
+		}
+		if resume.Stage != "" {
+			stage, status = resume.Stage, resume.Status
+		}
 		_, err = tx.Exec(
-			`UPDATE sermons SET stage = ?, status = 'done' WHERE id = ?`,
-			job.Stage, job.SermonID)
+			`UPDATE sermons SET stage = ?, status = ? WHERE id = ?`,
+			stage, status, job.SermonID)
 	} else {
 		next.SermonID = job.SermonID
 		_, err = tx.Exec(

@@ -19,15 +19,18 @@ module Ui exposing
     , errorText
     , errorPanel
     , hint
+    , headingRow
     , icon
     , iconButton
     , panel
     , panelText
     , panelTitle
+    , inlinePanelTitle
     , primaryButton
     , progress
     , progressFill
     , quietIconButton
+    , smallQuietIconButton
     , sermonActions
     )
 
@@ -113,6 +116,11 @@ quietIconButton =
     class "button button--icon button--quiet"
 
 
+smallQuietIconButton : Html.Attribute msg
+smallQuietIconButton =
+    class "button button--icon button--quiet button--small"
+
+
 {-| Decorative icon; its button supplies the accessible name.
 -}
 icon : String -> Html.Html msg
@@ -120,6 +128,7 @@ icon iconName =
     Html.node "iconify-icon"
         [ class "button__icon"
         , attribute "icon" iconName
+        , attribute "noobserver" ""
         , attribute "aria-hidden" "true"
         ]
         []
@@ -141,6 +150,16 @@ errorPanel =
 panelTitle : Html.Attribute msg
 panelTitle =
     class "panel__title"
+
+
+inlinePanelTitle : Html.Attribute msg
+inlinePanelTitle =
+    class "panel__title panel__title--inline"
+
+
+headingRow : Html.Attribute msg
+headingRow =
+    class "heading-row"
 
 
 panelText : Html.Attribute msg

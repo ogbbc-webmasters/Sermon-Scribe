@@ -12,6 +12,7 @@ module Api exposing
     , pipelineEventDecoder
     , rerunNormalization
     , retrySermon
+    , retryProcessing
     , reviewNormalization
     , sermonDecoder
     , uploadSermon
@@ -260,6 +261,15 @@ retrySermon toMsg id =
         , expect = Http.expectJson toMsg sermonDecoder
         , timeout = Nothing
         , tracker = Nothing
+        }
+
+
+retryProcessing : (Result Http.Error Sermon -> msg) -> String -> String -> Cmd msg
+retryProcessing toMsg id part =
+    Http.post
+        { url = "/api/sermons/" ++ id ++ "/retry/" ++ part
+        , body = Http.emptyBody
+        , expect = Http.expectJson toMsg sermonDecoder
         }
 
 
