@@ -2,7 +2,8 @@ module Editing exposing (Model, Msg(..), init, isOpen, update, view)
 
 import Browser.Dom
 import Button
-import Html exposing (Html, audio, button, div, h2, input, label, p, span, strong, text)
+import Card
+import Html exposing (Html, audio, button, div, input, label, p, span, strong, text)
 import Html.Attributes exposing (attribute, checked, class, controls, disabled, id, name, src, type_)
 import Html.Events exposing (on, onClick, preventDefaultOn, stopPropagationOn)
 import Http
@@ -536,47 +537,48 @@ kindLabel kind =
 view : Model -> Html Msg
 view model =
     div [ class "editor" ]
-        [ h2 [ Ui.panelHeading ] [ text "Edit recording" ]
-        , case model.error of
-            Just error ->
-                div [ Ui.errorPanel, attribute "role" "alert" ]
-                    [ p [] [ text error ]
-                    , div [ Ui.sermonActions ]
-                        [ if model.draft == Nothing then
-                            Button.action "ph:x" "Close editor" False [ onClick Close ]
+        [ Card.viewWithSubtitle
+            (text "Edit recording")
+            (Maybe.map (\draft -> text ("Kept duration: " ++ timestamp (keptDuration draft))) model.draft)
+            [ Button.view "button" (Button.regenerate "Regenerate breakpoints") False [ disabled True ]
+            , Button.action "ph:arrow-right"
+                "Continue"
+                (model.applying || model.pendingApply /= Nothing)
+                [ onClick (Apply False)
+                , disabled (model.draft == Nothing || model.applying || model.pendingApply /= Nothing || not (model.draft |> Maybe.map (.sections >> List.any .keep) |> Maybe.withDefault False) || model.error /= Nothing)
+                ]
+            ]
+            [ case model.error of
+                Just error ->
+                    div [ Ui.errorPanel, attribute "role" "alert" ]
+                        [ p [] [ text error ]
+                        , div [ Ui.sermonActions ]
+                            [ if model.draft == Nothing then
+                                Button.action "ph:x" "Close editor" False [ onClick Close ]
 
-                          else
-                            Button.action "ph:floppy-disk" "Try saving again" model.saving [ onClick RetrySave, disabled model.saving ]
-                        , Button.action "ph:arrow-clockwise" "Reload saved draft" False [ onClick Reload, disabled (model.saving || model.applying) ]
+                              else
+                                Button.action "ph:floppy-disk" "Try saving again" model.saving [ onClick RetrySave, disabled model.saving ]
+                            , Button.action "ph:arrow-clockwise" "Reload saved draft" False [ onClick Reload, disabled (model.saving || model.applying) ]
+                            ]
                         ]
-                    ]
 
-            Nothing ->
-                text ""
-        , case model.draft of
-            Nothing ->
-                p [ Ui.hint ]
-                    [ text
-                        (if model.error == Nothing then
-                            "Loading sections…"
+                Nothing ->
+                    text ""
+            , case model.draft of
+                Nothing ->
+                    p [ Ui.hint ]
+                        [ text
+                            (if model.error == Nothing then
+                                "Loading sections…"
 
-                         else
-                            ""
-                        )
-                    ]
-
-            Just draft ->
-                div []
-                    [ div [ class "editor__toolbar" ]
-                        [ Button.action "ph:arrow-counter-clockwise" "Undo" False [ onClick Undo, disabled (List.isEmpty model.undo || model.applying || model.pendingApply /= Nothing) ]
-                        , Button.action "ph:x" "Close editor" False [ onClick Close, disabled (model.saving || model.applying || model.draft /= model.saved) ]
+                             else
+                                ""
+                            )
                         ]
-                    , div [ class "editor__list" ] (List.concat (List.indexedMap (sectionRow model draft) draft.sections))
-                    , div [ class "editor__footer" ]
-                        [ strong [] [ text ("Kept duration: " ++ timestamp (keptDuration draft)) ]
-                        , Button.action "ph:check" "Apply edits & continue" (model.applying || model.pendingApply /= Nothing) [ onClick (Apply False), disabled (model.applying || model.pendingApply /= Nothing || not (List.any .keep draft.sections) || model.error /= Nothing) ]
-                        ]
-                    ]
+
+                Just draft ->
+                    div [ class "editor__list" ] (List.concat (List.indexedMap (sectionRow model draft) draft.sections))
+            ]
         ]
 
 
@@ -646,7 +648,16 @@ sectionRow model draft index section =
                 "editor__section editor__section--deleted"
             )
         ]
-        [ div [ class "editor__row", onClick (if busy then IgnoreClick else Select (Passage index)) ]
+        [ div
+            [ class "editor__row"
+            , onClick
+                (if busy then
+                    IgnoreClick
+
+                 else
+                    Select (Passage index)
+                )
+            ]
             [ button
                 [ class "editor__section-title"
                 , disabled busy

@@ -79,7 +79,7 @@
   --icon-size: 24px;
   --focus: #1769aa;
   --layer-popover: 10;
-  --editor-width: 760px;
+  --editor-section-title-width: 10rem;
   --editor-border: 1px;
   --focus-width: 3px;
 }
@@ -259,11 +259,6 @@ h2::after {
 
 /* editor — audio-first section list and one open adjustment at a time */
 
-.editor {
-  margin: var(--space-2xl) auto;
-  max-width: var(--editor-width);
-}
-
 .editor__adjustment {
   background: var(--wash);
   border: var(--editor-border) solid var(--line);
@@ -319,14 +314,6 @@ h2::after {
   min-height: var(--control-size-small);
 }
 
-.editor__footer {
-  align-items: center;
-  display: flex;
-  gap: var(--space-lg);
-  justify-content: space-between;
-  margin-top: var(--space-2xl);
-}
-
 .editor__list {
   display: grid;
   gap: var(--space-md);
@@ -363,7 +350,7 @@ h2::after {
   color: inherit;
   cursor: pointer;
   display: flex;
-  flex: 1;
+  flex: 1 1 var(--editor-section-title-width);
   font: inherit;
   gap: var(--space-md);
   padding: var(--space-sm);
@@ -377,15 +364,6 @@ h2::after {
 
 .editor__section-title:focus-visible {
   outline: var(--focus-width) solid var(--focus);
-}
-
-.editor__toolbar {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-md);
-  justify-content: space-between;
-  margin: var(--space-xl) 0;
 }
 
 /* empty-state — placeholder shown when a list has no items */
@@ -521,6 +499,12 @@ h2::after {
 
 .panel__heading::after {
   display: none;
+}
+
+.panel__subtitle {
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+  margin: var(--space-sm) 0 0;
 }
 
 .panel__title {

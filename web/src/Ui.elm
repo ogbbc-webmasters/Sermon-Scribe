@@ -9,13 +9,14 @@ module Ui exposing
     , confirmBoxButtons
     , confirmBoxQuestion
     , emptyState
-    , errorText
     , errorPanel
+    , errorText
     , hint
     , panel
     , panelActions
     , panelHeader
     , panelHeading
+    , panelSubtitle
     , panelText
     , panelTitle
     , progress
@@ -39,6 +40,7 @@ import Html
 import Html.Attributes exposing (class)
 
 
+
 -- PANELS
 
 
@@ -55,6 +57,11 @@ panelHeader =
 panelHeading : Html.Attribute msg
 panelHeading =
     class "panel__heading"
+
+
+panelSubtitle : Html.Attribute msg
+panelSubtitle =
+    class "panel__subtitle"
 
 
 panelActions : Html.Attribute msg
