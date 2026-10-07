@@ -9,6 +9,7 @@ import File
 import Html exposing (Html, a, audio, button, details, div, h1, h2, input, label, mark, p, span, strong, summary, text)
 import Html.Attributes exposing (accept, attribute, class, controls, disabled, download, hidden, href, id, placeholder, src, style, title, type_, value)
 import Html.Events exposing (on, onClick, onInput, stopPropagationOn)
+import Icon
 import Json.Decode as Decode exposing (Decoder)
 import Set
 import Types exposing (Model, Msg(..), SermonList(..), UploadState(..))
@@ -53,9 +54,12 @@ viewSermonDetail : Model -> Sermon -> Html Msg
 viewSermonDetail model sermon =
     let
         hasMetadata =
-            sermon.transcript /= Nothing
-                || sermon.title /= Nothing
-                || sermon.titleReasoning /= Nothing
+            sermon.transcript
+                /= Nothing
+                || sermon.title
+                /= Nothing
+                || sermon.titleReasoning
+                /= Nothing
                 || not (List.isEmpty sermon.scriptures)
                 || not (List.isEmpty (highConfidenceTopics sermon.topicScores))
     in
@@ -65,13 +69,7 @@ viewSermonDetail model sermon =
         , div [ class "sermon-detail" ]
             [ div [ class "sermon-detail__header" ]
                 [ div [ class "sermon-detail__navigation" ]
-                    [ button
-                        [ Ui.smallQuietIconButton
-                        , onClick CloseSermon
-                        , title "Back to Sermons"
-                        , attribute "aria-label" "Back to Sermons"
-                        ]
-                        [ Ui.icon "ph:arrow-left" ]
+                    [ Icon.view "button" Icon.back False [ onClick CloseSermon ]
                     , viewAIWarning
                     ]
                 , Card.view
@@ -79,22 +77,15 @@ viewSermonDetail model sermon =
                     [ viewProcessingRetry model sermon "title" "Regenerate Title"
                     , case sermon.titleReasoning of
                         Just reasoning ->
-                            viewIconDisclosure "ph:info" "Why this title?" reasoning
+                            viewIconDisclosure Icon.titleInfo reasoning
 
                         Nothing ->
                             text ""
-                    , button
-                        [ Ui.smallDangerIconButton
-                        , onClick (AskDelete sermon)
-                        , title "Delete Sermon"
-                        , attribute "aria-label" "Delete Sermon"
+                    , Icon.view "button"
+                        Icon.deleteSermon
+                        (Set.member sermon.id model.deleting)
+                        [ onClick (AskDelete sermon)
                         , disabled (Set.member sermon.id model.deleting || Set.member sermon.id model.retrying || model.confirmingDelete /= Nothing)
-                        ]
-                        [ if Set.member sermon.id model.deleting then
-                            Ui.spinner
-
-                          else
-                            Ui.icon "ph:trash"
                         ]
                     ]
                     [ p [ class "sermon-detail__filename" ] [ text sermon.originalFilename ]
@@ -143,21 +134,16 @@ viewSermonDetail model sermon =
 
 viewAIWarning : Html Msg
 viewAIWarning =
-    viewIconDisclosure "ph:warning" "Verify AI-generated content" "This page includes AI-generated content to save you time. Please carefully verify the metadata before publishing."
+    viewIconDisclosure Icon.warning "This page includes AI-generated content to save you time. Please carefully verify the metadata before publishing."
 
 
-viewIconDisclosure : String -> String -> String -> Html Msg
-viewIconDisclosure iconName heading body =
+viewIconDisclosure : Icon.Config -> String -> Html Msg
+viewIconDisclosure config body =
     details [ Ui.iconDisclosure ]
-        [ summary
-            [ Ui.smallQuietIconButton
-            , title heading
-            , attribute "aria-label" heading
-            ]
-            [ Ui.icon iconName ]
+        [ Icon.view "summary" config False []
         , div [ Ui.iconDisclosureContent ]
             [ div [ Ui.panel ]
-                [ strong [ Ui.panelTitle ] [ text heading ]
+                [ strong [ Ui.panelTitle ] [ text config.label ]
                 , p [ Ui.panelText ] [ text body ]
                 ]
             ]
@@ -177,15 +163,7 @@ viewDetailStatus sermon =
             text ""
 
         _ ->
-            div [ Ui.panel ]
-                [ strong [ Ui.panelTitle ] [ text (describeStage sermon) ]
-                , p [ Ui.panelText ] [ text "This sermon is still being processed." ]
-                , if sermon.status == "running" && sermon.progress >= 0 then
-                    viewProgressBar (toFloat sermon.progress / 100)
-
-                  else
-                    text ""
-                ]
+            text ""
 
 
 viewDetailMetadata : Model -> Sermon -> Html Msg
@@ -233,14 +211,12 @@ viewDetailAudio sermon =
                 )
     in
     Card.view (text "Audio")
-        [ a
-            [ Ui.smallQuietIconButton
-            , href (source ++ "?download=1")
+        [ Icon.view "a"
+            Icon.downloadAudio
+            False
+            [ href (source ++ "?download=1")
             , download ""
-            , title "Download audio"
-            , attribute "aria-label" "Download audio"
             ]
-            [ Ui.icon "ph:download-simple" ]
         ]
         [ audio [ class "sermon-detail__audio", controls True, attribute "preload" "metadata", src source ] [] ]
 
@@ -251,20 +227,15 @@ viewDetailTranscript model sermon =
         [ viewProcessingRetry model sermon "transcription" "Regenerate Transcription"
         , case sermon.transcript of
             Just transcript ->
-                button
-                    [ Ui.smallQuietIconButton
-                    , onClick (CopyTranscript transcript)
-                    , title "Copy Full Transcript"
-                    , attribute "aria-label" "Copy Full Transcript"
-                    ]
-                    [ Ui.icon
-                        (if model.transcriptCopyStatus == Just True then
-                            "ph:check"
+                Icon.view "button"
+                    (if model.transcriptCopyStatus == Just True then
+                        Icon.copiedTranscript
 
-                         else
-                            "ph:copy"
-                        )
-                    ]
+                     else
+                        Icon.copyTranscript
+                    )
+                    False
+                    [ onClick (CopyTranscript transcript) ]
 
             Nothing ->
                 text ""
@@ -327,9 +298,9 @@ viewDetailTranscript model sermon =
                             []
                         , if count > 0 then
                             div [ class "sermon-detail__search-navigation" ]
-                                [ button [ Ui.smallQuietIconButton, title "Previous match", attribute "aria-label" "Previous match", onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch - 1))) ] [ Ui.icon "ph:caret-left" ]
+                                [ Icon.view "button" Icon.previousMatch False [ onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch - 1))) ]
                                 , span [ Ui.panelText, attribute "role" "status" ] [ text (String.fromInt (model.transcriptMatch + 1) ++ " of " ++ String.fromInt count) ]
-                                , button [ Ui.smallQuietIconButton, title "Next match", attribute "aria-label" "Next match", onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch + 1))) ] [ Ui.icon "ph:caret-right" ]
+                                , Icon.view "button" Icon.nextMatch False [ onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch + 1))) ]
                                 ]
 
                           else if not (String.isEmpty model.transcriptSearch) then
@@ -405,42 +376,32 @@ viewProcessingRetry : Model -> Sermon -> String -> String -> Html Msg
 viewProcessingRetry model sermon part label =
     let
         processing =
-            Dict.get sermon.id model.regenerating == Just part
+            Dict.get sermon.id model.regenerating
+                == Just part
                 || ((sermon.status == "pending" || sermon.status == "running")
-                        && (sermon.stage == part
+                        && (sermon.stage
+                                == part
                                 || (sermon.stage == "metadata" && part /= "transcription")
                            )
                    )
     in
-    button
-        [ Ui.smallQuietIconButton
-        , title label
-        , attribute "aria-label" label
-        , attribute "aria-busy"
-            (if processing then
-                "true"
-
-             else
-                "false"
-            )
-        , onClick (RetryProcessing sermon part)
+    Icon.view "button"
+        (Icon.regenerate label)
+        processing
+        [ onClick (RetryProcessing sermon part)
         , disabled
             (Set.member sermon.id model.retrying
                 || Set.member sermon.id model.deleting
                 || Set.member sermon.id model.rerunning
                 || Set.member sermon.id model.reviewingNormalization
-                || model.confirmingDelete /= Nothing
+                || model.confirmingDelete
+                /= Nothing
                 || (sermon.status /= "done" && sermon.status /= "failed")
-                || sermon.stage == "upload"
+                || sermon.stage
+                == "upload"
                 || (part /= "transcription" && sermon.transcript == Nothing)
                 || (part == "transcription" && sermon.editApproved)
             )
-        ]
-        [ if processing then
-            Ui.spinner
-
-          else
-            Ui.icon "ph:arrow-clockwise"
         ]
 
 
@@ -599,14 +560,12 @@ viewSermon model sermon =
                 ]
             , div [ stopPropagationOn "click" (Decode.succeed ( NoOp, True )) ] [ viewSermonActions model sermon ]
             ]
-        , button
-            [ Ui.quietIconButton
-            , stopPropagationOn "click" (Decode.succeed ( OpenSermon sermon, True ))
+        , Icon.view "button"
+            Icon.openSermon
+            False
+            [ stopPropagationOn "click" (Decode.succeed ( OpenSermon sermon, True ))
             , disabled (model.confirmingDelete /= Nothing || Set.member sermon.id model.deleting)
-            , attribute "aria-label" "Open Sermon"
-            , title "Open Sermon"
             ]
-            [ Ui.icon "ph:caret-right" ]
         , viewNormalizedAudio model sermon
         ]
 

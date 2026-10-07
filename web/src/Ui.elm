@@ -21,6 +21,7 @@ module Ui exposing
     , hint
     , icon
     , iconButton
+    , iconControl
     , iconDisclosure
     , iconDisclosureContent
     , panel
@@ -114,6 +115,11 @@ dangerButton =
 iconButton : Html.Attribute msg
 iconButton =
     class "button button--icon"
+
+
+iconControl : Html.Attribute msg
+iconControl =
+    class "icon-control"
 
 
 quietIconButton : Html.Attribute msg

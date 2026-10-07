@@ -34,6 +34,7 @@
   --green-soft: #e5efe7;
   --green-line: #cfe0d3;
   --gold: #b98a2e;
+  --gold-dark: #8a641c;
   --gold-soft: #f6e8b8;
   --red: #a8342a;
   --red-dark: #8a2a22;
@@ -55,6 +56,7 @@
   --radius-lg: 14px;
   --radius-xl: 16px;
   --radius-pill: 999px;
+  --radius-icon: 40%;
 
   /* elevation */
   --shadow: 0 1px 2px rgba(43, 40, 32, 0.06), 0 4px 16px rgba(43, 40, 32, 0.07);
@@ -663,6 +665,44 @@ h2::after {
   border-radius: var(--radius-xl);
   padding: 36px 24px;
   font-size: 1rem;
+}
+
+/* icon-control — filled squircle action with a named background token */
+
+.icon-control {
+  background: var(--icon-background);
+  border: 0;
+  border-radius: var(--radius-icon);
+  color: var(--on-accent);
+  corner-shape: squircle;
+  cursor: pointer;
+  display: inline-grid;
+  flex-shrink: 0;
+  height: var(--control-size-small);
+  line-height: 1;
+  padding: 0;
+  place-items: center;
+  width: var(--control-size-small);
+}
+
+.icon-control:hover {
+  background: var(--icon-background);
+  color: var(--on-accent);
+  filter: brightness(0.9);
+}
+
+.icon-control:active {
+  background: var(--icon-background);
+  color: var(--on-accent);
+  filter: brightness(0.8);
+}
+
+.icon-control:disabled {
+  background: var(--icon-background);
+  color: var(--on-accent);
+  cursor: default;
+  filter: none;
+  opacity: 0.45;
 }
 
 /* icon-disclosure — compact warning and information popovers */

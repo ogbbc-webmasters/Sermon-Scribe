@@ -6,6 +6,7 @@ import Html exposing (Html, audio, button, canvas, div, h1, input, p, span, stro
 import Html.Attributes exposing (attribute, autofocus, class, controls, disabled, id, src, tabindex, title, type_, value)
 import Html.Events exposing (on, onBlur, onClick, onInput)
 import Http
+import Icon
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Timeline
@@ -950,14 +951,12 @@ loadFailed model =
 
 
 timelineIconButton label iconName message isDisabled =
-    button
-        [ Ui.iconButton
-        , onClick message
+    Icon.view "button"
+        (Icon.Config iconName label "var(--ink-soft)")
+        False
+        [ onClick message
         , disabled isDisabled
-        , attribute "aria-label" label
-        , title label
         ]
-        [ Ui.icon iconName ]
 
 
 redraw model =
