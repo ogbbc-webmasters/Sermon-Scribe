@@ -1,15 +1,15 @@
 module View exposing (view)
 
 import Api exposing (Sermon)
+import Button
 import Card
 import DateFormat exposing (formatDate)
 import Dict
 import Editing
 import File
-import Html exposing (Html, a, audio, button, details, div, h2, input, label, mark, p, span, strong, summary, text)
+import Html exposing (Html, a, audio, button, div, h2, input, label, mark, p, span, strong, text)
 import Html.Attributes exposing (accept, attribute, checked, class, classList, controls, disabled, download, hidden, href, id, placeholder, src, style, title, type_, value)
 import Html.Events exposing (on, onCheck, onClick, onInput, stopPropagationOn)
-import Icon
 import Json.Decode as Decode exposing (Decoder)
 import Set
 import Types exposing (Model, Msg(..), SermonList(..), UploadState(..))
@@ -47,7 +47,7 @@ view model =
 viewDetailMessage : String -> Html Msg
 viewDetailMessage message =
     div [ class "page page--detail" ]
-        [ Icon.view "a" Icon.back False [ href "/" ]
+        [ Button.view "a" Button.back False [ href "/" ]
         , p [] [ text message ]
         ]
 
@@ -69,7 +69,7 @@ viewSermonDetail model sermon =
         [ div [ class "sermon-detail" ]
             [ div [ class "sermon-detail__header" ]
                 [ div [ class "sermon-detail__navigation" ]
-                    [ Icon.view "a" Icon.back False [ href "/" ]
+                    [ Button.view "a" Button.back False [ href "/" ]
                     , viewAIWarning
                     ]
                 , Card.view
@@ -77,12 +77,12 @@ viewSermonDetail model sermon =
                     [ viewProcessingRetry model sermon "title" "Regenerate Title"
                     , case sermon.titleReasoning of
                         Just reasoning ->
-                            viewIconDisclosure Icon.titleInfo reasoning
+                            Button.disclosure Button.titleInfo reasoning
 
                         Nothing ->
                             text ""
-                    , Icon.view "button"
-                        Icon.deleteSermon
+                    , Button.view "button"
+                        Button.deleteSermon
                         (Set.member sermon.id model.deleting)
                         [ onClick (AskDelete sermon)
                         , disabled (Set.member sermon.id model.deleting || Set.member sermon.id model.retrying || model.confirmingDelete /= Nothing)
@@ -116,8 +116,8 @@ viewSermonDetail model sermon =
                 div [ Ui.panel ]
                     [ h2 [ Ui.panelHeading ] [ text "Ready to edit" ]
                     , div [ Ui.sermonActions ]
-                        [ button [ Ui.primaryButton, onClick (EditingMsg (Editing.Open sermon.id False)) ] [ text "Edit recording" ]
-                        , button [ Ui.button, onClick (EditingMsg (Editing.Open sermon.id True)) ] [ text "Continue without editing" ]
+                        [ button [ Button.primaryButton, onClick (EditingMsg (Editing.Open sermon.id False)) ] [ text "Edit recording" ]
+                        , button [ Button.button, onClick (EditingMsg (Editing.Open sermon.id True)) ] [ text "Continue without editing" ]
                         ]
                     ]
 
@@ -149,20 +149,7 @@ viewSermonDetail model sermon =
 
 viewAIWarning : Html Msg
 viewAIWarning =
-    viewIconDisclosure Icon.warning "This page includes AI-generated content to save you time. Please carefully verify the metadata before publishing."
-
-
-viewIconDisclosure : Icon.Config -> String -> Html Msg
-viewIconDisclosure config body =
-    details [ Ui.iconDisclosure ]
-        [ Icon.view "summary" config False []
-        , div [ Ui.iconDisclosureContent ]
-            [ div [ Ui.panel ]
-                [ strong [ Ui.panelTitle ] [ text config.label ]
-                , p [ Ui.panelText ] [ text body ]
-                ]
-            ]
-        ]
+    Button.disclosure Button.warning "This page includes AI-generated content to save you time. Please carefully verify the metadata before publishing."
 
 
 viewDetailStatus : Model -> Sermon -> Html Msg
@@ -172,7 +159,7 @@ viewDetailStatus model sermon =
             div [ Ui.errorPanel ]
                 [ strong [ Ui.panelTitle ] [ text "Processing failed" ]
                 , p [ Ui.panelText ] [ text (Maybe.withDefault "Please try again or contact an administrator." sermon.error) ]
-                , button [ Ui.button, onClick (RetryProcessing sermon ""), disabled (Set.member sermon.id model.retrying) ] [ text "Retry processing" ]
+                , button [ Button.button, onClick (RetryProcessing sermon ""), disabled (Set.member sermon.id model.retrying) ] [ text "Retry processing" ]
                 ]
 
         "done" ->
@@ -212,7 +199,7 @@ viewDetailMetadata model sermon =
             , if Set.member sermon.id model.scriptureSaveErrors then
                 div [ class "sermon-detail__scripture-save-error" ]
                     [ p [ class "sermon-detail__scripture-status" ] [ text "Could not save your selection." ]
-                    , button [ Ui.button, onClick (RetryScriptureSave sermon) ] [ text "Retry" ]
+                    , button [ Button.button, onClick (RetryScriptureSave sermon) ] [ text "Retry" ]
                     ]
 
               else
@@ -262,14 +249,14 @@ viewDetailAudio sermon =
             audioUrl sermon.id "playback"
     in
     Card.view (text "Audio")
-        [ Icon.view "button"
-            Icon.editAudio
+        [ Button.view "button"
+            Button.editAudio
             False
             [ onClick (EditingMsg (Editing.Open sermon.id False))
             , disabled (sermon.stage /= "metadata" || (sermon.status /= "done" && sermon.status /= "failed"))
             ]
-        , Icon.view "a"
-            Icon.downloadAudio
+        , Button.view "a"
+            Button.downloadAudio
             False
             [ href (source ++ "?download=1")
             , download ""
@@ -284,12 +271,12 @@ viewDetailTranscript model sermon =
         [ viewProcessingRetry model sermon "transcription" "Regenerate Transcription"
         , case sermon.transcript of
             Just transcript ->
-                Icon.view "button"
+                Button.view "button"
                     (if model.transcriptCopyStatus == Just True then
-                        Icon.copiedTranscript
+                        Button.copiedTranscript
 
                      else
-                        Icon.copyTranscript
+                        Button.copyTranscript
                     )
                     False
                     [ onClick (CopyTranscript transcript) ]
@@ -355,9 +342,9 @@ viewDetailTranscript model sermon =
                             []
                         , if count > 0 then
                             div [ class "sermon-detail__search-navigation" ]
-                                [ Icon.view "button" Icon.previousMatch False [ onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch - 1))) ]
+                                [ Button.view "button" Button.previousMatch False [ onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch - 1))) ]
                                 , span [ Ui.panelText, attribute "role" "status" ] [ text (String.fromInt (model.transcriptMatch + 1) ++ " of " ++ String.fromInt count) ]
-                                , Icon.view "button" Icon.nextMatch False [ onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch + 1))) ]
+                                , Button.view "button" Button.nextMatch False [ onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch + 1))) ]
                                 ]
 
                           else if not (String.isEmpty model.transcriptSearch) then
@@ -447,8 +434,8 @@ viewProcessingRetry model sermon part label =
                            )
                    )
     in
-    Icon.view "button"
-        (Icon.regenerate label)
+    Button.view "button"
+        (Button.regenerate label)
         processing
         [ onClick (RetryProcessing sermon part)
         , disabled
@@ -474,8 +461,8 @@ viewDeleteConfirmation model sermon =
                     [ p [ Ui.confirmBoxQuestion ]
                         [ strong [] [ text "Delete this sermon and its audio files?" ] ]
                     , div [ Ui.confirmBoxButtons ]
-                        [ button [ Ui.dangerButton, onClick (ConfirmDelete sermon) ] [ text "Yes, Delete" ]
-                        , button [ Ui.button, onClick CancelDelete ] [ text "Cancel" ]
+                        [ button [ Button.dangerButton, onClick (ConfirmDelete sermon) ] [ text "Yes, Delete" ]
+                        , button [ Button.button, onClick CancelDelete ] [ text "Cancel" ]
                         ]
                     ]
 
@@ -511,7 +498,7 @@ viewUpload upload =
         _ ->
             div [ class "upload-box" ]
                 (List.concat
-                    [ [ label [ Ui.primaryButton, Html.Attributes.for "file-input" ]
+                    [ [ label [ Button.primaryButton, Html.Attributes.for "file-input" ]
                             [ text "Upload a Sermon Recording" ]
                       , input
                             [ type_ "file"
@@ -593,8 +580,8 @@ viewSermon model sermon =
                 , text (formatDate model.zone sermon.uploadedAt)
                 ]
             ]
-        , Icon.view "a"
-            Icon.openSermon
+        , Button.view "a"
+            Button.openSermon
             False
             [ href ("/sermons/" ++ sermon.id)
             , stopPropagationOn "click" (Decode.succeed ( NoOp, True ))

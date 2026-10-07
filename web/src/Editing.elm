@@ -1,11 +1,11 @@
 module Editing exposing (Model, Msg(..), init, isOpen, update, view)
 
 import Browser.Dom
+import Button
 import Html exposing (Html, audio, button, div, h2, input, label, p, span, strong, text)
 import Html.Attributes exposing (attribute, checked, class, controls, disabled, id, name, src, type_)
 import Html.Events exposing (on, onClick, preventDefaultOn, stopPropagationOn)
 import Http
-import Icon
 import Json.Decode as Decode
 import Json.Encode as Encode
 import Process
@@ -533,11 +533,6 @@ kindLabel kind =
             "Manual breakpoint"
 
 
-editorAction : String -> String -> Bool -> List (Html.Attribute Msg) -> Html Msg
-editorAction icon caption busy attributes =
-    Icon.view "button" (Icon.Config icon caption "var(--green)") busy attributes
-
-
 view : Model -> Html Msg
 view model =
     div [ class "editor" ]
@@ -548,11 +543,11 @@ view model =
                     [ p [] [ text error ]
                     , div [ Ui.sermonActions ]
                         [ if model.draft == Nothing then
-                            editorAction "ph:x" "Close editor" False [ onClick Close ]
+                            Button.action "ph:x" "Close editor" False [ onClick Close ]
 
                           else
-                            editorAction "ph:floppy-disk" "Try saving again" model.saving [ onClick RetrySave, disabled model.saving ]
-                        , editorAction "ph:arrow-clockwise" "Reload saved draft" False [ onClick Reload, disabled (model.saving || model.applying) ]
+                            Button.action "ph:floppy-disk" "Try saving again" model.saving [ onClick RetrySave, disabled model.saving ]
+                        , Button.action "ph:arrow-clockwise" "Reload saved draft" False [ onClick Reload, disabled (model.saving || model.applying) ]
                         ]
                     ]
 
@@ -573,13 +568,13 @@ view model =
             Just draft ->
                 div []
                     [ div [ class "editor__toolbar" ]
-                        [ editorAction "ph:arrow-counter-clockwise" "Undo" False [ onClick Undo, disabled (List.isEmpty model.undo || model.applying || model.pendingApply /= Nothing) ]
-                        , editorAction "ph:x" "Close editor" False [ onClick Close, disabled (model.saving || model.applying || model.draft /= model.saved) ]
+                        [ Button.action "ph:arrow-counter-clockwise" "Undo" False [ onClick Undo, disabled (List.isEmpty model.undo || model.applying || model.pendingApply /= Nothing) ]
+                        , Button.action "ph:x" "Close editor" False [ onClick Close, disabled (model.saving || model.applying || model.draft /= model.saved) ]
                         ]
                     , div [ class "editor__list" ] (List.concat (List.indexedMap (sectionRow model draft) draft.sections))
                     , div [ class "editor__footer" ]
                         [ strong [] [ text ("Kept duration: " ++ timestamp (keptDuration draft)) ]
-                        , editorAction "ph:check" "Apply edits & continue" (model.applying || model.pendingApply /= Nothing) [ onClick (Apply False), disabled (model.applying || model.pendingApply /= Nothing || not (List.any .keep draft.sections) || model.error /= Nothing) ]
+                        , Button.action "ph:check" "Apply edits & continue" (model.applying || model.pendingApply /= Nothing) [ onClick (Apply False), disabled (model.applying || model.pendingApply /= Nothing || not (List.any .keep draft.sections) || model.error /= Nothing) ]
                         ]
                     ]
         ]
@@ -663,7 +658,7 @@ sectionRow model draft index section =
                         "false"
                     )
                 ]
-                [ Ui.icon
+                [ Button.icon
                     (if model.selection == Just (Passage index) then
                         "ph:caret-down"
 
@@ -738,13 +733,13 @@ boundaryPanel model draft index b =
     div [ class "editor__adjustment", id "breakpoint-adjustment", attribute "tabindex" "-1", attribute "aria-label" "Adjust breakpoint", keyboard ]
         [ strong [] [ text ("Place breakpoint · " ++ String.fromFloat (toFloat (round (b.time * 10)) / 10) ++ " seconds") ]
         , div [ Ui.sermonActions ]
-            [ editorAction "ph:headphones" "Listen around breakpoint" False [ onClick Preview, disabled busy ]
-            , editorAction "ph:arrow-left" "Earlier" False [ onClick (Nudge -0.1), disabled busy ]
-            , editorAction "ph:arrow-right" "Later" False [ onClick (Nudge 0.1), disabled busy ]
+            [ Button.action "ph:headphones" "Listen around breakpoint" False [ onClick Preview, disabled busy ]
+            , Button.action "ph:arrow-left" "Earlier" False [ onClick (Nudge -0.1), disabled busy ]
+            , Button.action "ph:arrow-right" "Later" False [ onClick (Nudge 0.1), disabled busy ]
             ]
         , p [ Ui.hint ] [ text "← / → 0.1s · Shift 1s" ]
         , p [ attribute "role" "status", Ui.hint ] [ text model.audioStatus ]
-        , editorAction "ph:minus" "Remove breakpoint" False [ onClick RemoveBoundary, disabled (busy || not removable) ]
+        , Button.action "ph:minus" "Remove breakpoint" False [ onClick RemoveBoundary, disabled (busy || not removable) ]
         ]
 
 
@@ -752,14 +747,14 @@ sectionPanel : Model -> Draft -> Int -> Html Msg
 sectionPanel model draft index =
     div [ class "editor__adjustment" ]
         [ div [ Ui.sermonActions ]
-            [ editorAction "ph:headphones" "Preview start & finish" False [ onClick Preview ]
-            , editorAction "ph:play" "Play full section" False [ onClick PlayFull ]
+            [ Button.action "ph:headphones" "Preview start & finish" False [ onClick Preview ]
+            , Button.action "ph:play" "Play full section" False [ onClick PlayFull ]
             ]
         , audio [ id "editing-source", class "editor__audio", controls True, attribute "preload" "metadata", attribute "data-start" (at index draft.breakpoints |> Maybe.map (.time >> String.fromFloat) |> Maybe.withDefault "0"), attribute "data-end" (at (index + 1) draft.breakpoints |> Maybe.map (.time >> String.fromFloat) |> Maybe.withDefault "0"), src ("/api/sermons/" ++ Url.percentEncode (Maybe.withDefault "" model.sermonId) ++ "/audio/source"), on "timeupdate" (Decode.at [ "target", "currentTime" ] Decode.float |> Decode.map Playhead) ] []
         , p [ attribute "role" "status", Ui.hint ] [ text model.audioStatus ]
         , div [ Ui.sermonActions ]
-            [ editorAction "ph:plus" ("Add breakpoint at " ++ timestamp model.playhead) False [ onClick AddBoundary, disabled (model.applying || model.pendingApply /= Nothing) ]
-            , editorAction "ph:skip-back" "Adjust start" False [ onClick (Select (Boundary index)), disabled (index == 0) ]
-            , editorAction "ph:skip-forward" "Adjust finish" False [ onClick (Select (Boundary (index + 1))), disabled (index + 1 == List.length draft.breakpoints - 1) ]
+            [ Button.action "ph:plus" ("Add breakpoint at " ++ timestamp model.playhead) False [ onClick AddBoundary, disabled (model.applying || model.pendingApply /= Nothing) ]
+            , Button.action "ph:skip-back" "Adjust start" False [ onClick (Select (Boundary index)), disabled (index == 0) ]
+            , Button.action "ph:skip-forward" "Adjust finish" False [ onClick (Select (Boundary (index + 1))), disabled (index + 1 == List.length draft.breakpoints - 1) ]
             ]
         ]

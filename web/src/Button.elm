@@ -1,8 +1,43 @@
-module Icon exposing (Config, back, copiedTranscript, copyTranscript, deleteSermon, downloadAudio, editAudio, nextMatch, openSermon, previousMatch, regenerate, titleInfo, view, warning)
+module Button exposing (Config, action, back, button, copiedTranscript, copyTranscript, dangerButton, deleteSermon, disclosure, downloadAudio, editAudio, icon, nextMatch, openSermon, previousMatch, primaryButton, regenerate, titleInfo, view, warning)
 
-import Html exposing (Html)
-import Html.Attributes exposing (attribute, title, type_)
+import Html exposing (Html, details, div, p, strong, text)
+import Html.Attributes exposing (attribute, class, title, type_)
 import Ui
+
+
+{-| Neutral text-button styling, also usable on a link or label.
+-}
+button : Html.Attribute msg
+button =
+    class "button"
+
+
+primaryButton : Html.Attribute msg
+primaryButton =
+    class "button button--primary"
+
+
+dangerButton : Html.Attribute msg
+dangerButton =
+    class "button button--danger"
+
+
+{-| Decorative icon; its button supplies the accessible name.
+-}
+icon : String -> Html msg
+icon iconName =
+    Html.node "iconify-icon"
+        [ class "button__icon"
+        , attribute "icon" iconName
+        , attribute "noobserver" ""
+        , attribute "aria-hidden" "true"
+        ]
+        []
+
+
+spinner : Html msg
+spinner =
+    Html.span [ class "spinner", attribute "aria-hidden" "true" ] [ icon "ph:spinner-gap" ]
 
 
 type alias Config =
@@ -69,13 +104,33 @@ regenerate label =
     Config "ph:arrow-clockwise" label "var(--green)"
 
 
+{-| Green icon action with a tooltip and accessible name.
+-}
+action : String -> String -> Bool -> List (Html.Attribute msg) -> Html msg
+action iconName caption busy attributes =
+    view "button" (Config iconName caption "var(--green)") busy attributes
+
+
+disclosure : Config -> String -> Html msg
+disclosure config body =
+    details [ class "icon-disclosure" ]
+        [ view "summary" config False []
+        , div [ class "icon-disclosure__content" ]
+            [ div [ Ui.panel ]
+                [ strong [ Ui.panelTitle ] [ text config.label ]
+                , p [ Ui.panelText ] [ text body ]
+                ]
+            ]
+        ]
+
+
 {-| Render an icon action as a button, link, or disclosure summary. The same
 definition owns its icon, accessible label, tooltip, color, and busy state.
 -}
 view : String -> Config -> Bool -> List (Html.Attribute msg) -> Html msg
 view tag config busy attributes =
     Html.node tag
-        ([ Ui.iconControl
+        ([ class "icon-control"
          , title config.label
          , attribute "aria-label" config.label
          , attribute "aria-busy"
@@ -96,8 +151,8 @@ view tag config busy attributes =
             ++ attributes
         )
         [ if busy then
-            Ui.spinner
+            spinner
 
           else
-            Ui.icon config.icon
+            icon config.icon
         ]

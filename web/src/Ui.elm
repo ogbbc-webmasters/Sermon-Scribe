@@ -1,7 +1,6 @@
 module Ui exposing
     ( badge
     , badgeFailed
-    , button
     , card
     , cardInfo
     , cardMeta
@@ -9,25 +8,18 @@ module Ui exposing
     , confirmBox
     , confirmBoxButtons
     , confirmBoxQuestion
-    , dangerButton
     , emptyState
     , errorText
     , errorPanel
     , hint
-    , icon
-    , iconControl
-    , iconDisclosure
-    , iconDisclosureContent
     , panel
     , panelActions
     , panelHeader
     , panelHeading
     , panelText
     , panelTitle
-    , primaryButton
     , progress
     , progressFill
-    , spinner
     , sermonActions
     )
 
@@ -44,66 +36,7 @@ See docs/styling.md for the naming and state-ownership conventions.
 -}
 
 import Html
-import Html.Attributes exposing (attribute, class)
-
--- BUTTONS
-
-
-{-| Neutral button.
--}
-button : Html.Attribute msg
-button =
-    class "button"
-
-
-{-| Prominent call-to-action button (green).
--}
-primaryButton : Html.Attribute msg
-primaryButton =
-    class "button button--primary"
-
-
-{-| Destructive-action button (red).
--}
-dangerButton : Html.Attribute msg
-dangerButton =
-    class "button button--danger"
-
-
-iconControl : Html.Attribute msg
-iconControl =
-    class "icon-control"
-
-
-{-| Decorative icon; its button supplies the accessible name.
--}
-icon : String -> Html.Html msg
-icon iconName =
-    Html.node "iconify-icon"
-        [ class "button__icon"
-        , attribute "icon" iconName
-        , attribute "noobserver" ""
-        , attribute "aria-hidden" "true"
-        ]
-        []
-
-
-spinner : Html.Html msg
-spinner =
-    Html.span [ class "spinner", attribute "aria-hidden" "true" ] [ icon "ph:spinner-gap" ]
-
-
--- ICON DISCLOSURE
-
-
-iconDisclosure : Html.Attribute msg
-iconDisclosure =
-    class "icon-disclosure"
-
-
-iconDisclosureContent : Html.Attribute msg
-iconDisclosureContent =
-    class "icon-disclosure__content"
+import Html.Attributes exposing (class)
 
 
 -- PANELS
