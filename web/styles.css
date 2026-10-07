@@ -571,6 +571,30 @@ h2::after {
   color: var(--ink-soft);
 }
 
+.button--quiet-danger {
+  background: var(--clear);
+  border-color: var(--clear);
+  color: var(--red);
+}
+
+.button--quiet-danger:hover {
+  background: var(--red-soft);
+  border-color: var(--clear);
+  color: var(--red-dark);
+}
+
+.button--quiet-danger:active {
+  background: var(--red-soft);
+  border-color: var(--clear);
+  color: var(--red-dark);
+}
+
+.button--quiet-danger:disabled {
+  background: var(--clear);
+  border-color: var(--clear);
+  color: var(--red);
+}
+
 .button--small {
   flex-shrink: 0;
   height: var(--control-size-small);

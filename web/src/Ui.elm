@@ -33,6 +33,7 @@ module Ui exposing
     , progress
     , progressFill
     , quietIconButton
+    , smallDangerIconButton
     , smallQuietIconButton
     , spinner
     , sermonActions
@@ -123,6 +124,11 @@ quietIconButton =
 smallQuietIconButton : Html.Attribute msg
 smallQuietIconButton =
     class "button button--icon button--quiet button--small"
+
+
+smallDangerIconButton : Html.Attribute msg
+smallDangerIconButton =
+    class "button button--icon button--quiet-danger button--small"
 
 
 {-| Decorative icon; its button supplies the accessible name.

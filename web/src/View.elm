@@ -65,7 +65,13 @@ viewSermonDetail model sermon =
         , div [ class "sermon-detail" ]
             [ div [ class "sermon-detail__header" ]
                 [ div [ class "sermon-detail__navigation" ]
-                    [ button [ Ui.button, onClick CloseSermon ] [ text "← Back to Sermons" ]
+                    [ button
+                        [ Ui.smallQuietIconButton
+                        , onClick CloseSermon
+                        , title "Back to Sermons"
+                        , attribute "aria-label" "Back to Sermons"
+                        ]
+                        [ Ui.icon "ph:arrow-left" ]
                     , viewAIWarning
                     ]
                 , Card.view
@@ -77,6 +83,19 @@ viewSermonDetail model sermon =
 
                         Nothing ->
                             text ""
+                    , button
+                        [ Ui.smallDangerIconButton
+                        , onClick (AskDelete sermon)
+                        , title "Delete Sermon"
+                        , attribute "aria-label" "Delete Sermon"
+                        , disabled (Set.member sermon.id model.deleting || Set.member sermon.id model.retrying || model.confirmingDelete /= Nothing)
+                        ]
+                        [ if Set.member sermon.id model.deleting then
+                            Ui.spinner
+
+                          else
+                            Ui.icon "ph:trash"
+                        ]
                     ]
                     [ p [ class "sermon-detail__filename" ] [ text sermon.originalFilename ]
                     , case sermon.speaker of
@@ -93,6 +112,8 @@ viewSermonDetail model sermon =
                         [ span [ badgeAttribute sermon ] [ text (describeStage sermon) ]
                         , text (formatDate model.zone sermon.uploadedAt)
                         ]
+                    , viewOptionalError model.deleteError
+                    , viewDeleteConfirmation model sermon
                     ]
                 ]
             , viewDetailStatus sermon
@@ -113,9 +134,8 @@ viewSermonDetail model sermon =
                     ]
                 ]
             , div [ class "sermon-detail__footer" ]
-                [ viewOptionalError model.deleteError
-                , viewOptionalError model.retryError
-                , viewDetailActions model sermon
+                [ viewOptionalError model.retryError
+                , viewDetailActionButtons model sermon
                 ]
             ]
         ]
@@ -418,8 +438,8 @@ viewProcessingRetry model sermon part label =
         ]
 
 
-viewDetailActions : Model -> Sermon -> Html Msg
-viewDetailActions model sermon =
+viewDeleteConfirmation : Model -> Sermon -> Html Msg
+viewDeleteConfirmation model sermon =
     case model.confirmingDelete of
         Just pending ->
             if pending.id == sermon.id then
@@ -433,10 +453,10 @@ viewDetailActions model sermon =
                     ]
 
             else
-                viewDetailActionButtons model sermon
+                text ""
 
         Nothing ->
-            viewDetailActionButtons model sermon
+            text ""
 
 
 viewDetailActionButtons : Model -> Sermon -> Html Msg
@@ -447,7 +467,7 @@ viewDetailActionButtons model sermon =
                 [ button
                     [ Ui.button
                     , onClick (RetrySermon sermon)
-                    , disabled (Set.member sermon.id model.retrying || Set.member sermon.id model.deleting)
+                    , disabled (Set.member sermon.id model.retrying || Set.member sermon.id model.deleting || model.confirmingDelete /= Nothing)
                     ]
                     [ text
                         (if Set.member sermon.id model.retrying then
@@ -461,20 +481,6 @@ viewDetailActionButtons model sermon =
 
               else
                 []
-            , [ button
-                    [ Ui.dangerButton
-                    , onClick (AskDelete sermon)
-                    , disabled (Set.member sermon.id model.deleting || Set.member sermon.id model.retrying)
-                    ]
-                    [ text
-                        (if Set.member sermon.id model.deleting then
-                            "Deleting…"
-
-                         else
-                            "Delete Sermon"
-                        )
-                    ]
-              ]
             ]
         )
 
