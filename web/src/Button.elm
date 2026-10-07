@@ -1,4 +1,4 @@
-module Button exposing (Config, action, applyEdits, back, button, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSection, deleteSermon, disclosure, downloadAudio, editAudio, icon, keepSection, labeled, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, textAction, titleInfo, view, warning)
+module Button exposing (Config, action, applyEdits, back, button, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSection, deleteSermon, disclosure, downloadAudio, editAudio, icon, keepSection, labeled, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, textAction, titleInfo, uploadSermon, view, warning)
 
 import Html exposing (Html, details, div, p, strong, text)
 import Html.Attributes exposing (attribute, class, title, type_)
@@ -52,6 +52,11 @@ back =
 openSermon : Config
 openSermon =
     Config "ph:caret-right" "Open Sermon" "var(--ink-soft)"
+
+
+uploadSermon : Config
+uploadSermon =
+    Config "ph:upload-simple" "Upload a Sermon Recording" "var(--green)"
 
 
 deleteSermon : Config

@@ -922,23 +922,6 @@ h2::after {
   .spinner { animation: none; }
 }
 
-/* upload-box — drop-zone-styled upload panel */
-
-.upload-box {
-  background: var(--card);
-  border: 1.5px dashed var(--line-dashed);
-  border-radius: var(--radius-xl);
-  padding: 34px 24px;
-  text-align: center;
-  box-shadow: var(--shadow);
-}
-
-.upload-box__status {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin: 0 0 var(--space-lg);
-}
-
 /* -------------------------------------------------------------- utilities */
 
 .focusable:focus-visible {

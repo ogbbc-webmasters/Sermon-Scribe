@@ -57,6 +57,7 @@ type Msg
     | GotZone Time.Zone
     | GotSermons (Result Http.Error (List Sermon))
     | PipelineEventReceived Decode.Value
+    | ChooseFile
     | FilePicked File
     | UploadProgress Http.Progress
     | UploadFinished (Result Http.Error Sermon)

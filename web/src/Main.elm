@@ -5,6 +5,7 @@ import Browser
 import Browser.Navigation as Navigation
 import Dict
 import Editing
+import File.Select
 import Http
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -175,6 +176,9 @@ update msg model =
 
                 Err _ ->
                     ( model, Cmd.none )
+
+        ChooseFile ->
+            ( model, File.Select.file [ "audio/*" ] FilePicked )
 
         FilePicked file ->
             ( { model | upload = Uploading 0 }

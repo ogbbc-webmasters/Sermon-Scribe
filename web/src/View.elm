@@ -6,11 +6,10 @@ import Card
 import DateFormat exposing (formatDate)
 import Dict
 import Editing
-import File
 import Html exposing (Html, a, audio, button, div, h2, input, label, mark, p, span, strong, text)
-import Html.Attributes exposing (accept, attribute, autofocus, checked, class, classList, controls, disabled, download, hidden, href, id, placeholder, src, style, title, type_, value)
+import Html.Attributes exposing (attribute, autofocus, checked, class, classList, controls, disabled, download, hidden, href, id, placeholder, src, style, title, type_, value)
 import Html.Events exposing (on, onCheck, onClick, onInput, preventDefaultOn, stopPropagationOn)
-import Json.Decode as Decode exposing (Decoder)
+import Json.Decode as Decode
 import Set
 import Types exposing (Model, Msg(..), SermonList(..), UploadState(..))
 import Ui
@@ -518,46 +517,30 @@ viewOptionalError maybeMessage =
 
 viewUpload : UploadState -> Html Msg
 viewUpload upload =
-    case upload of
-        Uploading fraction ->
-            div [ class "upload-box" ]
-                [ p [ class "upload-box__status" ]
-                    [ text ("Uploading… " ++ percent fraction) ]
-                , viewProgressBar fraction
-                , p [ Ui.hint ]
-                    [ text "Please keep this page open until the upload finishes." ]
-                ]
+    let
+        busy =
+            case upload of
+                Uploading _ ->
+                    True
 
-        _ ->
-            div [ class "upload-box" ]
-                (List.concat
-                    [ [ label [ Button.primaryButton, Html.Attributes.for "file-input" ]
-                            [ text "Upload a Sermon Recording" ]
-                      , input
-                            [ type_ "file"
-                            , id "file-input"
-                            , accept "audio/*"
-                            , on "change" fileChangeDecoder
-                            , style "display" "none"
-                            ]
-                            []
-                      , p [ Ui.hint ]
-                            [ text "Click the button to choose the audio file from your computer." ]
-                      ]
-                    , case upload of
-                        UploadFailed message ->
-                            [ p [ Ui.errorText ] [ text message ] ]
-
-                        _ ->
-                            []
+                _ ->
+                    False
+    in
+    div []
+        [ Button.labeled "Upload" Button.uploadSermon busy [ onClick ChooseFile, disabled busy ]
+        , case upload of
+            Uploading fraction ->
+                div [ attribute "role" "status" ]
+                    [ p [ Ui.hint ] [ text ("Uploading… " ++ percent fraction) ]
+                    , viewProgressBar fraction
                     ]
-                )
 
+            UploadFailed message ->
+                p [ Ui.errorText, attribute "role" "alert" ] [ text message ]
 
-fileChangeDecoder : Decoder Msg
-fileChangeDecoder =
-    Decode.at [ "target", "files" ] (Decode.index 0 File.decoder)
-        |> Decode.map FilePicked
+            Idle ->
+                text ""
+        ]
 
 
 viewProgressBar : Float -> Html Msg
