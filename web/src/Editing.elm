@@ -910,11 +910,11 @@ boundaryPanel model draft index b =
         [ id "breakpoint-adjustment", attribute "tabindex" "-1", attribute "aria-label" "Adjust breakpoint", keyboard ]
         (text (kindLabel b.kind))
         (Just (text (timestamp b.time)))
-        []
-        [ div [ Ui.sermonActions ]
+        [ div [ class "editor__breakpoint-actions" ]
             [ Button.primaryAction "ph:headphones" "Listen around breakpoint" False [ onClick Preview, disabled busy ]
             , Button.action "ph:arrow-left" "Earlier" False [ onClick (Nudge -0.1), disabled busy ]
             , Button.action "ph:arrow-right" "Later" False [ onClick (Nudge 0.1), disabled busy ]
             , Button.dangerAction "ph:minus" "Remove breakpoint" False [ onClick RemoveBoundary, disabled (busy || index == 0 || index == List.length draft.breakpoints - 1) ]
             ]
         ]
+        []

@@ -291,6 +291,18 @@ h2::after {
   outline-offset: var(--space-xs);
 }
 
+.editor__breakpoint-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+@media (max-width: 480px) {
+  .editor__breakpoint-actions {
+    max-width: calc(var(--control-size-small) * 2 + var(--space-xs));
+  }
+}
+
 .editor__choices {
   display: flex;
   flex-wrap: wrap;
