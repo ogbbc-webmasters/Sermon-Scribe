@@ -11,7 +11,7 @@ import (
 )
 
 func editingFixture() Editing {
-	return Editing{Duration: 10, Breakpoints: []Breakpoint{{"start", 0, "start"}, {"middle", 5, "manual"}, {"end", 10, "end"}}, Sections: []Section{{"a", true}, {"b", true}}}
+	return Editing{Duration: 10, Breakpoints: []Breakpoint{{ID: "start", Kind: "start"}, {ID: "middle", Time: 5, Kind: "manual"}, {ID: "end", Time: 10, Kind: "end"}}, Sections: []Section{{"a", true}, {"b", true}}}
 }
 
 func TestEditingDurationUsesKeptSections(t *testing.T) {
@@ -24,7 +24,7 @@ func TestEditingDurationUsesKeptSections(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tc := range []struct{ cut, want float64 }{{1799.75, 5400.25}, {1800, 5400}, {1800.25, 5399.75}} {
-		d := Editing{Duration: 7200, Breakpoints: []Breakpoint{{"start", 0, "start"}, {"cut", tc.cut, "manual"}, {"end", 7200, "end"}}, Sections: []Section{{"delete", false}, {"keep", true}}}
+		d := Editing{Duration: 7200, Breakpoints: []Breakpoint{{ID: "start", Kind: "start"}, {ID: "cut", Time: tc.cut, Kind: "manual"}, {ID: "end", Time: 7200, Kind: "end"}}, Sections: []Section{{"delete", false}, {"keep", true}}}
 		if err := st.PrepareEditing("duration", d, "source", TranscriptionMetadata{Duration: 12}); err != nil {
 			t.Fatal(err)
 		}

@@ -62,7 +62,8 @@ func (s *Server) handleEditing(w http.ResponseWriter, r *http.Request) {
 }
 func (s *Server) handleRegenerateEditing(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Revision *int `json:"revision"`
+		Revision       *int `json:"revision"`
+		PreserveEdited bool `json:"preserve_edited"`
 	}
 	if !decodeEditing(w, r, &body) {
 		return
@@ -82,7 +83,7 @@ func (s *Server) handleRegenerateEditing(w http.ResponseWriter, r *http.Request)
 		editingError(w, err)
 		return
 	}
-	d = processing.SpeakerDraft(d, metadata.Segments)
+	d = processing.SpeakerDraft(d, metadata.Segments, body.PreserveEdited)
 	saved, err := s.Store.MutateEditing(id, &d, *body.Revision, false, "")
 	if err != nil {
 		editingError(w, err)

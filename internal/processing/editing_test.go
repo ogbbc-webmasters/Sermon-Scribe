@@ -26,7 +26,7 @@ func TestSpeakerDraftUsesEverySegmentStart(t *testing.T) {
 		{Start: 2, Speaker: &speaker}, {Start: 2, Speaker: &speaker},
 		{Start: 3}, {Start: 9.95, Speaker: &speaker}, {Start: 10, Speaker: &speaker},
 	}
-	got := SpeakerDraft(d, segments)
+	got := SpeakerDraft(d, segments, false)
 	var times []float64
 	for _, b := range got.Breakpoints {
 		times = append(times, b.Time)
@@ -47,6 +47,57 @@ func TestSpeakerDraftUsesEverySegmentStart(t *testing.T) {
 	}
 	if d.Breakpoints[1].Time != 4 || segments[0].Start != 5 {
 		t.Fatal("source draft or segments mutated")
+	}
+}
+
+func TestSpeakerDraftPreservesEditedBoundariesAndSections(t *testing.T) {
+	speaker := 0
+	origin := 2.0
+	d := store.Editing{Duration: 10,
+		Breakpoints: []store.Breakpoint{
+			{ID: "start", Kind: "start"},
+			{ID: "moved", Time: 2.4, Kind: "speaker", Edited: true, SourceTime: &origin},
+			{ID: "manual", Time: 5.02, Kind: "manual"},
+			{ID: "end", Time: 10, Kind: "end"},
+		},
+		Sections: []store.Section{{ID: "a", Keep: false}, {ID: "b", Keep: true}, {ID: "c", Keep: false}},
+	}
+	segments := []store.TranscriptSegment{{Start: 2, Speaker: &speaker}, {Start: 5, Speaker: &speaker}, {Start: 7, Speaker: &speaker}}
+	got := SpeakerDraft(d, segments, true)
+	var times []float64
+	for _, b := range got.Breakpoints {
+		times = append(times, b.Time)
+	}
+	if !reflect.DeepEqual(times, []float64{0, 2.4, 5.02, 7, 10}) {
+		t.Fatalf("preserved boundaries: %v", times)
+	}
+	if got.Breakpoints[1].ID != "moved" || got.Breakpoints[2].ID != "manual" {
+		t.Fatal("edited boundary identities lost")
+	}
+	if got.Sections[0].ID != "a" || got.Sections[1].ID != "b" || got.Sections[0].Keep || !got.Sections[1].Keep || got.Sections[2].Keep || got.Sections[3].Keep {
+		t.Fatalf("section decisions: %+v", got.Sections)
+	}
+	if err := got.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	reset := SpeakerDraft(d, segments, false)
+	if reset.Breakpoints[1].Time != 2 || reset.Breakpoints[2].Time != 5 || !reset.Sections[0].Keep {
+		t.Fatalf("all mode did not reset: %+v", reset)
+	}
+}
+
+func TestSpeakerDraftPreservesLegacyMovedBoundary(t *testing.T) {
+	speaker := 0
+	d := store.Editing{Duration: 10,
+		Breakpoints: []store.Breakpoint{{ID: "start", Kind: "start"}, {ID: "moved", Time: 2.3, Kind: "speaker"}, {ID: "end", Time: 10, Kind: "end"}},
+		Sections:    []store.Section{{ID: "a", Keep: false}, {ID: "b", Keep: true}},
+	}
+	got := SpeakerDraft(d, []store.TranscriptSegment{{Start: 2, Speaker: &speaker}}, true)
+	if len(got.Breakpoints) != 3 || got.Breakpoints[1].Time != 2.3 || !got.Breakpoints[1].Edited || *got.Breakpoints[1].SourceTime != 2 {
+		t.Fatalf("legacy move lost or duplicated: %+v", got.Breakpoints)
+	}
+	if d.Breakpoints[1].SourceTime != nil || d.Breakpoints[1].Edited {
+		t.Fatal("source draft mutated")
 	}
 }
 

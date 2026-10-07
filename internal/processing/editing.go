@@ -28,8 +28,8 @@ func NewEditingHandler(st *store.Store, dir string) *EditingHandler { return &Ed
 type AudioRange struct{ Start, End float64 }
 
 // SpeakerDraft uses every diarized segment start, not word-level speaker changes.
-// Recording endpoints stay fixed so the result can replace a revisioned draft.
-func SpeakerDraft(d store.Editing, segments []store.TranscriptSegment) store.Editing {
+// Edited boundaries take priority over regenerated ones when preservation is requested.
+func SpeakerDraft(d store.Editing, segments []store.TranscriptSegment, preserveEdited bool) store.Editing {
 	var starts []float64
 	for _, segment := range segments {
 		if segment.Speaker != nil {
@@ -37,17 +37,66 @@ func SpeakerDraft(d store.Editing, segments []store.TranscriptSegment) store.Edi
 		}
 	}
 	sort.Float64s(starts)
-	end := d.Breakpoints[len(d.Breakpoints)-1]
-	d.Breakpoints = []store.Breakpoint{d.Breakpoints[0]}
-	for _, start := range starts {
-		if start-d.Breakpoints[len(d.Breakpoints)-1].Time >= 0.05-1e-9 && d.Duration-start >= 0.05-1e-9 {
-			d.Breakpoints = append(d.Breakpoints, store.Breakpoint{ID: uuid.NewString(), Time: start, Kind: "speaker"})
+	old := d
+	d.Breakpoints = []store.Breakpoint{old.Breakpoints[0], old.Breakpoints[len(old.Breakpoints)-1]}
+	if preserveEdited {
+		for _, b := range old.Breakpoints[1 : len(old.Breakpoints)-1] {
+			// Legacy drafts did not record edits or original generated times.
+			// Match their moved speaker boundaries to the closest source start.
+			if b.Kind == "speaker" && b.SourceTime == nil && len(starts) > 0 {
+				nearest := starts[0]
+				for _, start := range starts {
+					if math.Abs(start-b.Time) < math.Abs(nearest-b.Time) {
+						nearest = start
+					}
+				}
+				b.SourceTime = &nearest
+				b.Edited = b.Edited || math.Abs(nearest-b.Time) > 0.001
+			}
+			if b.Edited || b.Kind == "manual" {
+				d.Breakpoints = append(d.Breakpoints, b)
+			}
 		}
 	}
-	d.Breakpoints = append(d.Breakpoints, end)
+	for _, start := range starts {
+		allowed := start >= 0.05-1e-9 && d.Duration-start >= 0.05-1e-9
+		for _, b := range d.Breakpoints {
+			if math.Abs(start-b.Time) < 0.05-1e-9 || (b.SourceTime != nil && math.Abs(start-*b.SourceTime) < 1e-9) {
+				allowed = false
+				break
+			}
+		}
+		if allowed {
+			b := store.Breakpoint{ID: uuid.NewString(), Time: start, Kind: "speaker", SourceTime: &start}
+			if preserveEdited {
+				for _, previous := range old.Breakpoints {
+					if previous.Kind == "speaker" && previous.Time == start && !previous.Edited {
+						b.ID = previous.ID
+						break
+					}
+				}
+			}
+			d.Breakpoints = append(d.Breakpoints, b)
+		}
+	}
+	sort.Slice(d.Breakpoints, func(i, j int) bool { return d.Breakpoints[i].Time < d.Breakpoints[j].Time })
 	d.Sections = make([]store.Section, len(d.Breakpoints)-1)
 	for i := range d.Sections {
-		d.Sections[i] = store.Section{ID: uuid.NewString(), Keep: true}
+		d.Sections[i] = store.Section{ID: uuid.NewString(), Keep: !preserveEdited}
+		if preserveEdited {
+			start, end := d.Breakpoints[i].Time, d.Breakpoints[i+1].Time
+			for j, section := range old.Sections {
+				left, right := old.Breakpoints[j].Time, old.Breakpoints[j+1].Time
+				if start == left && end == right {
+					d.Sections[i].ID = section.ID
+				}
+				// A regenerated interval is deleted only if all overlapping
+				// source sections were deleted; never silently discard kept audio.
+				if end > left && start < right && section.Keep {
+					d.Sections[i].Keep = true
+				}
+			}
+		}
 	}
 	return d
 }
@@ -177,7 +226,7 @@ func (h *EditingHandler) Run(ctx context.Context, job store.Job, reporter Report
 			},
 			Sections: []store.Section{{ID: uuid.NewString(), Keep: true}},
 		}
-		d = SpeakerDraft(d, m.Segments)
+		d = SpeakerDraft(d, m.Segments, false)
 		if err = h.store.PrepareEditing(job.SermonID, d, text, m); err != nil {
 			return Result{}, err
 		}

@@ -61,6 +61,17 @@ func TestRegenerateSpeakerBreakpoints(t *testing.T) {
 		}
 	}
 	request(`{"revision":1}`, 409)
+	got.Breakpoints[2].Time = 3.8
+	got.Breakpoints[2].Edited = true
+	got.Sections[1].Keep = false
+	if _, err := srv.Store.MutateEditing("regenerate", &got, 2, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	preserved := request(`{"revision":3,"preserve_edited":true}`, 200)
+	if preserved.Revision != 4 || len(preserved.Breakpoints) != 4 || preserved.Breakpoints[2].Time != 3.8 || preserved.Sections[1].Keep {
+		t.Fatalf("preservation request lost draft edits: %+v", preserved)
+	}
+	request(`{"revision":3,"preserve_edited":true}`, 409)
 	sm, err := srv.Store.GetSermon("regenerate")
 	if err != nil || sm.Stage != "editing" || sm.Status != "done" || sm.Transcript == nil || *sm.Transcript != "committed" {
 		t.Fatalf("regeneration changed applied output or pipeline: %+v %v", sm, err)
@@ -68,7 +79,7 @@ func TestRegenerateSpeakerBreakpoints(t *testing.T) {
 	if err := srv.Store.EnqueueJob(store.NewJob{ID: "busy", SermonID: "regenerate", Type: "prepare_edit", Stage: "editing"}, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	request(`{"revision":2}`, 409)
+	request(`{"revision":4}`, 409)
 }
 
 func TestEditingHTTPContract(t *testing.T) {

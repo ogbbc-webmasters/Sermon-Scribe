@@ -8,9 +8,11 @@ import (
 )
 
 type Breakpoint struct {
-	ID   string  `json:"id"`
-	Time float64 `json:"time"`
-	Kind string  `json:"kind"`
+	ID         string   `json:"id"`
+	Time       float64  `json:"time"`
+	Kind       string   `json:"kind"`
+	Edited     bool     `json:"edited,omitempty"`
+	SourceTime *float64 `json:"source_time,omitempty"`
 }
 type Section struct {
 	ID   string `json:"id"`
