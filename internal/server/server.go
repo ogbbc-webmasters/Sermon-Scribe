@@ -62,6 +62,7 @@ func (s *Server) Routes(webFS fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/sermons/{id}/audio/{type}", s.handleSermonAudio)
 	mux.HandleFunc("GET /api/sermons/{id}/editing", s.handleEditing)
 	mux.HandleFunc("PUT /api/sermons/{id}/editing", s.handleEditing)
+	mux.HandleFunc("POST /api/sermons/{id}/editing/regenerate", s.handleRegenerateEditing)
 	mux.HandleFunc("POST /api/sermons/{id}/editing/apply", s.handleApplyEditing)
 	mux.HandleFunc("GET /api/sermons/{id}/editing/preview", s.handleEditingPreview)
 	mux.HandleFunc("GET /api/events", s.handleEvents)

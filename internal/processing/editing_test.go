@@ -7,11 +7,48 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 )
+
+func TestSpeakerDraftUsesEverySegmentStart(t *testing.T) {
+	speaker := 0
+	d := store.Editing{Duration: 10, Revision: 7,
+		Breakpoints: []store.Breakpoint{{ID: "start", Kind: "start"}, {ID: "old", Time: 4, Kind: "manual"}, {ID: "end", Time: 10, Kind: "end"}},
+		Sections:    []store.Section{{ID: "old-a", Keep: false}, {ID: "old-b", Keep: true}},
+	}
+	segments := []store.TranscriptSegment{
+		{Start: 5, Speaker: &speaker}, {Start: 0, Speaker: &speaker},
+		{Start: 0.049, Speaker: &speaker}, {Start: 0.05, Speaker: &speaker},
+		{Start: 2, Speaker: &speaker}, {Start: 2, Speaker: &speaker},
+		{Start: 3}, {Start: 9.95, Speaker: &speaker}, {Start: 10, Speaker: &speaker},
+	}
+	got := SpeakerDraft(d, segments)
+	var times []float64
+	for _, b := range got.Breakpoints {
+		times = append(times, b.Time)
+	}
+	if !reflect.DeepEqual(times, []float64{0, 0.05, 2, 5, 9.95, 10}) {
+		t.Fatalf("segment boundaries: %v", times)
+	}
+	if got.Revision != 7 || got.Breakpoints[0] != d.Breakpoints[0] || got.Breakpoints[len(got.Breakpoints)-1] != d.Breakpoints[2] {
+		t.Fatal("recording endpoints or revision changed")
+	}
+	for _, section := range got.Sections {
+		if !section.Keep {
+			t.Fatal("regenerated sections must default to Keep")
+		}
+	}
+	if err := got.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if d.Breakpoints[1].Time != 4 || segments[0].Start != 5 {
+		t.Fatal("source draft or segments mutated")
+	}
+}
 
 func TestTranscriptMapping(t *testing.T) {
 	source := store.TranscriptionMetadata{Words: []store.TranscriptWord{{Word: "one", Start: 0, End: 1}, {Word: "drop", Start: 2, End: 3}, {Word: "two", Start: 4.8, End: 5.4}}}
@@ -68,6 +105,8 @@ func TestEditingFFmpegPipelinePauseAndRedo(t *testing.T) {
 		t.Fatalf("fixture: %v %s", err, out)
 	}
 	m := store.TranscriptionMetadata{Duration: 8, Words: []store.TranscriptWord{{Word: "first", Start: 1, End: 2, SpeakerLabel: "A"}, {Word: "last", Start: 5, End: 6, SpeakerLabel: "B"}}}
+	speaker := 1
+	m.Segments = []store.TranscriptSegment{{Start: 5, End: 6, Text: "last", Speaker: &speaker}}
 	if err := st.SaveSourceTranscription("edit-test", "first last", m); err != nil {
 		t.Fatal(err)
 	}
@@ -94,10 +133,11 @@ func TestEditingFFmpegPipelinePauseAndRedo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(d.Breakpoints) != 2 || len(d.Sections) != 1 || !d.Sections[0].Keep ||
+	if len(d.Breakpoints) != 3 || len(d.Sections) != 2 || !d.Sections[0].Keep ||
 		d.Breakpoints[0].Kind != "start" || d.Breakpoints[0].Time != 0 ||
-		d.Breakpoints[1].Kind != "end" || d.Breakpoints[1].Time != 8 {
-		t.Fatalf("preparation must not detect silence or speaker changes: %+v", d)
+		d.Breakpoints[1].Kind != "speaker" || d.Breakpoints[1].Time != 5 ||
+		d.Breakpoints[2].Kind != "end" || d.Breakpoints[2].Time != 8 {
+		t.Fatalf("preparation must use speaker segment starts: %+v", d)
 	}
 	for _, tc := range []struct {
 		mode       string
@@ -108,9 +148,9 @@ func TestEditingFFmpegPipelinePauseAndRedo(t *testing.T) {
 			t.Fatalf("preview %+v: %v", tc, err)
 		}
 	}
-	// Editing still supports user-added boundaries after detection is removed.
-	d.Breakpoints = append(d.Breakpoints[:1], store.Breakpoint{ID: "manual", Time: 5, Kind: "manual"}, d.Breakpoints[1])
-	d.Sections = []store.Section{{ID: d.Sections[0].ID, Keep: false}, {ID: "second", Keep: true}}
+	// Manual boundaries can be added alongside generated speaker boundaries.
+	d.Breakpoints = []store.Breakpoint{d.Breakpoints[0], {ID: "manual", Time: 2, Kind: "manual"}, d.Breakpoints[1], d.Breakpoints[2]}
+	d.Sections = []store.Section{{ID: "first", Keep: false}, {ID: "middle", Keep: false}, {ID: "last", Keep: true}}
 	d, err = st.MutateEditing("edit-test", &d, d.Revision, false, "")
 	if err != nil {
 		t.Fatal(err)

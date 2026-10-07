@@ -59,6 +59,36 @@ func (s *Server) handleEditing(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, saved)
 }
+func (s *Server) handleRegenerateEditing(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Revision *int `json:"revision"`
+	}
+	if !decodeEditing(w, r, &body) {
+		return
+	}
+	if body.Revision == nil {
+		writeError(w, 400, "revision is required")
+		return
+	}
+	id := r.PathValue("id")
+	d, err := s.Store.GetEditing(id)
+	if err != nil {
+		editingError(w, err)
+		return
+	}
+	_, metadata, err := s.Store.SourceTranscription(id)
+	if err != nil {
+		editingError(w, err)
+		return
+	}
+	d = processing.SpeakerDraft(d, metadata.Segments)
+	saved, err := s.Store.MutateEditing(id, &d, *body.Revision, false, "")
+	if err != nil {
+		editingError(w, err)
+		return
+	}
+	writeJSON(w, 200, saved)
+}
 func (s *Server) handleApplyEditing(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Revision *int  `json:"revision"`

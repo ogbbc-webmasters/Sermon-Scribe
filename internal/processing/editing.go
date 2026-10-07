@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -23,6 +24,31 @@ type EditingHandler struct {
 func NewEditingHandler(st *store.Store, dir string) *EditingHandler { return &EditingHandler{st, dir} }
 
 type AudioRange struct{ Start, End float64 }
+
+// SpeakerDraft uses every diarized segment start, not word-level speaker changes.
+// Recording endpoints stay fixed so the result can replace a revisioned draft.
+func SpeakerDraft(d store.Editing, segments []store.TranscriptSegment) store.Editing {
+	var starts []float64
+	for _, segment := range segments {
+		if segment.Speaker != nil {
+			starts = append(starts, segment.Start)
+		}
+	}
+	sort.Float64s(starts)
+	end := d.Breakpoints[len(d.Breakpoints)-1]
+	d.Breakpoints = []store.Breakpoint{d.Breakpoints[0]}
+	for _, start := range starts {
+		if start-d.Breakpoints[len(d.Breakpoints)-1].Time >= 0.05-1e-9 && d.Duration-start >= 0.05-1e-9 {
+			d.Breakpoints = append(d.Breakpoints, store.Breakpoint{ID: uuid.NewString(), Time: start, Kind: "speaker"})
+		}
+	}
+	d.Breakpoints = append(d.Breakpoints, end)
+	d.Sections = make([]store.Section, len(d.Breakpoints)-1)
+	for i := range d.Sections {
+		d.Sections[i] = store.Section{ID: uuid.NewString(), Keep: true}
+	}
+	return d
+}
 
 func audioDuration(ctx context.Context, path string) (float64, error) {
 	out, err := exec.CommandContext(ctx, "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", path).Output()
@@ -149,6 +175,7 @@ func (h *EditingHandler) Run(ctx context.Context, job store.Job, reporter Report
 			},
 			Sections: []store.Section{{ID: uuid.NewString(), Keep: true}},
 		}
+		d = SpeakerDraft(d, m.Segments)
 		if err = h.store.PrepareEditing(job.SermonID, d, text, m); err != nil {
 			return Result{}, err
 		}

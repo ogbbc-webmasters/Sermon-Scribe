@@ -8,9 +8,67 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 )
+
+func TestRegenerateSpeakerBreakpoints(t *testing.T) {
+	srv, ts := newTestServer(t)
+	if err := srv.Store.CreateSermon(store.Sermon{ID: "regenerate", Stage: "editing", Status: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	speaker := 0
+	metadata := store.TranscriptionMetadata{Duration: 8, Segments: []store.TranscriptSegment{{Start: 0.08, End: 2, Speaker: &speaker}, {Start: 3.4, End: 7, Speaker: &speaker}}}
+	if err := srv.Store.SaveSourceTranscription("regenerate", "original", metadata); err != nil {
+		t.Fatal(err)
+	}
+	d := store.Editing{Duration: 8, Breakpoints: []store.Breakpoint{{ID: "start", Kind: "start"}, {ID: "end", Time: 8, Kind: "end"}}, Sections: []store.Section{{ID: "section", Keep: false}}}
+	if err := srv.Store.PrepareEditing("regenerate", d, "original", metadata); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Store.SaveTranscription("regenerate", "committed", store.TranscriptionMetadata{Duration: 2}); err != nil {
+		t.Fatal(err)
+	}
+	request := func(body string, status int) store.Editing {
+		t.Helper()
+		resp, err := http.Post(ts.URL+"/api/sermons/regenerate/editing/regenerate", "application/json", bytes.NewBufferString(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != status {
+			data, _ := io.ReadAll(resp.Body)
+			t.Fatalf("status %d, want %d: %s", resp.StatusCode, status, data)
+		}
+		var got store.Editing
+		if status == 200 {
+			if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return got
+	}
+	request(`{}`, 400)
+	got := request(`{"revision":1}`, 200)
+	if got.Revision != 2 || len(got.Breakpoints) != 4 || got.Breakpoints[1].Time != 0.08 || got.Breakpoints[2].Time != 3.4 || len(got.Sections) != 3 {
+		t.Fatalf("regenerated draft: %+v", got)
+	}
+	for _, section := range got.Sections {
+		if !section.Keep {
+			t.Fatal("regeneration preserved old delete choice")
+		}
+	}
+	request(`{"revision":1}`, 409)
+	sm, err := srv.Store.GetSermon("regenerate")
+	if err != nil || sm.Stage != "editing" || sm.Status != "done" || sm.Transcript == nil || *sm.Transcript != "committed" {
+		t.Fatalf("regeneration changed applied output or pipeline: %+v %v", sm, err)
+	}
+	if err := srv.Store.EnqueueJob(store.NewJob{ID: "busy", SermonID: "regenerate", Type: "prepare_edit", Stage: "editing"}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	request(`{"revision":2}`, 409)
+}
 
 func TestEditingHTTPContract(t *testing.T) {
 	srv, ts := newTestServer(t)
