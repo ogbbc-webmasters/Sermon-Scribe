@@ -905,7 +905,7 @@ boundaryPanel model draft index b =
     Card.viewWithAttributes
         [ id "breakpoint-adjustment", attribute "tabindex" "-1", attribute "aria-label" "Adjust breakpoint", keyboard ]
         (text (kindLabel b.kind))
-        (Just (text ("Place breakpoint · " ++ String.fromFloat (toFloat (round (b.time * 10)) / 10) ++ " seconds")))
+        (Just (text (timestamp b.time)))
         []
         [ div [ Ui.sermonActions ]
             [ Button.action "ph:headphones" "Listen around breakpoint" False [ onClick Preview, disabled busy ]
