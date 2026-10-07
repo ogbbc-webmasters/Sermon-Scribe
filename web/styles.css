@@ -271,6 +271,18 @@ h2::after {
 
 /* editor — audio-first section list and one open adjustment at a time */
 
+.editor__actions {
+  display: flex;
+  gap: var(--space-xs);
+}
+
+@media (max-width: 480px) {
+  .editor__actions {
+    align-items: flex-end;
+    flex-direction: column;
+  }
+}
+
 .editor__audio {
   display: block;
   margin-top: var(--space-lg);
@@ -353,6 +365,11 @@ h2::after {
   display: grid;
   gap: var(--space-xs);
   margin: var(--space-xl) 0;
+}
+
+.editor__finish-actions {
+  display: flex;
+  gap: var(--space-xs);
 }
 
 .editor__list {

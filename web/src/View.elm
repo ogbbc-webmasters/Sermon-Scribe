@@ -258,33 +258,9 @@ viewDetailAudio model sermon =
         applying =
             (ownsDraft && (model.editor.applying || model.editor.pendingApply /= Nothing))
                 || (sermon.stage == "editing" && (sermon.status == "pending" || sermon.status == "running"))
-
-        duration =
-            case
-                if ownsDraft then
-                    model.editor.draft
-
-                else
-                    Nothing
-            of
-                Just draft ->
-                    Just (Editing.keptDuration draft)
-
-                Nothing ->
-                    sermon.editingDuration
     in
     Card.viewWithAttributes [ class "sermon-detail__audio-card" ] (text "Audio") Nothing
-        [ if duration |> Maybe.map (\seconds -> seconds > 0 && seconds < 90 * 60) |> Maybe.withDefault False then
-            Button.labeled "Apply"
-                Button.applyEdits
-                busy
-                [ onClick (EditingMsg (Editing.ApplyRecording sermon.id))
-                , disabled (not editable || busy)
-                ]
-
-          else
-            text ""
-        , Button.labeled "Edit"
+        [ Button.labeled "Edit"
             Button.editAudio
             False
             [ onClick (EditingMsg (Editing.Open sermon.id))

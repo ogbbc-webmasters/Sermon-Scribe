@@ -615,21 +615,37 @@ kindLabel kind =
 
 view : Model -> Html Msg
 view model =
+    let
+        busy =
+            model.regenerating || model.applying || model.pendingApply /= Nothing
+    in
     div [ class "editor" ]
         [ Card.viewWithSubtitle
             (text "Edit recording")
             (Maybe.map (\draft -> text ("Kept duration: " ++ timestamp (keptDuration draft))) model.draft)
-            [ Button.view "button"
-                (Button.regenerate "Regenerate breakpoints")
-                model.regenerating
-                [ onClick Regenerate
-                , id "regenerate-breakpoints"
-                , disabled (model.draft == Nothing || model.saving || model.regenerating || model.applying || model.pendingApply /= Nothing || model.draft /= model.saved)
+            [ div [ class "editor__actions" ]
+                [ Button.view "button"
+                    (Button.regenerate "Regenerate breakpoints")
+                    model.regenerating
+                    [ onClick Regenerate
+                    , id "regenerate-breakpoints"
+                    , disabled (model.draft == Nothing || model.saving || busy || model.draft /= model.saved)
+                    ]
+                , div [ class "editor__finish-actions" ]
+                    [ case ( model.sermonId, model.draft ) of
+                        ( Just sermonId, Just draft ) ->
+                            if keptDuration draft > 0 && keptDuration draft < 90 * 60 then
+                                Button.labeled "Apply" Button.applyEdits busy
+                                    [ onClick (ApplyRecording sermonId), disabled busy ]
+
+                            else
+                                text ""
+
+                        _ ->
+                            text ""
+                    , Button.action "ph:arrow-left" "Back to sermon" False [ onClick Close ]
+                    ]
                 ]
-            , Button.primaryAction "ph:arrow-right"
-                "Continue"
-                False
-                [ onClick Close ]
             ]
             [ if model.confirmingRegenerate then
                 regenerationDialog model
