@@ -301,14 +301,14 @@ func PreviewAudio(ctx context.Context, input, mode string, start, end, duration 
 		clipEnd := math.Min(duration, start+1)
 		edge := start - clipStart
 		args = append(args, "-ss", fmt.Sprintf("%.9f", clipStart), "-t", fmt.Sprintf("%.9f", clipEnd-clipStart), "-i", input)
-		filters = []string{fmt.Sprintf("[0:a]atrim=start=0:end=%.9f,asetpts=PTS-STARTPTS[a]", edge), "sine=frequency=1200:duration=0.12,aformat=sample_rates=44100:channel_layouts=mono[b]", fmt.Sprintf("[0:a]atrim=start=%.9f,asetpts=PTS-STARTPTS[c]", edge), "[a][b][c]concat=n=3:v=0:a=1[out]"}
+		filters = []string{fmt.Sprintf("[0:a]atrim=start=0:end=%.9f,asetpts=PTS-STARTPTS[a]", edge), "sine=frequency=1200:duration=0.5,aformat=sample_rates=44100:channel_layouts=mono[b]", fmt.Sprintf("[0:a]atrim=start=%.9f,asetpts=PTS-STARTPTS[c]", edge), "[a][b][c]concat=n=3:v=0:a=1[out]"}
 	} else if mode == "section" && end > start && end <= duration {
 		if end-start <= 6 {
 			args = append(args, "-ss", fmt.Sprintf("%.9f", start), "-t", fmt.Sprintf("%.9f", end-start), "-i", input)
 			filters = []string{"[0:a]asetpts=PTS-STARTPTS[out]"}
 		} else {
 			args = append(args, "-ss", fmt.Sprintf("%.9f", start), "-t", "3", "-i", input, "-ss", fmt.Sprintf("%.9f", end-3), "-t", "3", "-i", input)
-			filters = []string{"[0:a]asetpts=PTS-STARTPTS[a]", "sine=frequency=250:duration=0.2,aformat=sample_rates=44100:channel_layouts=mono[b]", "[1:a]asetpts=PTS-STARTPTS[c]", "[a][b][c]concat=n=3:v=0:a=1[out]"}
+			filters = []string{"[0:a]asetpts=PTS-STARTPTS[a]", "sine=frequency=250:duration=1,aformat=sample_rates=44100:channel_layouts=mono[b]", "[1:a]asetpts=PTS-STARTPTS[c]", "[a][b][c]concat=n=3:v=0:a=1[out]"}
 		}
 	} else {
 		return nil, fmt.Errorf("invalid preview mode or range")

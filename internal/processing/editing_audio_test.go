@@ -62,8 +62,8 @@ func TestEditingAudioContent(t *testing.T) {
 		start, end, duration float64
 		windows              [][3]float64
 	}{
-		{"breakpoint", 14, 0, 2.12, [][3]float64{{0.2, 0.8, 660}, {1.02, 1.1, 1200}, {1.32, 1.92, 880}}},
-		{"section", 2, 18, 6.2, [][3]float64{{0.2, 0.8, 330}, {3.02, 3.18, 250}, {3.4, 4, 880}}},
+		{"breakpoint", 14, 0, 2.5, [][3]float64{{0.2, 0.8, 660}, {1.1, 1.4, 1200}, {1.7, 2.3, 880}}},
+		{"section", 2, 18, 7, [][3]float64{{0.2, 0.8, 330}, {3.1, 3.9, 250}, {4.2, 4.8, 880}}},
 		{"section", 2, 4, 2, [][3]float64{{0.2, 1.8, 330}}},
 	} {
 		t.Run(fmt.Sprintf("%s-%.0f-%.0f", tc.mode, tc.start, tc.end), func(t *testing.T) {

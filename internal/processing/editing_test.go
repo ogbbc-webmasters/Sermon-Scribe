@@ -139,13 +139,21 @@ func TestEditingFFmpegPipelinePauseAndRedo(t *testing.T) {
 		d.Breakpoints[2].Kind != "end" || d.Breakpoints[2].Time != 8 {
 		t.Fatalf("preparation must use speaker segment starts: %+v", d)
 	}
+	previewPath := filepath.Join(t.TempDir(), "preview.wav")
 	for _, tc := range []struct {
-		mode       string
-		start, end float64
-	}{{"breakpoint", 0, 0}, {"breakpoint", 5, 0}, {"breakpoint", 8, 0}, {"section", 0, 8}, {"section", 1, 4}} {
+		mode             string
+		start, end, want float64
+	}{{"breakpoint", 0, 0, 1.5}, {"breakpoint", 5, 0, 2.5}, {"breakpoint", 8, 0, 1.5}, {"section", 0, 8, 7}, {"section", 1, 4, 3}} {
 		audio, err := PreviewAudio(ctx, source, tc.mode, tc.start, tc.end, 8)
 		if err != nil || len(audio) < 44 || string(audio[:4]) != "RIFF" {
 			t.Fatalf("preview %+v: %v", tc, err)
+		}
+		if err := os.WriteFile(previewPath, audio, 0600); err != nil {
+			t.Fatal(err)
+		}
+		seconds, err := audioDuration(ctx, previewPath)
+		if err != nil || math.Abs(seconds-tc.want) > 0.01 {
+			t.Fatalf("preview %+v duration: %f, %v", tc, seconds, err)
 		}
 	}
 	// Manual boundaries can be added alongside generated speaker boundaries.
