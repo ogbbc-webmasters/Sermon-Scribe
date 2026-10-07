@@ -142,6 +142,7 @@ func (s *Store) EnqueueProcessingRerun(sermonID, jobID, part string, now time.Ti
 		return Sermon{}, err
 	}
 	if sm.Stage == "upload" || (sm.Status != "done" && sm.Status != "failed") ||
+		(sm.Stage == "editing" && part != "transcription") ||
 		(part != "transcription" && (sm.Transcript == nil || strings.TrimSpace(*sm.Transcript) == "")) {
 		return Sermon{}, ErrNotRetryable
 	}

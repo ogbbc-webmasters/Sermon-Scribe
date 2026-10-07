@@ -43,7 +43,7 @@ func TestEditingConflictsSnapshotAndPreservation(t *testing.T) {
 	if err = st.SaveTranscription("s", "applied", TranscriptionMetadata{Duration: 4}); err != nil {
 		t.Fatal(err)
 	}
-	if err = st.PrepareEditing("s", editingFixture(), "source", TranscriptionMetadata{Duration: 10}); err != nil {
+	if err = st.PrepareEditing("s", editingFixture(), "source", TranscriptionMetadata{Duration: 10, Words: []TranscriptWord{{Word: "source", Start: 6, End: 7}}}); err != nil {
 		t.Fatal(err)
 	}
 	d, _ := st.GetEditing("s")
@@ -98,6 +98,79 @@ func TestEditingConflictsSnapshotAndPreservation(t *testing.T) {
 		t.Fatal("empty apply accepted")
 	}
 	if _, err = st.MutateEditing("s", nil, d.Revision, true, "skip"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMetadataCannotBypassEditingPause(t *testing.T) {
+	st, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.CreateSermon(Sermon{ID: "s", Stage: "editing", Status: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	// Redoing transcription can leave an older applied transcript available.
+	if err := st.SaveTranscript("s", "previous output"); err != nil {
+		t.Fatal(err)
+	}
+	for _, part := range []string{"title", "topics", "scriptures"} {
+		if _, err := st.EnqueueProcessingRerun("s", part, part, time.Now()); !errors.Is(err, ErrNotRetryable) {
+			t.Fatalf("%s bypassed editing pause: %v", part, err)
+		}
+	}
+	if _, err := st.EnqueueProcessingRerun("s", "transcribe", "transcription", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCutsRequireTranscriptTiming(t *testing.T) {
+	st, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.CreateSermon(Sermon{ID: "s", Stage: "editing", Status: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	d := editingFixture()
+	d.Sections[0].Keep = false
+	if err := st.PrepareEditing("s", d, "untimed text", TranscriptionMetadata{}); err != nil {
+		t.Fatal(err)
+	}
+	d, _ = st.GetEditing("s")
+	if _, err := st.MutateEditing("s", nil, d.Revision, false, "cut"); err == nil {
+		t.Fatal("cuts accepted without timing")
+	}
+	sm, _ := st.GetSermon("s")
+	if sm.Status != "done" {
+		t.Fatal("rejection changed pipeline state")
+	}
+	if _, err := st.MutateEditing("s", nil, d.Revision, true, "skip"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestRedoAfterMetadataFailure(t *testing.T) {
+	st, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.CreateSermon(Sermon{ID: "s", Stage: "metadata", Status: "failed"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PrepareEditing("s", editingFixture(), "source", TranscriptionMetadata{}); err != nil {
+		t.Fatal(err)
+	}
+	d, _ := st.GetEditing("s")
+	d.Breakpoints[1].Time = 6
+	d, err = st.MutateEditing("s", &d, d.Revision, false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.MutateEditing("s", nil, d.Revision, false, "redo"); err != nil {
 		t.Fatal(err)
 	}
 }

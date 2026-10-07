@@ -42,6 +42,27 @@ func TestTranscriptMapping(t *testing.T) {
 		t.Fatal("source mutated")
 	}
 }
+
+func TestKeptSectionsPreservePhrases(t *testing.T) {
+	snap := store.EditSnapshot{Draft: store.Editing{
+		Duration:    10,
+		Breakpoints: []store.Breakpoint{{Time: 0}, {Time: 1.5}, {Time: 3}, {Time: 5}, {Time: 10}},
+		Sections:    []store.Section{{Keep: true}, {Keep: true}, {Keep: false}, {Keep: true}},
+	}}
+	ranges := keptRanges(snap)
+	if len(ranges) != 2 || ranges[0] != (AudioRange{0, 3}) || ranges[1] != (AudioRange{5, 10}) {
+		t.Fatalf("adjacent kept sections not merged: %+v", ranges)
+	}
+	source := store.TranscriptionMetadata{
+		Words:    []store.TranscriptWord{{Word: "first", Start: 1, End: 1.4}, {Word: "phrase", Start: 1.4, End: 2}, {Word: "drop", Start: 3.5, End: 4}, {Word: "last", Start: 5, End: 5.5}, {Word: "phrase", Start: 5.5, End: 6}, {Word: "next", Start: 6, End: 7}},
+		Segments: []store.TranscriptSegment{{Start: 1, End: 2}, {Start: 3.5, End: 4}, {Start: 5, End: 6}, {Start: 6, End: 7}},
+	}
+	text, mapped := MapTranscript(source, ranges)
+	if text != "first phrase last phrase next" || len(mapped.Segments) != 3 || mapped.Segments[0].Text != "first phrase" || mapped.Segments[1].Text != "last phrase" || mapped.Segments[1].Start != 3 || mapped.Segments[2].Start != 4 {
+		t.Fatalf("phrase mapping: %q %+v", text, mapped)
+	}
+}
+
 func TestEditingFFmpegPipelinePauseAndRedo(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg unavailable")

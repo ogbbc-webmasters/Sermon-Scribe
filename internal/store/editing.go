@@ -132,7 +132,7 @@ func (s *Store) MutateEditing(id string, d *Editing, revision int, skip bool, jo
 		return old, err
 	}
 	var idle bool
-	err = tx.QueryRow(`SELECT status='done' AND stage IN ('editing','metadata') AND NOT EXISTS(SELECT 1 FROM jobs WHERE sermon_id=? AND state IN ('queued','running')) FROM sermons WHERE id=?`, id, id).Scan(&idle)
+	err = tx.QueryRow(`SELECT ((stage='editing' AND status='done') OR (stage='metadata' AND status IN ('done','failed'))) AND NOT EXISTS(SELECT 1 FROM jobs WHERE sermon_id=? AND state IN ('queued','running')) FROM sermons WHERE id=?`, id, id).Scan(&idle)
 	if err != nil {
 		return old, err
 	}
@@ -156,11 +156,16 @@ func (s *Store) MutateEditing(id string, d *Editing, revision int, skip bool, jo
 			return old, err
 		}
 		kept := skip
+		cuts := false
 		for _, section := range old.Sections {
 			kept = kept || section.Keep
+			cuts = cuts || !section.Keep
 		}
 		if !kept {
 			return old, fmt.Errorf("at least one section must be kept")
+		}
+		if !skip && cuts && len(snap.Metadata.Words) == 0 && len(snap.Metadata.Segments) == 0 {
+			return old, fmt.Errorf("transcript timing is unavailable; regenerate transcription before applying cuts")
 		}
 		parameters, _ := json.Marshal(snap)
 		err = enqueueJobTx(tx, NewJob{ID: jobID, SermonID: id, Type: "render_edit", Stage: "editing", Parameters: string(parameters)}, time.Now())

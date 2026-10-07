@@ -103,7 +103,12 @@ func keptRanges(s store.EditSnapshot) []AudioRange {
 	var ranges []AudioRange
 	for i, section := range s.Draft.Sections {
 		if section.Keep {
-			ranges = append(ranges, AudioRange{s.Draft.Breakpoints[i].Time, s.Draft.Breakpoints[i+1].Time})
+			r := AudioRange{s.Draft.Breakpoints[i].Time, s.Draft.Breakpoints[i+1].Time}
+			if len(ranges) > 0 && ranges[len(ranges)-1].End == r.Start {
+				ranges[len(ranges)-1].End = r.End
+			} else {
+				ranges = append(ranges, r)
+			}
 		}
 	}
 	return ranges
@@ -113,19 +118,33 @@ func MapTranscript(source store.TranscriptionMetadata, ranges []AudioRange) (str
 	var text []string
 	offset := 0.0
 	for _, r := range ranges {
-		firstWord := len(m.Words)
+		firstSegment := len(m.Segments)
+		sourceSegment, previousSegment := 0, -1
+		previousSpeaker := ""
 		for _, w := range source.Words {
 			mid := (w.Start + w.End) / 2
 			if mid >= r.Start && mid < r.End {
+				for sourceSegment+1 < len(source.Segments) && mid >= source.Segments[sourceSegment].End {
+					sourceSegment++
+				}
+				speaker := w.SpeakerLabel
+				if w.Speaker != nil {
+					speaker = strconv.Itoa(*w.Speaker)
+				}
 				w.Start = offset + math.Max(w.Start, r.Start) - r.Start
 				w.End = offset + math.Min(w.End, r.End) - r.Start
 				m.Words = append(m.Words, w)
 				text = append(text, w.Word)
-			}
-		}
-		if len(source.Words) > 0 {
-			for _, w := range m.Words[firstWord:] {
-				m.Segments = append(m.Segments, store.TranscriptSegment{Start: w.Start, End: w.End, Text: w.Word, Speaker: w.Speaker})
+				// Keep phrases readable instead of turning the transcript into one
+				// displayed paragraph per word. Never join across a deleted range.
+				if len(m.Segments) == firstSegment || sourceSegment != previousSegment || speaker != previousSpeaker || w.Start-m.Segments[len(m.Segments)-1].End > 2 {
+					m.Segments = append(m.Segments, store.TranscriptSegment{Start: w.Start, End: w.End, Text: w.Word, Speaker: w.Speaker})
+				} else {
+					segment := &m.Segments[len(m.Segments)-1]
+					segment.End = w.End
+					segment.Text += " " + w.Word
+				}
+				previousSegment, previousSpeaker = sourceSegment, speaker
 			}
 		}
 		for _, s := range source.Segments {
@@ -203,6 +222,13 @@ func (h *EditingHandler) Run(ctx context.Context, job store.Job, reporter Report
 	if err := snap.Draft.Validate(); err != nil {
 		return Result{}, err
 	}
+	if snap.Skip {
+		// Continuing without edits needs no full-recording render.
+		if err := h.store.CommitEditing(job.SermonID, "", snap.Text, snap.Metadata, false); err != nil {
+			return Result{}, err
+		}
+		return Result{Next: &store.NewJob{ID: uuid.NewString(), Type: "extract_metadata", Stage: "metadata"}}, nil
+	}
 	ranges := keptRanges(snap)
 	if len(ranges) == 0 {
 		return Result{}, fmt.Errorf("no kept sections")
@@ -237,7 +263,7 @@ func (h *EditingHandler) Run(ctx context.Context, job store.Job, reporter Report
 		}
 	}
 	text, m := MapTranscript(snap.Metadata, ranges)
-	if snap.Skip {
+	if len(ranges) == 1 && ranges[0].Start == 0 && ranges[0].End == snap.Draft.Duration {
 		text = snap.Text
 		m = snap.Metadata
 	}
