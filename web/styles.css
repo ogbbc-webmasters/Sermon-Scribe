@@ -382,10 +382,14 @@ h2::after {
 }
 
 .editor__waveform-canvas {
-  cursor: pointer;
+  cursor: grab;
   display: block;
   height: 100%;
   width: 100%;
+}
+
+.editor__waveform-canvas--dragging {
+  cursor: grabbing;
 }
 
 /* empty-state — placeholder shown when a list has no items */
