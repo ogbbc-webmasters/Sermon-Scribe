@@ -148,14 +148,27 @@ func MapTranscript(source store.TranscriptionMetadata, ranges []AudioRange) (str
 	return strings.Join(text, " "), m
 }
 func renderRanges(ctx context.Context, input, output string, ranges []AudioRange) error {
-	var filters, labels []string
-	for i, r := range ranges {
-		label := fmt.Sprintf("a%d", i)
-		filters = append(filters, fmt.Sprintf("[0:a]atrim=start=%.9f:end=%.9f,asetpts=PTS-STARTPTS[%s]", r.Start, r.End, label))
-		labels = append(labels, "["+label+"]")
+	// Sequential FLAC pieces avoid buffering all later sections in a concat
+	// filter while the first section of a long recording is still playing.
+	dir, err := os.MkdirTemp(filepath.Dir(output), ".pieces-")
+	if err != nil {
+		return err
 	}
-	filters = append(filters, fmt.Sprintf("%sconcat=n=%d:v=0:a=1[out]", strings.Join(labels, ""), len(ranges)))
-	out, err := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-y", "-i", input, "-filter_complex", strings.Join(filters, ";"), "-map", "[out]", output).CombinedOutput()
+	defer os.RemoveAll(dir)
+	var manifest strings.Builder
+	for i, r := range ranges {
+		name := fmt.Sprintf("piece-%d.flac", i)
+		out, err := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-y", "-ss", fmt.Sprintf("%.9f", r.Start), "-i", input, "-t", fmt.Sprintf("%.9f", r.End-r.Start), "-vn", "-c:a", "flac", filepath.Join(dir, name)).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("cut section: %w: %s", err, out)
+		}
+		fmt.Fprintf(&manifest, "file '%s'\n", name)
+	}
+	list := filepath.Join(dir, "pieces.txt")
+	if err := os.WriteFile(list, []byte(manifest.String()), 0600); err != nil {
+		return err
+	}
+	out, err := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", list, "-vn", "-c:a", "flac", output).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("render audio: %w: %s", err, out)
 	}
@@ -173,7 +186,7 @@ func (h *EditingHandler) Run(ctx context.Context, job store.Job, reporter Report
 		if err != nil {
 			return Result{}, err
 		}
-		out, err := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-i", source, "-af", "silencedetect=noise=-40dB:d=5", "-f", "null", "-").CombinedOutput()
+		out, err := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-i", source, "-vn", "-af", "silencedetect=noise=-40dB:d=5", "-f", "null", "-").CombinedOutput()
 		if err != nil {
 			return Result{}, fmt.Errorf("detect silence: %w", err)
 		}
@@ -215,7 +228,7 @@ func (h *EditingHandler) Run(ctx context.Context, job store.Job, reporter Report
 		if err := renderRanges(ctx, source, flacTemp, ranges); err != nil {
 			return Result{}, err
 		}
-		out, encodeErr := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-y", "-i", flacTemp, "-codec:a", "libmp3lame", "-q:a", "2", mp3Temp).CombinedOutput()
+		out, encodeErr := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-y", "-i", flacTemp, "-vn", "-codec:a", "libmp3lame", "-q:a", "2", mp3Temp).CombinedOutput()
 		if encodeErr != nil {
 			return Result{}, fmt.Errorf("encode edited MP3: %w: %s", encodeErr, out)
 		}
@@ -246,17 +259,25 @@ func PreviewAudio(ctx context.Context, input, mode string, start, end, duration 
 		return nil, fmt.Errorf("invalid preview time")
 	}
 	var filters []string
+	args := []string{"-v", "error"}
 	if mode == "breakpoint" {
-		filters = []string{fmt.Sprintf("[0:a]atrim=start=%f:end=%f,asetpts=PTS-STARTPTS[a]", math.Max(0, start-1), start), "sine=frequency=1200:duration=0.12, aformat=sample_rates=44100:channel_layouts=mono[b]", fmt.Sprintf("[0:a]atrim=start=%f:end=%f,asetpts=PTS-STARTPTS[c]", start, math.Min(duration, start+1)), "[a][b][c]concat=n=3:v=0:a=1[out]"}
+		clipStart := math.Max(0, start-1)
+		clipEnd := math.Min(duration, start+1)
+		edge := start - clipStart
+		args = append(args, "-ss", fmt.Sprintf("%.9f", clipStart), "-t", fmt.Sprintf("%.9f", clipEnd-clipStart), "-i", input)
+		filters = []string{fmt.Sprintf("[0:a]atrim=start=0:end=%.9f,asetpts=PTS-STARTPTS[a]", edge), "sine=frequency=1200:duration=0.12,aformat=sample_rates=44100:channel_layouts=mono[b]", fmt.Sprintf("[0:a]atrim=start=%.9f,asetpts=PTS-STARTPTS[c]", edge), "[a][b][c]concat=n=3:v=0:a=1[out]"}
 	} else if mode == "section" && end > start && end <= duration {
 		if end-start <= 6 {
-			filters = []string{fmt.Sprintf("[0:a]atrim=start=%f:end=%f,asetpts=PTS-STARTPTS[out]", start, end)}
+			args = append(args, "-ss", fmt.Sprintf("%.9f", start), "-t", fmt.Sprintf("%.9f", end-start), "-i", input)
+			filters = []string{"[0:a]asetpts=PTS-STARTPTS[out]"}
 		} else {
-			filters = []string{fmt.Sprintf("[0:a]atrim=start=%f:end=%f,asetpts=PTS-STARTPTS[a]", start, start+3), "sine=frequency=250:duration=0.2,aformat=sample_rates=44100:channel_layouts=mono[b]", fmt.Sprintf("[0:a]atrim=start=%f:end=%f,asetpts=PTS-STARTPTS[c]", end-3, end), "[a][b][c]concat=n=3:v=0:a=1[out]"}
+			args = append(args, "-ss", fmt.Sprintf("%.9f", start), "-t", "3", "-i", input, "-ss", fmt.Sprintf("%.9f", end-3), "-t", "3", "-i", input)
+			filters = []string{"[0:a]asetpts=PTS-STARTPTS[a]", "sine=frequency=250:duration=0.2,aformat=sample_rates=44100:channel_layouts=mono[b]", "[1:a]asetpts=PTS-STARTPTS[c]", "[a][b][c]concat=n=3:v=0:a=1[out]"}
 		}
 	} else {
 		return nil, fmt.Errorf("invalid preview mode or range")
 	}
-	cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-i", input, "-filter_complex", strings.Join(filters, ";"), "-map", "[out]", "-f", "wav", "pipe:1")
+	args = append(args, "-vn", "-filter_complex", strings.Join(filters, ";"), "-map", "[out]", "-f", "wav", "pipe:1")
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	return cmd.Output()
 }
