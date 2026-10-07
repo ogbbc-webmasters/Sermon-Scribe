@@ -127,7 +127,7 @@ type titleCandidate struct {
 
 func NewMetadataHandler(st *store.Store, config AIConfig) *MetadataHandler {
 	if config.MetadataModel == "" {
-		config.MetadataModel = "google/gemini-3-flash-preview"
+		config.MetadataModel = "openai/gpt-6-luna"
 	}
 	if config.TopicModel == "" {
 		config.TopicModel = "typesafe/jev-1.13"

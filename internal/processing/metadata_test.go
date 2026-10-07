@@ -21,6 +21,17 @@ func (f metadataTransport) RoundTrip(req *http.Request) (*http.Response, error) 
 	return f(req)
 }
 
+func TestMetadataModelDefaults(t *testing.T) {
+	h := NewMetadataHandler(nil, AIConfig{})
+	if h.config.MetadataModel != "openai/gpt-6-luna" || h.config.TopicModel != "typesafe/jev-1.13" {
+		t.Fatalf("unexpected models: extraction=%q decision=%q", h.config.MetadataModel, h.config.TopicModel)
+	}
+	h = NewMetadataHandler(nil, AIConfig{MetadataModel: "custom-extractor", TopicModel: "custom-decision"})
+	if h.config.MetadataModel != "custom-extractor" || h.config.TopicModel != "custom-decision" {
+		t.Fatal("explicit model configuration was ignored")
+	}
+}
+
 func TestTranscriptionRetryChainsMetadataAndRetainsReturnState(t *testing.T) {
 	st := processingTestStore(t)
 	if err := st.CreateSermon(store.Sermon{ID: "transcription-retry", OriginalFilename: "source.mp3", UploadedAt: "2026-10-06T00:00:00Z", Stage: "transcription", Status: "running"}); err != nil {
