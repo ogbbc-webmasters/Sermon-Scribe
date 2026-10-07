@@ -275,7 +275,7 @@ viewDetailAudio model sermon =
     in
     Card.view (text "Audio")
         [ if duration |> Maybe.map (\seconds -> seconds > 0 && seconds < 90 * 60) |> Maybe.withDefault False then
-            Button.action "ph:check"
+            Button.primaryAction "ph:check"
                 "Apply edits"
                 busy
                 [ onClick (EditingMsg (Editing.ApplyRecording sermon.id))

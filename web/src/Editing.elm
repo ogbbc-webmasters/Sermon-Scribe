@@ -626,7 +626,7 @@ view model =
                 , id "regenerate-breakpoints"
                 , disabled (model.draft == Nothing || model.saving || model.regenerating || model.applying || model.pendingApply /= Nothing || model.draft /= model.saved)
                 ]
-            , Button.action "ph:arrow-right"
+            , Button.primaryAction "ph:arrow-right"
                 "Continue"
                 False
                 [ onClick Close ]
@@ -645,7 +645,7 @@ view model =
                                 Button.action "ph:x" "Close editor" False [ onClick Close ]
 
                               else
-                                Button.action "ph:floppy-disk" "Try saving again" model.saving [ onClick RetrySave, disabled model.saving ]
+                                Button.primaryAction "ph:floppy-disk" "Try saving again" model.saving [ onClick RetrySave, disabled model.saving ]
                             , Button.action "ph:arrow-clockwise" "Reload saved draft" False [ onClick Reload, disabled (model.saving || model.regenerating || model.applying) ]
                             ]
                         ]
@@ -694,7 +694,7 @@ regenerationDialog model =
                     [ ( False, "All breakpoints" ), ( True, "Only unedited breakpoints" ) ]
                 )
             , div [ Ui.sermonActions ]
-                [ Button.action "ph:check" "Confirm regeneration" False [ onClick ConfirmRegenerate ]
+                [ Button.primaryAction "ph:check" "Confirm regeneration" False [ onClick ConfirmRegenerate ]
                 , Button.action "ph:x" "Cancel regeneration" False [ onClick CancelRegenerate ]
                 ]
             ]
@@ -901,6 +901,6 @@ boundaryPanel model draft index b =
             [ Button.action "ph:headphones" "Listen around breakpoint" False [ onClick Preview, disabled busy ]
             , Button.action "ph:arrow-left" "Earlier" False [ onClick (Nudge -0.1), disabled busy ]
             , Button.action "ph:arrow-right" "Later" False [ onClick (Nudge 0.1), disabled busy ]
-            , Button.action "ph:minus" "Remove breakpoint" False [ onClick RemoveBoundary, disabled (busy || index == 0 || index == List.length draft.breakpoints - 1) ]
+            , Button.dangerAction "ph:minus" "Remove breakpoint" False [ onClick RemoveBoundary, disabled (busy || index == 0 || index == List.length draft.breakpoints - 1) ]
             ]
         ]

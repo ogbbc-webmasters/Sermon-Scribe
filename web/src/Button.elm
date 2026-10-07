@@ -1,4 +1,4 @@
-module Button exposing (Config, action, back, button, copiedTranscript, copyTranscript, dangerButton, deleteSermon, disclosure, downloadAudio, editAudio, icon, nextMatch, openSermon, previousMatch, primaryButton, regenerate, spinner, titleInfo, view, warning)
+module Button exposing (Config, action, back, button, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSermon, disclosure, downloadAudio, editAudio, icon, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, titleInfo, view, warning)
 
 import Html exposing (Html, details, div, p, strong, text)
 import Html.Attributes exposing (attribute, class, title, type_)
@@ -61,17 +61,17 @@ deleteSermon =
 
 downloadAudio : Config
 downloadAudio =
-    Config "ph:download-simple" "Download audio" "var(--green)"
+    Config "ph:download-simple" "Download audio" "var(--ink-soft)"
 
 
 editAudio : Config
 editAudio =
-    Config "ph:scissors" "Edit recording" "var(--green)"
+    Config "ph:scissors" "Edit recording" "var(--ink-soft)"
 
 
 copyTranscript : Config
 copyTranscript =
-    Config "ph:copy" "Copy Full Transcript" "var(--green)"
+    Config "ph:copy" "Copy Full Transcript" "var(--ink-soft)"
 
 
 copiedTranscript : Config
@@ -101,14 +101,28 @@ nextMatch =
 
 regenerate : String -> Config
 regenerate label =
-    Config "ph:arrow-clockwise" label "var(--green)"
+    Config "ph:arrow-clockwise" label "var(--ink-soft)"
 
 
-{-| Green icon action with a tooltip and accessible name.
+{-| Routine icon action. Navigation, playback, and tools stay neutral.
 -}
 action : String -> String -> Bool -> List (Html.Attribute msg) -> Html msg
 action iconName caption busy attributes =
+    view "button" (Config iconName caption "var(--ink-soft)") busy attributes
+
+
+{-| Primary actions commit or continue the user's work.
+-}
+primaryAction : String -> String -> Bool -> List (Html.Attribute msg) -> Html msg
+primaryAction iconName caption busy attributes =
     view "button" (Config iconName caption "var(--green)") busy attributes
+
+
+{-| Destructive actions remove content.
+-}
+dangerAction : String -> String -> Bool -> List (Html.Attribute msg) -> Html msg
+dangerAction iconName caption busy attributes =
+    view "button" (Config iconName caption "var(--red)") busy attributes
 
 
 disclosure : Config -> String -> Html msg
