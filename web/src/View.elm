@@ -268,12 +268,16 @@ viewDetailAudio model sermon =
             [ onClick (EditingMsg (Editing.Open sermon.id))
             , disabled (not editable || busy)
             ]
-        , Button.view "a"
-            Button.downloadAudio
-            False
-            [ href (source ++ "&download=1")
-            , download ""
-            ]
+        , if applying then
+            text ""
+
+          else
+            Button.view "a"
+                Button.downloadAudio
+                False
+                [ href (source ++ "&download=1")
+                , download ""
+                ]
         ]
         [ if applying then
             div [ class "sermon-detail__audio-loading", attribute "role" "status", attribute "aria-label" "Applying edits" ] [ Button.spinner ]
