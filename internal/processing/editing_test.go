@@ -13,21 +13,6 @@ import (
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 )
 
-func TestSilenceStrictThreshold(t *testing.T) {
-	for _, tc := range []struct {
-		log      string
-		duration float64
-		count    int
-	}{
-		{"silence_start: 1\nsilence_end: 6", 10, 0},
-		{"silence_start: 1\nsilence_end: 6.001", 10, 2},
-		{"silence_start: 0", 5, 0}, {"silence_start: 0", 6, 2},
-	} {
-		if got := len(silenceBreakpoints(tc.log, tc.duration)); got != tc.count {
-			t.Fatalf("%q: got %d want %d", tc.log, got, tc.count)
-		}
-	}
-}
 func TestTranscriptMapping(t *testing.T) {
 	source := store.TranscriptionMetadata{Words: []store.TranscriptWord{{Word: "one", Start: 0, End: 1}, {Word: "drop", Start: 2, End: 3}, {Word: "two", Start: 4.8, End: 5.4}}}
 	text, m := MapTranscript(source, []AudioRange{{0, 1}, {5, 6}})
@@ -109,8 +94,10 @@ func TestEditingFFmpegPipelinePauseAndRedo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(d.Breakpoints) != 3 || d.Breakpoints[1].Kind != "speaker" {
-		t.Fatalf("speaker proposal %+v", d)
+	if len(d.Breakpoints) != 2 || len(d.Sections) != 1 || !d.Sections[0].Keep ||
+		d.Breakpoints[0].Kind != "start" || d.Breakpoints[0].Time != 0 ||
+		d.Breakpoints[1].Kind != "end" || d.Breakpoints[1].Time != 8 {
+		t.Fatalf("preparation must not detect silence or speaker changes: %+v", d)
 	}
 	for _, tc := range []struct {
 		mode       string
@@ -121,7 +108,9 @@ func TestEditingFFmpegPipelinePauseAndRedo(t *testing.T) {
 			t.Fatalf("preview %+v: %v", tc, err)
 		}
 	}
-	d.Sections[0].Keep = false
+	// Editing still supports user-added boundaries after detection is removed.
+	d.Breakpoints = append(d.Breakpoints[:1], store.Breakpoint{ID: "manual", Time: 5, Kind: "manual"}, d.Breakpoints[1])
+	d.Sections = []store.Section{{ID: d.Sections[0].ID, Keep: false}, {ID: "second", Keep: true}}
 	d, err = st.MutateEditing("edit-test", &d, d.Revision, false, "")
 	if err != nil {
 		t.Fatal(err)

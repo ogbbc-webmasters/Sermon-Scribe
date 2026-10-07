@@ -8,8 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -34,68 +32,6 @@ func audioDuration(ctx context.Context, path string) (float64, error) {
 	return strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
 }
 
-var silencePattern = regexp.MustCompile(`silence_(start|end):\s*([0-9.eE+-]+)`)
-
-func silenceBreakpoints(log string, duration float64) []store.Breakpoint {
-	var result []store.Breakpoint
-	start := -1.0
-	add := func(end float64) {
-		if start >= 0 && end-start > 5 {
-			result = append(result, store.Breakpoint{ID: uuid.NewString(), Time: start, Kind: "silence_start"}, store.Breakpoint{ID: uuid.NewString(), Time: end, Kind: "silence_end"})
-		}
-		start = -1
-	}
-	for _, match := range silencePattern.FindAllStringSubmatch(log, -1) {
-		v, _ := strconv.ParseFloat(match[2], 64)
-		if match[1] == "start" {
-			start = v
-		} else {
-			add(v)
-		}
-	}
-	if start >= 0 {
-		add(duration)
-	}
-	return result
-}
-func proposedDraft(duration float64, b []store.Breakpoint, m store.TranscriptionMetadata) store.Editing {
-	previous := ""
-	for _, w := range m.Words {
-		label := w.SpeakerLabel
-		if w.Speaker != nil {
-			label = strconv.Itoa(*w.Speaker)
-		}
-		if label != "" {
-			if previous != "" && previous != label {
-				b = append(b, store.Breakpoint{ID: uuid.NewString(), Time: w.Start, Kind: "speaker"})
-			}
-			previous = label
-		}
-	}
-	if previous == "" {
-		for _, s := range m.Segments {
-			if s.Speaker != nil {
-				label := strconv.Itoa(*s.Speaker)
-				if previous != "" && previous != label {
-					b = append(b, store.Breakpoint{ID: uuid.NewString(), Time: s.Start, Kind: "speaker"})
-				}
-				previous = label
-			}
-		}
-	}
-	sort.SliceStable(b, func(i, j int) bool { return b[i].Time < b[j].Time })
-	d := store.Editing{Duration: duration, Breakpoints: []store.Breakpoint{{ID: uuid.NewString(), Time: 0, Kind: "start"}}, Sections: []store.Section{}}
-	for _, p := range b {
-		if p.Time-d.Breakpoints[len(d.Breakpoints)-1].Time >= 0.05 && duration-p.Time >= 0.05 {
-			d.Breakpoints = append(d.Breakpoints, p)
-		}
-	}
-	d.Breakpoints = append(d.Breakpoints, store.Breakpoint{ID: uuid.NewString(), Time: duration, Kind: "end"})
-	for i := 1; i < len(d.Breakpoints); i++ {
-		d.Sections = append(d.Sections, store.Section{ID: uuid.NewString(), Keep: true})
-	}
-	return d
-}
 func keptRanges(s store.EditSnapshot) []AudioRange {
 	if s.Skip {
 		return []AudioRange{{0, s.Draft.Duration}}
@@ -205,11 +141,14 @@ func (h *EditingHandler) Run(ctx context.Context, job store.Job, reporter Report
 		if err != nil {
 			return Result{}, err
 		}
-		out, err := exec.CommandContext(ctx, "ffmpeg", "-hide_banner", "-i", source, "-vn", "-af", "silencedetect=noise=-40dB:d=5", "-f", "null", "-").CombinedOutput()
-		if err != nil {
-			return Result{}, fmt.Errorf("detect silence: %w", err)
+		d := store.Editing{
+			Duration: duration,
+			Breakpoints: []store.Breakpoint{
+				{ID: uuid.NewString(), Time: 0, Kind: "start"},
+				{ID: uuid.NewString(), Time: duration, Kind: "end"},
+			},
+			Sections: []store.Section{{ID: uuid.NewString(), Keep: true}},
 		}
-		d := proposedDraft(duration, silenceBreakpoints(string(out), duration), m)
 		if err = h.store.PrepareEditing(job.SermonID, d, text, m); err != nil {
 			return Result{}, err
 		}
