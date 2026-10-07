@@ -29,14 +29,17 @@ type Sermon struct {
 	AppliedRegions                json.RawMessage        `json:"applied_regions,omitempty"`
 	EditApproved                  bool                   `json:"edit_approved"`
 	Transcript                    *string                `json:"transcript,omitempty"`
-	TranscriptionMetadata         *TranscriptionMetadata `json:"transcription_metadata,omitempty"`
 	Title                         *string                `json:"title,omitempty"`
 	TitleGenerated                *bool                  `json:"title_generated,omitempty"`
 	TitleReasoning                *string                `json:"title_reasoning,omitempty"`
 	Speaker                       *string                `json:"speaker,omitempty"`
+	OldTestamentReading           string                 `json:"old_testament_reading,omitempty"`
+	NewTestamentReading           string                 `json:"new_testament_reading,omitempty"`
 	Scriptures                    []string               `json:"scriptures,omitempty"`
+	ScriptureOptions              []string               `json:"scripture_options,omitempty"`
 	Topics                        []string               `json:"topics,omitempty"`
 	TopicScores                   map[string]float64     `json:"topic_scores,omitempty"`
+	TranscriptionMetadata         *TranscriptionMetadata `json:"transcription_metadata,omitempty"`
 }
 
 // TranscriptionMetadata contains provider-supplied timing and diarization.
@@ -117,7 +120,8 @@ const sermonViewSQL = `
 	       s.normalization_gate_adjustment, s.normalization_volume_adjustment,
 	       s.normalization_reviewed, s.applied_regions, s.edit_approved,
 	       s.transcript, s.transcription_metadata, s.title, s.title_generated, s.title_reasoning,
-	       s.speaker, s.scriptures, s.topics, s.topic_scores
+	       s.speaker, s.old_testament_reading, s.new_testament_reading,
+	       s.scriptures, s.scripture_options, s.topics, s.topic_scores
 	FROM sermons s
 	LEFT JOIN jobs j ON j.id = (
 		SELECT id FROM jobs
@@ -166,7 +170,7 @@ func getSermon(q interface {
 
 func scanSermon(row rowScanner, sm *Sermon) error {
 	var applied []byte
-	var transcript, transcriptionMetadata, title, titleReasoning, speaker, scriptures, topics, topicScores sql.NullString
+	var transcript, transcriptionMetadata, title, titleReasoning, speaker, oldTestamentReading, newTestamentReading, scriptures, scriptureOptions, topics, topicScores sql.NullString
 	var titleGenerated sql.NullBool
 	err := row.Scan(
 		&sm.ID, &sm.OriginalFilename, &sm.UploadedAt, &sm.UploadedBy,
@@ -174,7 +178,7 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 		&sm.NormalizationGateAdjustment, &sm.NormalizationVolumeAdjustment,
 		&sm.NormalizationReviewed, &applied, &sm.EditApproved,
 		&transcript, &transcriptionMetadata, &title, &titleGenerated, &titleReasoning, &speaker,
-		&scriptures, &topics, &topicScores,
+		&oldTestamentReading, &newTestamentReading, &scriptures, &scriptureOptions, &topics, &topicScores,
 	)
 	if len(applied) > 0 {
 		sm.AppliedRegions = json.RawMessage(applied)
@@ -202,7 +206,14 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 	if speaker.Valid {
 		sm.Speaker = &speaker.String
 	}
+	if oldTestamentReading.Valid {
+		sm.OldTestamentReading = oldTestamentReading.String
+	}
+	if newTestamentReading.Valid {
+		sm.NewTestamentReading = newTestamentReading.String
+	}
 	_ = json.Unmarshal([]byte(scriptures.String), &sm.Scriptures)
+	_ = json.Unmarshal([]byte(scriptureOptions.String), &sm.ScriptureOptions)
 	_ = json.Unmarshal([]byte(topics.String), &sm.Topics)
 	_ = json.Unmarshal([]byte(topicScores.String), &sm.TopicScores)
 	return err
@@ -226,8 +237,17 @@ func (s *Store) SaveTranscription(id, transcript string, metadata TranscriptionM
 
 // SaveMetadata stores structured metadata produced by the extraction stage.
 func (s *Store) SaveMetadata(id, title string, generated bool, reasoning, speaker string, scriptures, topics []string, topicScores map[string]float64) error {
+	return s.SaveMetadataWithScriptureOptions(id, title, generated, reasoning, speaker, "", "", scriptures, scriptures, topics, topicScores)
+}
+
+// SaveMetadataWithScriptureOptions stores metadata and all scripture candidates.
+func (s *Store) SaveMetadataWithScriptureOptions(id, title string, generated bool, reasoning, speaker, oldTestamentReading, newTestamentReading string, scriptures, scriptureOptions, topics []string, topicScores map[string]float64) error {
 	title = titleCase(title)
 	scripturesJSON, err := json.Marshal(scriptures)
+	if err != nil {
+		return err
+	}
+	scriptureOptionsJSON, err := json.Marshal(scriptureOptions)
 	if err != nil {
 		return err
 	}
@@ -239,8 +259,8 @@ func (s *Store) SaveMetadata(id, title string, generated bool, reasoning, speake
 	if err != nil {
 		return err
 	}
-	_, err = s.db.Exec(`UPDATE sermons SET title=?, title_generated=?, title_reasoning=?, speaker=?, scriptures=?, topics=?, topic_scores=? WHERE id=?`,
-		title, generated, reasoning, speaker, string(scripturesJSON), string(topicsJSON), string(scoreJSON), id)
+	_, err = s.db.Exec(`UPDATE sermons SET title=?, title_generated=?, title_reasoning=?, speaker=?, old_testament_reading=?, new_testament_reading=?, scriptures=?, scripture_options=?, topics=?, topic_scores=? WHERE id=?`,
+		title, generated, reasoning, speaker, oldTestamentReading, newTestamentReading, string(scripturesJSON), string(scriptureOptionsJSON), string(topicsJSON), string(scoreJSON), id)
 	return err
 }
 
@@ -302,6 +322,20 @@ func (s *Store) SaveScriptures(id string, scriptures []string) error {
 		return err
 	}
 	_, err = s.db.Exec(`UPDATE sermons SET scriptures=? WHERE id=?`, string(references), id)
+	return err
+}
+
+// SaveScriptureSelection stores the selected references and their candidates.
+func (s *Store) SaveScriptureSelection(id, oldTestamentReading, newTestamentReading string, selected, options []string) error {
+	selectedJSON, err := json.Marshal(selected)
+	if err != nil {
+		return err
+	}
+	optionsJSON, err := json.Marshal(options)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(`UPDATE sermons SET old_testament_reading=?, new_testament_reading=?, scriptures=?, scripture_options=? WHERE id=?`, oldTestamentReading, newTestamentReading, string(selectedJSON), string(optionsJSON), id)
 	return err
 }
 

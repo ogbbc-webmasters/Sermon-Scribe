@@ -6,8 +6,8 @@ import DateFormat exposing (formatDate)
 import Dict
 import File
 import Html exposing (Html, a, audio, button, details, div, h2, input, label, mark, p, span, strong, summary, text)
-import Html.Attributes exposing (accept, attribute, class, controls, disabled, download, hidden, href, id, placeholder, src, style, title, type_, value)
-import Html.Events exposing (on, onClick, onInput, stopPropagationOn)
+import Html.Attributes exposing (accept, attribute, checked, class, controls, disabled, download, hidden, href, id, placeholder, src, style, title, type_, value)
+import Html.Events exposing (on, onCheck, onClick, onInput, stopPropagationOn)
 import Icon
 import Json.Decode as Decode exposing (Decoder)
 import Set
@@ -164,16 +164,88 @@ viewDetailStatus sermon =
 
 viewDetailMetadata : Model -> Sermon -> Html Msg
 viewDetailMetadata model sermon =
+    let
+        options =
+            if List.isEmpty sermon.scriptureOptions then
+                sermon.scriptures
+
+            else
+                sermon.scriptureOptions
+
+        selected =
+            Dict.get sermon.id model.scriptureDrafts
+                |> Maybe.withDefault (Set.fromList sermon.scriptures)
+
+        readingReferences =
+            List.filterMap identity [ sermon.oldTestamentReading, sermon.newTestamentReading ]
+
+        additionalOptions =
+            List.filter (\reference -> not (List.member reference readingReferences)) options
+
+        readingGroups =
+            List.filterMap
+                (\( heading, maybeReference ) ->
+                    Maybe.map
+                        (\reference ->
+                            div [ class "sermon-detail__scripture-group" ]
+                                [ strong [ class "sermon-detail__scripture-heading" ] [ text heading ]
+                                , viewScriptureOption sermon.id selected reference
+                                ]
+                        )
+                        maybeReference
+                )
+                [ ( "Old Testament Reading", sermon.oldTestamentReading )
+                , ( "New Testament Reading", sermon.newTestamentReading )
+                ]
+    in
     div [ class "sermon-detail__sections" ]
         [ Card.view (text "Scripture References")
             [ viewProcessingRetry model sermon "scriptures" "Regenerate Scripture References" ]
-            [ if List.isEmpty sermon.scriptures then
-                p [ Ui.panelText ] [ text "No scripture references yet." ]
+            [ if List.isEmpty options then
+                p [ Ui.panelText ] [ text "No scripture references found yet." ]
+
+              else if List.isEmpty sermon.scriptures then
+                p [ Ui.panelText ] [ text "No references selected yet. Select any additional passages below." ]
 
               else
                 text ""
-            , div [ class "sermon-detail__pills" ]
-                (List.map viewScripture sermon.scriptures)
+            , if List.isEmpty options then
+                text ""
+
+              else
+                p [ Ui.panelText ] [ text "Old Testament Reading and New Testament Reading are selected when found; other passages are optional." ]
+            , if List.isEmpty options then
+                text ""
+
+              else
+                div [ class "sermon-detail__scripture-options" ]
+                    (readingGroups
+                        ++ (if List.isEmpty additionalOptions then
+                                []
+
+                            else
+                                [ div [ class "sermon-detail__scripture-group" ]
+                                    [ strong [ class "sermon-detail__scripture-heading" ] [ text "Other passages" ]
+                                    , div [ class "sermon-detail__scripture-options" ]
+                                        (List.map (viewScriptureOption sermon.id selected) additionalOptions)
+                                    ]
+                                ]
+                           )
+                    )
+            , if Set.member sermon.id model.scriptureSaving then
+                p [ class "sermon-detail__scripture-status", attribute "role" "status" ] [ text "Saving selection…" ]
+
+              else if Set.member sermon.id model.scriptureSaveErrors then
+                div [ class "sermon-detail__scripture-save-error" ]
+                    [ p [ class "sermon-detail__scripture-status" ] [ text "Could not save your selection." ]
+                    , button [ Ui.button, onClick (RetryScriptureSave sermon) ] [ text "Retry" ]
+                    ]
+
+              else if not (List.isEmpty options) then
+                p [ class "sermon-detail__scripture-status", attribute "role" "status" ] [ text "Changes save automatically." ]
+
+              else
+                text ""
             ]
         , Card.view (text "Topics")
             [ viewProcessingRetry model sermon "topics" "Regenerate Topics" ]
@@ -191,6 +263,19 @@ viewDetailMetadata model sermon =
                     (highConfidenceTopics sermon.topicScores)
                 )
             ]
+        ]
+
+
+viewScriptureOption : String -> Set.Set String -> String -> Html Msg
+viewScriptureOption sermonId selected reference =
+    label [ class "sermon-detail__scripture-option" ]
+        [ input
+            [ type_ "checkbox"
+            , checked (Set.member reference selected)
+            , onCheck (\_ -> ToggleScripture sermonId reference)
+            ]
+            []
+        , span [] [ text reference ]
         ]
 
 
@@ -365,13 +450,6 @@ highConfidenceTopics scores =
     scores
         |> List.filter (\( _, score ) -> score >= 0.8)
         |> List.sortBy (\( _, score ) -> -score)
-
-
-viewScripture : String -> Html Msg
-viewScripture reference =
-    span
-        [ class "sermon-detail__pill sermon-detail__pill--scripture" ]
-        [ text reference ]
 
 
 viewProcessingRetry : Model -> Sermon -> String -> String -> Html Msg

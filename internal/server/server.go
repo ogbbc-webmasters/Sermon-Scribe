@@ -56,6 +56,7 @@ func (s *Server) Routes(webFS fs.FS) http.Handler {
 	mux.HandleFunc("DELETE /api/sermons/{id}", s.handleDeleteSermon)
 	mux.HandleFunc("POST /api/sermons/{id}/retry", s.handleRetrySermon)
 	mux.HandleFunc("POST /api/sermons/{id}/retry/{part}", s.handleRetryProcessing)
+	mux.HandleFunc("PUT /api/sermons/{id}/scriptures", s.handleSaveScriptures)
 	mux.HandleFunc("POST /api/sermons/{id}/normalize", s.handleRerunNormalization)
 	mux.HandleFunc("POST /api/sermons/{id}/review-normalization", s.handleReviewNormalization)
 	mux.HandleFunc("GET /api/sermons/{id}/audio/{type}", s.handleSermonAudio)
@@ -324,6 +325,59 @@ func (s *Server) handleRetryProcessing(w http.ResponseWriter, r *http.Request) {
 		s.Queue.Notify()
 	}
 	writeJSON(w, http.StatusAccepted, sm)
+}
+
+func (s *Server) handleSaveScriptures(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	sm, err := s.Store.GetSermon(id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "sermon not found")
+		return
+	} else if err != nil {
+		log.Printf("load sermon for scripture selection %s: %v", id, err)
+		writeError(w, http.StatusInternalServerError, "could not save scripture selection")
+		return
+	}
+	var request struct {
+		Scriptures []string `json:"scriptures"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64*1024))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid scripture selection")
+		return
+	}
+	available := sm.ScriptureOptions
+	if len(available) == 0 {
+		available = sm.Scriptures
+	}
+	options := make(map[string]bool, len(available))
+	for _, option := range available {
+		options[option] = true
+	}
+	seen := make(map[string]bool, len(request.Scriptures))
+	for _, scripture := range request.Scriptures {
+		if !options[scripture] || seen[scripture] {
+			writeError(w, http.StatusBadRequest, "scripture selection must contain unique available references")
+			return
+		}
+		seen[scripture] = true
+	}
+	if err := s.Store.SaveScriptures(id, request.Scriptures); err != nil {
+		log.Printf("save scripture selection %s: %v", id, err)
+		writeError(w, http.StatusInternalServerError, "could not save scripture selection")
+		return
+	}
+	sm, err = s.Store.GetSermon(id)
+	if err != nil {
+		log.Printf("reload sermon after scripture selection %s: %v", id, err)
+		writeError(w, http.StatusInternalServerError, "could not save scripture selection")
+		return
+	}
+	if s.Events != nil {
+		s.Events.Publish(processing.Event{Name: processing.EventProgress, Sermon: sm})
+	}
+	writeJSON(w, http.StatusOK, sm)
 }
 
 func (s *Server) handleRerunNormalization(w http.ResponseWriter, r *http.Request) {

@@ -267,10 +267,10 @@ func TestMetadataHandlerSelectsTitleAndPreservesTopics(t *testing.T) {
 							{"title":"Receive wisdom","title_generated":true,"title_reasoning":"Closing exhortation."}
 						]`
 					}
-					if !strings.Contains(payload.Messages[0].Content, "selective list") || !strings.Contains(payload.Messages[0].Content, "formal Old Testament and New Testament readings") || !strings.Contains(payload.Messages[0].Content, "rapid supporting citations") || !strings.Contains(payload.Messages[0].Content, "never return a bare chapter") || !strings.Contains(payload.Messages[0].Content, "full verse range from verse 1") {
+					if !strings.Contains(payload.Messages[0].Content, "old_testament_reading:") || !strings.Contains(payload.Messages[0].Content, "new_testament_reading:") || !strings.Contains(payload.Messages[0].Content, "additional Scripture passages beyond those readings") || !strings.Contains(payload.Messages[0].Content, "rapid supporting citations") || !strings.Contains(payload.Messages[0].Content, "never return a bare chapter") || !strings.Contains(payload.Messages[0].Content, "full verse range from verse 1") {
 						t.Fatal("scripture extraction prompt does not prioritize primary passages")
 					}
-					metadata := `{"title_candidates":` + candidates + `,"speaker":"John Doe","scriptures":["James 1:5","James 1:6","James 1:5-6","John 3:16"],"topics":["Assurance","Atonement"],"topics_reasoning":{"Assurance":"Legacy reasoning must be ignored."}}`
+					metadata := `{"title_candidates":` + candidates + `,"speaker":"John Doe","old_testament_reading":"Genesis 1:1-5","new_testament_reading":"John 1:1-5","scriptures":["James 1:5","James 1:6","James 1:5-6","Romans 8:28","Psalm 23:1","Acts 2:42","Revelation 2:4"],"topics":["Assurance","Atonement"],"topics_reasoning":{"Assurance":"Legacy reasoning must be ignored."}}`
 					if tt.wrapped {
 						metadata = "[" + metadata + "]"
 					}
@@ -363,7 +363,7 @@ func TestMetadataHandlerSelectsTitleAndPreservesTopics(t *testing.T) {
 			if sm.Title == nil || *sm.Title != tt.wantTitle || sm.TitleGenerated == nil || *sm.TitleGenerated != tt.generated || sm.TitleReasoning == nil || *sm.TitleReasoning != tt.wantReason {
 				t.Fatalf("incorrect winning title metadata: %+v", sm)
 			}
-			if sm.Speaker == nil || *sm.Speaker != "John Doe" || !reflect.DeepEqual(sm.Scriptures, []string{"James 1:5-6", "John 3:16"}) || !reflect.DeepEqual(sm.Topics, []string{"Assurance", "Atonement"}) || len(sm.TopicScores) != 79 || sm.TopicScores["Assurance"] != 0.81 || sm.TopicScores["Atonement"] != 0.23 {
+			if sm.Speaker == nil || *sm.Speaker != "John Doe" || sm.OldTestamentReading != "Genesis 1:1-5" || sm.NewTestamentReading != "John 1:1-5" || !reflect.DeepEqual(sm.Scriptures, []string{"Genesis 1:1-5", "John 1:1-5"}) || !reflect.DeepEqual(sm.ScriptureOptions, []string{"Genesis 1:1-5", "John 1:1-5", "James 1:5-6", "Romans 8:28", "Psalm 23:1", "Acts 2:42", "Revelation 2:4"}) || !reflect.DeepEqual(sm.Topics, []string{"Assurance", "Atonement"}) || len(sm.TopicScores) != 79 || sm.TopicScores["Assurance"] != 0.81 || sm.TopicScores["Atonement"] != 0.23 {
 				t.Fatalf("incorrect other metadata: %+v", sm)
 			}
 			encoded, err := json.Marshal(sm)
@@ -403,10 +403,10 @@ func TestScriptureRegenerationPreservesOtherFields(t *testing.T) {
 						t.Fatal(err)
 					}
 					prompt := payload.Messages[0].Content
-					if !strings.Contains(prompt, "- scriptures:") || !strings.Contains(prompt, "selective list") || !strings.Contains(prompt, "formal Old Testament and New Testament readings") || !strings.Contains(prompt, "never return a bare chapter") || !strings.Contains(prompt, "full verse range from verse 1") || strings.Contains(prompt, "title_candidates") || strings.Contains(prompt, "- topics:") || strings.Contains(prompt, "- speaker:") {
+					if !strings.Contains(prompt, "old_testament_reading:") || !strings.Contains(prompt, "new_testament_reading:") || !strings.Contains(prompt, "additional Scripture passages beyond those readings") || !strings.Contains(prompt, "never return a bare chapter") || !strings.Contains(prompt, "full verse range from verse 1") || strings.Contains(prompt, "title_candidates") || strings.Contains(prompt, "- topics:") || strings.Contains(prompt, "- speaker:") {
 						t.Fatal("scripture regeneration requested unrelated fields")
 					}
-					metadata := `{"scriptures":["Romans 8:1-39","Romans 8:28","James 1:5","James 1:5"]}`
+					metadata := `{"old_testament_reading":"Genesis 1:1-31","new_testament_reading":"John 1:1-18","scriptures":["Romans 8:1-39","Romans 8:28","James 1:5","James 1:5"]}`
 					if empty {
 						metadata = `{"scriptures":[]}`
 					}
@@ -428,10 +428,10 @@ func TestScriptureRegenerationPreservesOtherFields(t *testing.T) {
 				t.Fatalf("scripture regeneration changed unrelated metadata: %+v", sm)
 			}
 			if empty {
-				if calls != 1 || len(sm.Scriptures) != 0 {
+				if calls != 1 || len(sm.Scriptures) != 0 || len(sm.ScriptureOptions) != 0 {
 					t.Fatalf("empty extraction left stale scriptures: %+v", sm)
 				}
-			} else if calls != 1 || !reflect.DeepEqual(sm.Scriptures, []string{"Romans 8:1-39", "James 1:5"}) {
+			} else if calls != 1 || sm.OldTestamentReading != "Genesis 1:1-31" || sm.NewTestamentReading != "John 1:1-18" || !reflect.DeepEqual(sm.Scriptures, []string{"Genesis 1:1-31", "John 1:1-18"}) || !reflect.DeepEqual(sm.ScriptureOptions, []string{"Genesis 1:1-31", "John 1:1-18", "Romans 8:1-39", "James 1:5"}) {
 				t.Fatalf("incorrect regenerated scriptures: %+v", sm)
 			}
 		})

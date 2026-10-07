@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -271,10 +272,12 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 	content = strings.TrimSpace(strings.TrimPrefix(content, "json"))
 
 	var result struct {
-		TitleCandidates []titleCandidate `json:"title_candidates"`
-		Speaker         string           `json:"speaker"`
-		Scriptures      []string         `json:"scriptures"`
-		Topics          []string         `json:"topics"`
+		TitleCandidates     []titleCandidate `json:"title_candidates"`
+		Speaker             string           `json:"speaker"`
+		OldTestamentReading string           `json:"old_testament_reading"`
+		NewTestamentReading string           `json:"new_testament_reading"`
+		Scriptures          []string         `json:"scriptures"`
+		Topics              []string         `json:"topics"`
 	}
 	rawMetadata := json.RawMessage(content)
 	if len(rawMetadata) > 0 && rawMetadata[0] == '[' {
@@ -304,12 +307,43 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 		seen[key] = true
 	}
 	if job.Type == "extract_title" || job.Type == "extract_topics" {
+		result.OldTestamentReading = ""
+		result.NewTestamentReading = ""
 		result.Scriptures = nil
 	}
-	if err := validateScriptureVerseReferences(result.Scriptures); err != nil {
+	result.OldTestamentReading = strings.TrimSpace(result.OldTestamentReading)
+	result.NewTestamentReading = strings.TrimSpace(result.NewTestamentReading)
+	readings := make([]string, 0, 2)
+	if result.OldTestamentReading != "" {
+		readings = append(readings, result.OldTestamentReading)
+	}
+	if result.NewTestamentReading != "" {
+		readings = append(readings, result.NewTestamentReading)
+	}
+	allScriptures := append(append([]string{}, readings...), result.Scriptures...)
+	if err := validateScriptureVerseReferences(allScriptures); err != nil {
 		return Result{}, err
 	}
-	result.Scriptures = normalizeScriptures(result.Scriptures)
+	if normalized := normalizeScriptures([]string{result.OldTestamentReading}); len(normalized) > 0 {
+		result.OldTestamentReading = normalized[0]
+	}
+	if normalized := normalizeScriptures([]string{result.NewTestamentReading}); len(normalized) > 0 {
+		result.NewTestamentReading = normalized[0]
+	}
+	readings = readings[:0]
+	if result.OldTestamentReading != "" {
+		readings = append(readings, result.OldTestamentReading)
+	}
+	if result.NewTestamentReading != "" {
+		readings = append(readings, result.NewTestamentReading)
+	}
+	selectedReadings := normalizeScriptures(readings)
+	scriptureOptions := append([]string{}, selectedReadings...)
+	for _, candidate := range normalizeScriptures(result.Scriptures) {
+		if !slices.Contains(scriptureOptions, candidate) {
+			scriptureOptions = append(scriptureOptions, candidate)
+		}
+	}
 	title, scores, err := h.classifyMetadata(ctx, *sermon.Transcript, result.TitleCandidates, job.Type != "extract_title" && job.Type != "extract_scriptures")
 	if err != nil {
 		return Result{}, err
@@ -320,9 +354,9 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 	case "extract_topics":
 		err = h.store.SaveTopics(job.SermonID, result.Topics, scores)
 	case "extract_scriptures":
-		err = h.store.SaveScriptures(job.SermonID, result.Scriptures)
+		err = h.store.SaveScriptureSelection(job.SermonID, result.OldTestamentReading, result.NewTestamentReading, selectedReadings, scriptureOptions)
 	default:
-		err = h.store.SaveMetadata(job.SermonID, title.Title, title.TitleGenerated, title.TitleReasoning, result.Speaker, result.Scriptures, result.Topics, scores)
+		err = h.store.SaveMetadataWithScriptureOptions(job.SermonID, title.Title, title.TitleGenerated, title.TitleReasoning, result.Speaker, result.OldTestamentReading, result.NewTestamentReading, selectedReadings, scriptureOptions, result.Topics, scores)
 	}
 	if err != nil {
 		return Result{}, err
@@ -469,11 +503,11 @@ func metadataPrompt(transcript, jobType string) string {
 }
 
 func scriptureExtractionInstructions() string {
-	return `- scriptures: only the primary Scripture passages that provide this sermon's biblical foundation; use full Bible book names and always include verse numbers. Use standard Book C:V or Book C:V1-V2 references; never return a bare chapter.
-  This is a selective list, not a catalog of every citation or allusion. Include a passage if it is a central text or formal reading, is developed enough to advance the main message, establishes a major doctrinal point/argument/application/structural movement/conclusion, or directly supports the stated burden or governing theme.
-  Prioritize the passages carrying the sermon's structure, reasoning, and application. Omit passing mentions, brief quotations, rapid supporting citations, incidental allusions, and uncertain references. Do not include a passage merely because it is cited or shares a theme. Do not impose a hard count; a few primary passages are typical, but include more or fewer when the transcript warrants it.
-  Include identifiable formal Old Testament and New Testament readings when present, including readings introduced at the beginning of the sermon; do not assume that both are present. If the sermon treats a whole chapter as a primary passage, give its full verse range from verse 1 through the chapter's last verse (for example, Romans 8:1-39); do not shorten it to just the book and chapter. Do not invent a narrower verse range when the transcript does not support it.
-  Deduplicate and keep first-mention order. Combine overlapping or contiguous verses when they form one passage. Return normalized references as strings.
+	return `- old_testament_reading: the identifiable formal Old Testament passage read at the opening of this sermon, if stated in the transcript; otherwise an empty string.
+- new_testament_reading: the identifiable formal New Testament passage read at the opening of this sermon, if stated in the transcript; otherwise an empty string.
+- scriptures: additional Scripture passages beyond those readings that are substantively developed and could reasonably be selected as references for this sermon. Do not include every chapter or passing citation: omit brief quotations, rapid supporting citations, incidental allusions, and uncertain references. Include the governing text and other passages essential to the sermon’s main reasoning or application. These are optional candidates, not selected references.
+	Use full Bible book names and always include verse numbers. Use standard Book C:V or Book C:V1-V2 references; never return a bare chapter. If the sermon treats a whole chapter as a primary passage, give its full verse range from verse 1 through the chapter's last verse (for example, Romans 8:1-39); do not shorten it to just the book and chapter. Do not invent a narrower verse range when the transcript does not support it.
+  Deduplicate and combine overlapping or contiguous verses. Return normalized references as strings.
 `
 }
 

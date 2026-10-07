@@ -56,6 +56,9 @@ init _ url key =
       , retrying = Set.empty
       , regenerating = Dict.empty
       , retryError = Nothing
+      , scriptureDrafts = Dict.empty
+      , scriptureSaving = Set.empty
+      , scriptureSaveErrors = Set.empty
       , zone = Time.utc
       }
     , Cmd.batch [ Api.fetchSermons GotSermons, Task.perform GotZone Time.here ]
@@ -214,6 +217,92 @@ update msg model =
             , Cmd.none
             )
 
+        ToggleScripture id reference ->
+            case findSermon id model.sermons of
+                Just sermon ->
+                    let
+                        options =
+                            scriptureOptions sermon
+
+                        current =
+                            Dict.get id model.scriptureDrafts
+                                |> Maybe.withDefault (Set.fromList sermon.scriptures)
+
+                        updated =
+                            if Set.member reference current then
+                                Set.remove reference current
+
+                            else
+                                Set.insert reference current
+
+                        selected =
+                            List.filter (\option -> Set.member option updated) options
+
+                        nextModel =
+                            { model
+                                | scriptureDrafts = Dict.insert id updated model.scriptureDrafts
+                                , scriptureSaveErrors = Set.remove id model.scriptureSaveErrors
+                            }
+                    in
+                    if Set.member id model.scriptureSaving then
+                        ( nextModel, Cmd.none )
+
+                    else
+                        ( { nextModel | scriptureSaving = Set.insert id model.scriptureSaving }
+                        , Api.saveScriptures (ScriptureSaveFinished id selected) id selected
+                        )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        ScriptureSaveFinished id submitted (Ok sermon) ->
+            let
+                latest =
+                    Dict.get id model.scriptureDrafts
+                        |> Maybe.map (\selection -> List.filter (\option -> Set.member option selection) (scriptureOptions sermon))
+                        |> Maybe.withDefault submitted
+
+                updated =
+                    { model
+                        | sermons = upsertSermon sermon model.sermons
+                        , scriptureSaveErrors = Set.remove id model.scriptureSaveErrors
+                    }
+            in
+            if latest == submitted then
+                ( { updated
+                    | scriptureDrafts = Dict.remove id updated.scriptureDrafts
+                    , scriptureSaving = Set.remove id updated.scriptureSaving
+                  }
+                , Cmd.none
+                )
+
+            else
+                ( updated
+                , Api.saveScriptures (ScriptureSaveFinished id latest) id latest
+                )
+
+        ScriptureSaveFinished id _ (Err _) ->
+            ( { model
+                | scriptureSaving = Set.remove id model.scriptureSaving
+                , scriptureSaveErrors = Set.insert id model.scriptureSaveErrors
+              }
+            , Cmd.none
+            )
+
+        RetryScriptureSave sermon ->
+            let
+                selected =
+                    Dict.get sermon.id model.scriptureDrafts
+                        |> Maybe.map (\selection -> List.filter (\option -> Set.member option selection) (scriptureOptions sermon))
+                        |> Maybe.withDefault sermon.scriptures
+            in
+            ( { model
+                | scriptureSaving = Set.insert sermon.id model.scriptureSaving
+                , scriptureSaveErrors = Set.remove sermon.id model.scriptureSaveErrors
+              }
+            , Api.saveScriptures (ScriptureSaveFinished sermon.id selected) sermon.id selected
+            )
+
         OpenSermon sermon ->
             ( model, Navigation.pushUrl model.navigationKey ("/sermons/" ++ Url.percentEncode sermon.id) )
 
@@ -357,6 +446,25 @@ removeSermon id sermonList =
 
         _ ->
             sermonList
+
+
+findSermon : String -> SermonList -> Maybe Api.Sermon
+findSermon id sermonList =
+    case sermonList of
+        Loaded sermons ->
+            List.filter (\sermon -> sermon.id == id) sermons |> List.head
+
+        _ ->
+            Nothing
+
+
+scriptureOptions : Api.Sermon -> List String
+scriptureOptions sermon =
+    if List.isEmpty sermon.scriptureOptions then
+        sermon.scriptures
+
+    else
+        sermon.scriptureOptions
 
 
 uploadErrorMessage : Http.Error -> String

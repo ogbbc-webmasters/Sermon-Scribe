@@ -537,6 +537,56 @@ h2::after {
   color: var(--ink);
 }
 
+.sermon-detail__scripture-options {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.sermon-detail__scripture-group {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.sermon-detail__scripture-heading {
+  font-size: 0.9rem;
+}
+
+.sermon-detail__scripture-option {
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-md);
+}
+
+.sermon-detail__scripture-option:hover {
+  background: var(--wash);
+}
+
+.sermon-detail__scripture-option input {
+  accent-color: var(--green);
+  flex: 0 0 auto;
+  height: 18px;
+  margin: 0;
+  width: 18px;
+}
+
+.sermon-detail__scripture-status {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  margin: var(--space-sm) 0 0;
+}
+
+.sermon-detail__scripture-save-error {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
 .sermon-detail__pill--topic {
   background: var(--green);
   color: var(--on-accent);

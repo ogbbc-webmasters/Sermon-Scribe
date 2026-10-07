@@ -8,6 +8,7 @@ module Api exposing
     , fetchSermons
     , pipelineEventDecoder
     , retryProcessing
+    , saveScriptures
     , sermonDecoder
     , uploadSermon
     , uploadTracker
@@ -20,6 +21,7 @@ import File exposing (File)
 import Http
 import Json.Decode as Decode exposing (Decoder)
 import Dict
+import Json.Encode as Encode
 
 
 type alias Sermon =
@@ -39,7 +41,10 @@ type alias Sermon =
     , titleGenerated : Maybe Bool
     , titleReasoning : Maybe String
     , speaker : Maybe String
+    , oldTestamentReading : Maybe String
+    , newTestamentReading : Maybe String
     , scriptures : List String
+    , scriptureOptions : List String
     , topics : List String
     , topicScores : List ( String, Float )
     , transcriptionMetadata : Maybe TranscriptionMetadata
@@ -91,7 +96,10 @@ sermonDecoder =
                 , titleGenerated = Nothing
                 , titleReasoning = Nothing
                 , speaker = Nothing
+                , oldTestamentReading = Nothing
+                , newTestamentReading = Nothing
                 , scriptures = []
+                , scriptureOptions = []
                 , topics = []
                 , topicScores = []
                 , transcriptionMetadata = Nothing
@@ -99,7 +107,7 @@ sermonDecoder =
         )
         (Decode.map8
             (\id originalFilename uploadedAt uploadedBy stage status progress error ->
-                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0 False Nothing Nothing Nothing Nothing Nothing [] [] [] Nothing
+                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0 False Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] [] [] [] Nothing
             )
             (Decode.field "id" Decode.string)
             (Decode.field "original_filename" Decode.string)
@@ -118,16 +126,17 @@ sermonDecoder =
 
 decodeMetadata : Sermon -> Decoder Sermon
 decodeMetadata sermon =
-    Decode.map7
-        (\transcript title generated reasoning speaker scriptures topics ->
+    Decode.map8
+        (\transcript title generated reasoning speaker oldTestamentReading newTestamentReading scriptures ->
             { sermon
                 | transcript = transcript
                 , title = title
                 , titleGenerated = generated
                 , titleReasoning = reasoning
                 , speaker = speaker
+                , oldTestamentReading = oldTestamentReading
+                , newTestamentReading = newTestamentReading
                 , scriptures = scriptures
-                , topics = topics
             }
         )
         (Decode.maybe (Decode.field "transcript" Decode.string))
@@ -135,13 +144,26 @@ decodeMetadata sermon =
         (Decode.maybe (Decode.field "title_generated" Decode.bool))
         (Decode.maybe (Decode.field "title_reasoning" Decode.string))
         (Decode.maybe (Decode.field "speaker" Decode.string))
+        (Decode.maybe (Decode.field "old_testament_reading" Decode.string))
+        (Decode.maybe (Decode.field "new_testament_reading" Decode.string))
         (Decode.oneOf [ Decode.field "scriptures" (Decode.list Decode.string), Decode.succeed [] ])
-        (Decode.oneOf [ Decode.field "topics" (Decode.list Decode.string), Decode.succeed [] ])
         |> Decode.andThen
             (\decodedSermon ->
-                Decode.map
-                    (\scores -> { decodedSermon | topicScores = Dict.toList scores })
-                    (Decode.oneOf [ Decode.field "topic_scores" (Decode.dict Decode.float), Decode.succeed Dict.empty ])
+                Decode.map2
+                    (\scriptureOptions topics ->
+                        { decodedSermon
+                            | scriptureOptions = scriptureOptions
+                            , topics = topics
+                        }
+                    )
+                    (Decode.oneOf [ Decode.field "scripture_options" (Decode.list Decode.string), Decode.succeed [] ])
+                    (Decode.oneOf [ Decode.field "topics" (Decode.list Decode.string), Decode.succeed [] ])
+                    |> Decode.andThen
+                        (\withTopics ->
+                            Decode.map
+                                (\scores -> { withTopics | topicScores = Dict.toList scores })
+                                (Decode.oneOf [ Decode.field "topic_scores" (Decode.dict Decode.float), Decode.succeed Dict.empty ])
+                        )
             )
         |> Decode.andThen
             (\decodedSermon ->
@@ -264,4 +286,21 @@ retryProcessing toMsg id part =
         { url = "/api/sermons/" ++ id ++ "/retry/" ++ part
         , body = Http.emptyBody
         , expect = Http.expectJson toMsg sermonDecoder
+        }
+
+
+saveScriptures : (Result Http.Error Sermon -> msg) -> String -> List String -> Cmd msg
+saveScriptures toMsg id scriptures =
+    Http.request
+        { method = "PUT"
+        , headers = []
+        , url = "/api/sermons/" ++ id ++ "/scriptures"
+        , body =
+            Http.jsonBody
+                (Encode.object
+                    [ ( "scriptures", Encode.list Encode.string scriptures ) ]
+                )
+        , expect = Http.expectJson toMsg sermonDecoder
+        , timeout = Nothing
+        , tracker = Nothing
         }
