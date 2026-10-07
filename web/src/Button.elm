@@ -1,4 +1,4 @@
-module Button exposing (Config, action, back, button, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSermon, disclosure, downloadAudio, editAudio, icon, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, textAction, titleInfo, view, warning)
+module Button exposing (Config, action, back, button, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSection, deleteSermon, disclosure, downloadAudio, editAudio, icon, keepSection, labeled, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, textAction, titleInfo, view, warning)
 
 import Html exposing (Html, details, div, p, strong, text)
 import Html.Attributes exposing (attribute, class, title, type_)
@@ -57,6 +57,16 @@ openSermon =
 deleteSermon : Config
 deleteSermon =
     Config "ph:trash" "Delete Sermon" "var(--red)"
+
+
+deleteSection : Config
+deleteSection =
+    Config "ph:trash" "Delete section" "var(--red)"
+
+
+keepSection : Config
+keepSection =
+    Config "ph:check" "Keep section" "var(--green)"
 
 
 downloadAudio : Config
@@ -128,6 +138,15 @@ dangerAction iconName caption busy attributes =
 textAction : String -> String -> Bool -> List (Html.Attribute msg) -> Html msg
 textAction caption description busy attributes =
     viewContent "button" (Config "" description "var(--ink-soft)") busy (class "icon-control icon-control--text" :: attributes) (text caption)
+
+
+{-| An icon action with a visible caption, using the same colors and accessible
+description as its icon-only variant.
+-}
+labeled : String -> Config -> Bool -> List (Html.Attribute msg) -> Html msg
+labeled caption config busy attributes =
+    viewContent "button" config busy (class "icon-control icon-control--labeled" :: attributes)
+        (Html.span [ class "button__content" ] [ icon config.icon, text caption ])
 
 
 disclosure : Config -> String -> Html msg

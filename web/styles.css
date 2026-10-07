@@ -232,6 +232,12 @@ h2::after {
   border-color: var(--green-dark);
 }
 
+.button__content {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--space-xs);
+}
+
 .button__icon {
   display: block;
   flex: 0 0 var(--icon-size);
@@ -461,6 +467,16 @@ h2::after {
   padding: 0;
   place-items: center;
   width: var(--control-size-small);
+}
+
+.icon-control--labeled {
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: var(--font-size-compact-action);
+  font-weight: 600;
+  min-width: var(--control-size-small);
+  padding: 0 var(--space-md);
+  width: auto;
 }
 
 .icon-control--text {

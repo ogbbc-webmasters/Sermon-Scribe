@@ -858,10 +858,10 @@ sectionCard model draft index section =
         (Just (text range))
         [ Button.primaryAction "ph:headphones" "Preview start & finish" False [ onClick Preview, disabled busy ]
         , if section.keep then
-            Button.dangerAction "ph:trash" "Delete section" False [ onClick (Keep index False), disabled busy ]
+            Button.labeled "Delete" Button.deleteSection False [ onClick (Keep index False), disabled busy ]
 
           else
-            Button.primaryAction "ph:check" "Keep section" False [ onClick (Keep index True), disabled busy ]
+            Button.labeled "Keep" Button.keepSection False [ onClick (Keep index True), disabled busy ]
         ]
         []
 
