@@ -56,9 +56,7 @@ viewSermonDetail : Model -> Sermon -> Html Msg
 viewSermonDetail model sermon =
     let
         hasMetadata =
-            sermon.transcript
-                /= Nothing
-                || sermon.title
+            sermon.title
                 /= Nothing
                 || sermon.titleReasoning
                 /= Nothing
@@ -112,18 +110,9 @@ viewSermonDetail model sermon =
             , if Editing.isOpen sermon.id model.editor then
                 Html.map EditingMsg (Editing.view model.editor)
 
-              else if sermon.stage == "editing" && sermon.status == "done" then
-                div [ Ui.panel ]
-                    [ h2 [ Ui.panelHeading ] [ text "Ready to edit" ]
-                    , div [ Ui.sermonActions ]
-                        [ button [ Button.primaryButton, onClick (EditingMsg (Editing.Open sermon.id False)) ] [ text "Edit recording" ]
-                        , button [ Button.button, onClick (EditingMsg (Editing.Open sermon.id True)) ] [ text "Continue without editing" ]
-                        ]
-                    ]
-
               else
                 text ""
-            , if Editing.isOpen sermon.id model.editor || sermon.stage == "editing" then
+            , if Editing.isOpen sermon.id model.editor then
                 text ""
 
               else
@@ -253,7 +242,12 @@ viewDetailAudio sermon =
             Button.editAudio
             False
             [ onClick (EditingMsg (Editing.Open sermon.id False))
-            , disabled (sermon.stage /= "metadata" || (sermon.status /= "done" && sermon.status /= "failed"))
+            , disabled
+                (not
+                    ((sermon.stage == "editing" && sermon.status == "done")
+                        || (sermon.stage == "metadata" && (sermon.status == "done" || sermon.status == "failed"))
+                    )
+                )
             ]
         , Button.view "a"
             Button.downloadAudio
