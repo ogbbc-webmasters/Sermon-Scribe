@@ -6,7 +6,6 @@ import Card
 import Html exposing (Html, div, h2, input, label, p, text)
 import Html.Attributes exposing (attribute, checked, class, disabled, id, name, type_)
 import Html.Events exposing (on, onClick, preventDefaultOn)
-import Html.Keyed
 import Http
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -792,7 +791,12 @@ navigation model draft =
             , Button.action "ph:caret-right" "Next section" False [ onClick (Select (Passage nextSection)), disabled (busy || nextSection >= List.length draft.sections) ]
             , Button.action "ph:skip-back" "Previous breakpoint" False [ onClick (Select (Boundary previousBoundary)), disabled (busy || previousBoundary < 1) ]
             , Button.action "ph:skip-forward" "Next breakpoint" False [ onClick (Select (Boundary nextBoundary)), disabled (busy || nextBoundary >= List.length draft.breakpoints - 1) ]
-            , Button.action
+            , (if model.addingBreakpoint then
+                Button.action
+
+               else
+                Button.primaryAction
+              )
                 (if model.addingBreakpoint then
                     "ph:x"
 
@@ -842,10 +846,6 @@ sectionCard model draft index section =
 
         busy =
             model.regenerating || model.applying || model.pendingApply /= Nothing
-
-        radios =
-            Html.Keyed.node "div" [ class "editor__choices", attribute "role" "group", attribute "aria-label" ("Section " ++ String.fromInt (index + 1) ++ " inclusion") ]
-                (List.map (\( keep, caption ) -> ( section.id ++ caption, label [ class "editor__choice" ] [ input [ type_ "radio", name section.id, checked (section.keep == keep), disabled busy, onClick (Keep index keep) ] [], text caption ] )) [ ( True, "Keep" ), ( False, "Delete" ) ])
     in
     Card.viewWithAttributes
         (if section.keep then
@@ -856,10 +856,14 @@ sectionCard model draft index section =
         )
         (text ("Section " ++ String.fromInt (index + 1)))
         (Just (text range))
-        [ radios ]
-        [ div [ Ui.sermonActions ]
-            [ Button.action "ph:headphones" "Preview start & finish" False [ onClick Preview, disabled busy ] ]
+        [ Button.primaryAction "ph:headphones" "Preview start & finish" False [ onClick Preview, disabled busy ]
+        , if section.keep then
+            Button.dangerAction "ph:trash" "Delete section" False [ onClick (Keep index False), disabled busy ]
+
+          else
+            Button.primaryAction "ph:check" "Keep section" False [ onClick (Keep index True), disabled busy ]
         ]
+        []
 
 
 boundaryPanel : Model -> Draft -> Int -> Breakpoint -> Html Msg
@@ -908,7 +912,7 @@ boundaryPanel model draft index b =
         (Just (text (timestamp b.time)))
         []
         [ div [ Ui.sermonActions ]
-            [ Button.action "ph:headphones" "Listen around breakpoint" False [ onClick Preview, disabled busy ]
+            [ Button.primaryAction "ph:headphones" "Listen around breakpoint" False [ onClick Preview, disabled busy ]
             , Button.action "ph:arrow-left" "Earlier" False [ onClick (Nudge -0.1), disabled busy ]
             , Button.action "ph:arrow-right" "Later" False [ onClick (Nudge 0.1), disabled busy ]
             , Button.dangerAction "ph:minus" "Remove breakpoint" False [ onClick RemoveBoundary, disabled (busy || index == 0 || index == List.length draft.breakpoints - 1) ]

@@ -66,7 +66,7 @@ downloadAudio =
 
 editAudio : Config
 editAudio =
-    Config "ph:scissors" "Edit recording" "var(--ink-soft)"
+    Config "ph:scissors" "Edit recording" "var(--green)"
 
 
 copyTranscript : Config
