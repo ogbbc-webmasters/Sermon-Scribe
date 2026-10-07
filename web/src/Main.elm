@@ -59,6 +59,7 @@ init _ url key =
       , hasPipelineSnapshot = False
       , upload = Idle
       , confirmingDelete = Nothing
+      , showingAIWarning = False
       , deleting = Set.empty
       , deletedSermons = Set.empty
       , deleteError = Nothing
@@ -117,6 +118,7 @@ update msg model =
                 , transcriptMatch = 0
                 , transcriptCopyStatus = Nothing
                 , confirmingDelete = Nothing
+                , showingAIWarning = False
                 , retryError = Nothing
                 , deleteError = Nothing
               }
@@ -342,6 +344,12 @@ update msg model =
 
         TranscriptCopied succeeded ->
             ( { model | transcriptCopyStatus = Just succeeded }, Cmd.none )
+
+        ShowAIWarning ->
+            ( { model | showingAIWarning = True }, Cmd.none )
+
+        CloseAIWarning ->
+            ( { model | showingAIWarning = False }, Cmd.none )
 
         AskDelete sermon ->
             ( { model | confirmingDelete = Just sermon }, Cmd.none )

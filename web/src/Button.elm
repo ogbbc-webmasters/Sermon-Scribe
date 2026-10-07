@@ -1,4 +1,4 @@
-module Button exposing (Config, action, applyEdits, back, button, cancelDialog, confirmRegeneration, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSection, deleteSermon, disclosure, disclosureWithContent, downloadAudio, editAudio, icon, keepSection, labeled, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, textAction, titleInfo, uploadSermon, view, warning)
+module Button exposing (Config, action, applyEdits, back, button, cancelDialog, confirmRegeneration, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSection, deleteSermon, disclosure, downloadAudio, editAudio, icon, keepSection, labeled, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, textAction, titleInfo, uploadSermon, view, warning)
 
 import Html exposing (Html, details, div, p, strong, text)
 import Html.Attributes exposing (attribute, class, title, type_)
@@ -174,16 +174,13 @@ labeled caption config busy attributes =
 
 disclosure : Config -> String -> Html msg
 disclosure config body =
-    disclosureWithContent config [ p [ Ui.panelText ] [ text body ] ]
-
-
-disclosureWithContent : Config -> List (Html msg) -> Html msg
-disclosureWithContent config content =
     details [ class "icon-disclosure" ]
         [ view "summary" config False []
         , div [ class "icon-disclosure__content" ]
             [ div [ Ui.panel ]
-                (strong [ Ui.panelTitle ] [ text config.label ] :: content)
+                [ strong [ Ui.panelTitle ] [ text config.label ]
+                , p [ Ui.panelText ] [ text body ]
+                ]
             ]
         ]
 

@@ -35,6 +35,7 @@ type alias Model =
     , hasPipelineSnapshot : Bool
     , upload : UploadState
     , confirmingDelete : Maybe Sermon
+    , showingAIWarning : Bool
     , deleting : Set String
     , deletedSermons : Set String
     , deleteError : Maybe String
@@ -71,6 +72,8 @@ type Msg
     | SelectTranscriptMatch Int
     | CopyTranscript String
     | TranscriptCopied Bool
+    | ShowAIWarning
+    | CloseAIWarning
     | AskDelete Sermon
     | CancelDelete
     | ConfirmDelete Sermon

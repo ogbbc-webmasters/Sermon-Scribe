@@ -28,13 +28,13 @@ view model =
                             viewSermonDetail model sermon
 
                         Nothing ->
-                            viewDetailMessage "Sermon not found."
+                            viewDetailMessage model "Sermon not found."
 
                 Loading ->
-                    viewDetailMessage "Loading sermon…"
+                    viewDetailMessage model "Loading sermon…"
 
                 LoadFailed ->
-                    viewDetailMessage "Could not load the sermon. Please reload the page."
+                    viewDetailMessage model "Could not load the sermon. Please reload the page."
 
         Nothing ->
             div [ class "page" ]
@@ -139,14 +139,14 @@ formatCost amount =
     "$" ++ String.fromInt (units // 10000) ++ "." ++ String.padLeft 4 '0' (String.fromInt (modBy 10000 units))
 
 
-viewDetailMessage : String -> Html Msg
-viewDetailMessage message =
+viewDetailMessage : Model -> String -> Html Msg
+viewDetailMessage model message =
     div [ class "page page--detail" ]
         [ div [ class "sermon-detail" ]
             [ div [ class "sermon-detail__header" ]
                 [ div [ class "sermon-detail__navigation" ]
                     [ Button.view "a" Button.back False [ href "/" ]
-                    , viewAIWarning Nothing
+                    , viewAIWarning model Nothing
                     ]
                 , Card.view (text "Sermon") [] [ p [] [ text message ] ]
                 ]
@@ -170,7 +170,7 @@ viewSermonDetail model sermon =
             [ div [ class "sermon-detail__header" ]
                 [ div [ class "sermon-detail__navigation" ]
                     [ Button.view "a" Button.back False [ href "/" ]
-                    , viewAIWarning (Just sermon)
+                    , viewAIWarning model (Just sermon)
                     ]
                 , Card.view
                     (text (Maybe.withDefault "Title Unknown" sermon.title))
@@ -241,11 +241,25 @@ viewSermonDetail model sermon =
         ]
 
 
-viewAIWarning : Maybe Sermon -> Html Msg
-viewAIWarning sermon =
-    Button.disclosureWithContent Button.warning
-        [ p [ Ui.panelText ] [ text "This page includes AI-generated content to save you time. Please carefully verify the metadata before publishing." ]
-        , Maybe.map viewAICosts sermon |> Maybe.withDefault (text "")
+viewAIWarning : Model -> Maybe Sermon -> Html Msg
+viewAIWarning model sermon =
+    let
+        closeButton =
+            Button.cancelDialog
+    in
+    div []
+        [ Button.view "button" Button.warning False [ onClick ShowAIWarning ]
+        , if model.showingAIWarning then
+            Dialog.view
+                { id = "ai-warning", title = "Verify AI-generated content", onClose = CloseAIWarning }
+                []
+                [ p [ Ui.panelText ] [ text "This page includes AI-generated content to save you time. Please carefully verify the metadata before publishing." ]
+                , Maybe.map viewAICosts sermon |> Maybe.withDefault (text "")
+                ]
+                [ Button.labeled "Close" { closeButton | label = "Close" } False [ autofocus True, onClick CloseAIWarning ] ]
+
+          else
+            text ""
         ]
 
 
