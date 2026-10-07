@@ -559,7 +559,7 @@ kindLabel kind =
             "Silence ends"
 
         "speaker" ->
-            "Speaker segment"
+            "New speaker detected"
 
         "singing_start" ->
             "Singing starts"
