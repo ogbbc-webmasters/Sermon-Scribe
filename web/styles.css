@@ -537,26 +537,11 @@ h2::after {
   color: var(--ink);
 }
 
-.sermon-detail__scripture-options {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-xs);
-}
-
 .sermon-detail__scripture-selections {
-  display: grid;
-  gap: var(--space-xs);
-}
-
-.sermon-detail__scripture-group {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-xs);
-}
-
-.sermon-detail__scripture-heading {
-  font-size: 0.9rem;
 }
 
 .sermon-detail__scripture-option {

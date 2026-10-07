@@ -182,21 +182,8 @@ viewDetailMetadata model sermon =
         additionalOptions =
             List.filter (\reference -> not (List.member reference readingReferences)) options
 
-        readingGroups =
-            List.filterMap
-                (\( heading, maybeReference ) ->
-                    Maybe.map
-                        (\reference ->
-                            div [ class "sermon-detail__scripture-group" ]
-                                [ strong [ class "sermon-detail__scripture-heading" ] [ text heading ]
-                                , viewScriptureOption sermon.id selected reference
-                                ]
-                        )
-                        maybeReference
-                )
-                [ ( "Old Testament Reading", sermon.oldTestamentReading )
-                , ( "New Testament Reading", sermon.newTestamentReading )
-                ]
+        scriptureOptions =
+            readingReferences ++ additionalOptions
     in
     div [ class "sermon-detail__sections" ]
         [ Card.view (text "Scripture References")
@@ -214,23 +201,8 @@ viewDetailMetadata model sermon =
 
               else
                 div [ class "sermon-detail__scripture-selections" ]
-                    (readingGroups
-                        ++ (if List.isEmpty additionalOptions then
-                                []
-
-                            else
-                                [ div [ class "sermon-detail__scripture-group" ]
-                                    [ strong [ class "sermon-detail__scripture-heading" ] [ text "Other passages" ]
-                                    , div [ class "sermon-detail__scripture-options" ]
-                                        (List.map (viewScriptureOption sermon.id selected) additionalOptions)
-                                    ]
-                                ]
-                           )
-                    )
-            , if Set.member sermon.id model.scriptureSaving then
-                p [ class "sermon-detail__scripture-status", attribute "role" "status" ] [ text "Saving selection…" ]
-
-              else if Set.member sermon.id model.scriptureSaveErrors then
+                    (List.map (viewScriptureOption sermon.id selected) scriptureOptions)
+            , if Set.member sermon.id model.scriptureSaveErrors then
                 div [ class "sermon-detail__scripture-save-error" ]
                     [ p [ class "sermon-detail__scripture-status" ] [ text "Could not save your selection." ]
                     , button [ Ui.button, onClick (RetryScriptureSave sermon) ] [ text "Retry" ]
