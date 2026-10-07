@@ -236,6 +236,7 @@ h2::after {
   align-items: center;
   display: inline-flex;
   gap: var(--space-xs);
+  line-height: normal;
 }
 
 .button__icon {
