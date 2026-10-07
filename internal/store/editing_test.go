@@ -14,6 +14,47 @@ func editingFixture() Editing {
 	return Editing{Duration: 10, Breakpoints: []Breakpoint{{ID: "start", Kind: "start"}, {ID: "middle", Time: 5, Kind: "manual"}, {ID: "end", Time: 10, Kind: "end"}}, Sections: []Section{{"a", true}, {"b", true}}}
 }
 
+func TestPlaybackVersionTracksCommittedGeneration(t *testing.T) {
+	st, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.CreateSermon(Sermon{ID: "playback", Stage: "editing", Status: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	check := func(want string) {
+		t.Helper()
+		sm, err := st.GetSermon("playback")
+		if err != nil || sm.PlaybackVersion != want {
+			t.Fatalf("detail playback version: %q, want %q: %v", sm.PlaybackVersion, want, err)
+		}
+		list, err := st.ListSermons()
+		if err != nil || len(list) != 1 || list[0].PlaybackVersion != want {
+			t.Fatalf("snapshot playback version: %+v: %v", list, err)
+		}
+	}
+	check("")
+	if err := st.PrepareEditing("playback", editingFixture(), "source", TranscriptionMetadata{}); err != nil {
+		t.Fatal(err)
+	}
+	check("")
+	for _, path := range []string{"edit-first/edited.mp3", "edit-second/edited.mp3"} {
+		if err := st.CommitEditing("playback", path, "same text", TranscriptionMetadata{Duration: 5}, true); err != nil {
+			t.Fatal(err)
+		}
+		check(path)
+	}
+	if _, err := st.MutateEditing("playback", nil, 1, false, "render-next"); err != nil {
+		t.Fatal(err)
+	}
+	check("edit-second/edited.mp3")
+	if err := st.CommitEditing("playback", "", "source", TranscriptionMetadata{}, false); err != nil {
+		t.Fatal(err)
+	}
+	check("")
+}
+
 func TestEditingDurationUsesKeptSections(t *testing.T) {
 	st, err := Open(":memory:")
 	if err != nil {

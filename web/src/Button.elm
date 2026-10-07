@@ -1,4 +1,4 @@
-module Button exposing (Config, action, back, button, copiedTranscript, copyTranscript, dangerButton, deleteSermon, disclosure, downloadAudio, editAudio, icon, nextMatch, openSermon, previousMatch, primaryButton, regenerate, titleInfo, view, warning)
+module Button exposing (Config, action, back, button, copiedTranscript, copyTranscript, dangerButton, deleteSermon, disclosure, downloadAudio, editAudio, icon, nextMatch, openSermon, previousMatch, primaryButton, regenerate, spinner, titleInfo, view, warning)
 
 import Html exposing (Html, details, div, p, strong, text)
 import Html.Attributes exposing (attribute, class, title, type_)

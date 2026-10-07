@@ -50,6 +50,7 @@ type alias Sermon =
     , topicScores : List ( String, Float )
     , transcriptionMetadata : Maybe TranscriptionMetadata
     , editingDuration : Maybe Float
+    , playbackVersion : String
     }
 
 
@@ -109,7 +110,7 @@ sermonDecoder =
         )
         (Decode.map8
             (\id originalFilename uploadedAt uploadedBy stage status progress error ->
-                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0 False Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] [] [] [] Nothing Nothing
+                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0 False Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] [] [] [] Nothing Nothing ""
             )
             (Decode.field "id" Decode.string)
             (Decode.field "original_filename" Decode.string)
@@ -169,10 +170,11 @@ decodeMetadata sermon =
             )
         |> Decode.andThen
             (\decodedSermon ->
-                Decode.map2
-                    (\metadata duration -> { decodedSermon | transcriptionMetadata = metadata, editingDuration = duration })
+                Decode.map3
+                    (\metadata duration playback -> { decodedSermon | transcriptionMetadata = metadata, editingDuration = duration, playbackVersion = playback })
                     (Decode.maybe (Decode.field "transcription_metadata" transcriptionMetadataDecoder))
                     (Decode.maybe (Decode.field "editing_duration" Decode.float))
+                    (Decode.oneOf [ Decode.field "playback_version" Decode.string, Decode.succeed "" ])
             )
 
 

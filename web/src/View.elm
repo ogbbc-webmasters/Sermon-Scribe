@@ -14,6 +14,7 @@ import Json.Decode as Decode exposing (Decoder)
 import Set
 import Types exposing (Model, Msg(..), SermonList(..), UploadState(..))
 import Ui
+import Url
 
 
 view : Model -> Html Msg
@@ -242,7 +243,7 @@ viewDetailAudio : Model -> Sermon -> Html Msg
 viewDetailAudio model sermon =
     let
         source =
-            audioUrl sermon.id "playback"
+            audioUrl sermon.id "playback" ++ "?v=" ++ Url.percentEncode sermon.playbackVersion
 
         editable =
             (sermon.stage == "editing" && sermon.status == "done")
@@ -253,6 +254,10 @@ viewDetailAudio model sermon =
 
         busy =
             ownsDraft && (model.editor.regenerating || model.editor.applying || model.editor.pendingApply /= Nothing)
+
+        applying =
+            (ownsDraft && (model.editor.applying || model.editor.pendingApply /= Nothing))
+                || (sermon.stage == "editing" && (sermon.status == "pending" || sermon.status == "running"))
 
         duration =
             case
@@ -288,11 +293,15 @@ viewDetailAudio model sermon =
         , Button.view "a"
             Button.downloadAudio
             False
-            [ href (source ++ "?download=1")
+            [ href (source ++ "&download=1")
             , download ""
             ]
         ]
-        [ audio [ class "sermon-detail__audio", controls True, attribute "preload" "metadata", src source ] []
+        [ if applying then
+            div [ class "sermon-detail__audio-loading", attribute "role" "status", attribute "aria-label" "Applying edits" ] [ Button.spinner ]
+
+          else
+            audio [ class "sermon-detail__audio", controls True, attribute "preload" "metadata", src source ] []
         , if duration |> Maybe.map (\seconds -> seconds >= 80 * 60) |> Maybe.withDefault False then
             p [ Ui.hint ] [ text "Please edit the audio to under 80 minutes." ]
 

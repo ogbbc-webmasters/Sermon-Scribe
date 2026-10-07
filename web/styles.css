@@ -656,6 +656,14 @@ h2::after {
   width: 100%;
 }
 
+.sermon-detail__audio-loading {
+  color: var(--ink-soft);
+  display: grid;
+  margin-bottom: var(--space-sm);
+  min-height: var(--control-size);
+  place-items: center;
+}
+
 .sermon-detail__columns {
   display: grid;
   grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);

@@ -250,8 +250,17 @@ func TestEditingFFmpegPipelinePauseAndRedo(t *testing.T) {
 	if _, err := os.Stat(source); err != nil {
 		t.Fatal("source lost")
 	}
-	// Complete rendering without metadata for the redo exercise.
-	if _, err = st.CompleteJob(job, nil, time.Now()); err != nil {
+	// Completion publishes the new audio generation and queues metadata from
+	// the cut transcript, rather than stopping after the render.
+	sm, err = st.CompleteJob(job, result.Next, time.Now())
+	if err != nil || sm.Stage != "metadata" || sm.Status != "pending" || sm.PlaybackVersion != path || *sm.Transcript != "last" {
+		t.Fatalf("metadata handoff: %+v %v", sm, err)
+	}
+	metadataJob, err := st.ClaimNextJob(ctx, []string{"extract_metadata"}, time.Now())
+	if err != nil || metadataJob.SermonID != "edit-test" {
+		t.Fatalf("metadata not queued: %+v %v", metadataJob, err)
+	}
+	if _, err = st.CompleteJob(metadataJob, nil, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = st.MutateEditing("edit-test", nil, d.Revision, true, "skip"); err != nil {

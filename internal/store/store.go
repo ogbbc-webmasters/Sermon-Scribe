@@ -29,6 +29,7 @@ type Sermon struct {
 	AppliedRegions                json.RawMessage        `json:"applied_regions,omitempty"`
 	EditApproved                  bool                   `json:"edit_approved"`
 	EditingDuration               *float64               `json:"editing_duration,omitempty"`
+	PlaybackVersion               string                 `json:"playback_version,omitempty"`
 	Transcript                    *string                `json:"transcript,omitempty"`
 	Title                         *string                `json:"title,omitempty"`
 	TitleGenerated                *bool                  `json:"title_generated,omitempty"`
@@ -124,7 +125,8 @@ const sermonViewSQL = `
 	       CASE WHEN s.transcript IS NULL THEN t.metadata ELSE s.transcription_metadata END,
 	       s.title, s.title_generated, s.title_reasoning,
 	       s.speaker, s.old_testament_reading, s.new_testament_reading,
-	       s.scriptures, s.scripture_options, s.topics, s.topic_scores, e.draft
+	       s.scriptures, s.scripture_options, s.topics, s.topic_scores, e.draft,
+	       CASE WHEN e.active THEN e.playback ELSE '' END
 	FROM sermons s
 	LEFT JOIN source_transcriptions t ON t.sermon_id = s.id
 	LEFT JOIN editing e ON e.sermon_id = s.id
@@ -184,7 +186,7 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 		&sm.NormalizationGateAdjustment, &sm.NormalizationVolumeAdjustment,
 		&sm.NormalizationReviewed, &applied, &sm.EditApproved,
 		&transcript, &transcriptionMetadata, &title, &titleGenerated, &titleReasoning, &speaker,
-		&oldTestamentReading, &newTestamentReading, &scriptures, &scriptureOptions, &topics, &topicScores, &editingDraft,
+		&oldTestamentReading, &newTestamentReading, &scriptures, &scriptureOptions, &topics, &topicScores, &editingDraft, &sm.PlaybackVersion,
 	)
 	if editingDraft.Valid {
 		var draft Editing
