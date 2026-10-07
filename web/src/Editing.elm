@@ -912,9 +912,9 @@ boundaryPanel model draft index b =
         (Just (text (timestamp b.time)))
         [ div [ class "editor__breakpoint-actions" ]
             [ Button.primaryAction "ph:headphones" "Listen around breakpoint" False [ onClick Preview, disabled busy ]
-            , Button.action "ph:arrow-left" "Earlier" False [ onClick (Nudge -0.1), disabled busy ]
-            , Button.action "ph:arrow-right" "Later" False [ onClick (Nudge 0.1), disabled busy ]
-            , Button.dangerAction "ph:minus" "Remove breakpoint" False [ onClick RemoveBoundary, disabled (busy || index == 0 || index == List.length draft.breakpoints - 1) ]
+            , Button.action "ph:minus" "Earlier by 0.1 seconds" False [ onClick (Nudge -0.1), disabled busy ]
+            , Button.action "ph:plus" "Later by 0.1 seconds" False [ onClick (Nudge 0.1), disabled busy ]
+            , Button.dangerAction "ph:trash" "Remove breakpoint" False [ onClick RemoveBoundary, disabled (busy || index == 0 || index == List.length draft.breakpoints - 1) ]
             ]
         ]
         []
