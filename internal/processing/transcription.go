@@ -106,7 +106,7 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 		return Result{}, err
 	}
 	setAIHeaders(req, h.config.APIKey, contentType)
-	resp, err := h.client.Do(req)
+	resp, err := doAIRequest(h.store, h.client, req, job, "transcribe", h.config.TranscriptionModel)
 	if err != nil {
 		return Result{}, err
 	}
@@ -317,7 +317,7 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 		return Result{}, err
 	}
 	setAIHeaders(req, h.config.APIKey, "application/json")
-	resp, err := h.client.Do(req)
+	resp, err := doAIRequest(h.store, h.client, req, job, job.Type, h.config.MetadataModel)
 	if err != nil {
 		return Result{}, err
 	}
@@ -419,7 +419,7 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 	if len(scriptureOptions) > maxScriptureOptions {
 		scriptureOptions = scriptureOptions[:maxScriptureOptions]
 	}
-	title, scores, err := h.classifyMetadata(ctx, *sermon.Transcript, result.TitleCandidates, job.Type != "extract_title" && job.Type != "extract_scriptures")
+	title, scores, err := h.classifyMetadata(ctx, job, *sermon.Transcript, result.TitleCandidates, job.Type != "extract_title" && job.Type != "extract_scriptures")
 	if err != nil {
 		return Result{}, err
 	}
@@ -439,7 +439,7 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 	return Result{}, reporter.Progress(100, nil)
 }
 
-func (h *MetadataHandler) classifyMetadata(ctx context.Context, transcript string, candidates []titleCandidate, includeTopics bool) (titleCandidate, map[string]float64, error) {
+func (h *MetadataHandler) classifyMetadata(ctx context.Context, job store.Job, transcript string, candidates []titleCandidate, includeTopics bool) (titleCandidate, map[string]float64, error) {
 	questions := make(map[string]any)
 	if len(candidates) == 0 && !includeTopics {
 		return titleCandidate{}, nil, nil
@@ -482,7 +482,14 @@ func (h *MetadataHandler) classifyMetadata(ctx context.Context, transcript strin
 		return titleCandidate{}, nil, err
 	}
 	setAIHeaders(req, h.config.APIKey, "application/json")
-	resp, err := h.client.Do(req)
+	task := "select_title"
+	if includeTopics {
+		task = "score_topics"
+		if len(candidates) > 0 {
+			task = "select_title_and_score_topics"
+		}
+	}
+	resp, err := doAIRequest(h.store, h.client, req, job, task, h.config.TopicModel)
 	if err != nil {
 		return titleCandidate{}, nil, err
 	}

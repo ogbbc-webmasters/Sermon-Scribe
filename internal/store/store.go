@@ -42,6 +42,7 @@ type Sermon struct {
 	Topics                        []string               `json:"topics,omitempty"`
 	TopicScores                   map[string]float64     `json:"topic_scores,omitempty"`
 	TranscriptionMetadata         *TranscriptionMetadata `json:"transcription_metadata,omitempty"`
+	AICosts                       []AICost               `json:"ai_costs"`
 }
 
 // TranscriptionMetadata contains provider-supplied timing and diarization.
@@ -126,7 +127,12 @@ const sermonViewSQL = `
 	       s.title, s.title_generated, s.title_reasoning,
 	       s.speaker, s.old_testament_reading, s.new_testament_reading,
 	       s.scriptures, s.scripture_options, s.topics, s.topic_scores, e.draft,
-	       CASE WHEN e.active THEN e.playback ELSE '' END
+	       CASE WHEN e.active THEN e.playback ELSE '' END,
+	       (SELECT json_group_array(json_object('task', task, 'model', model,
+	           'calls', calls, 'cost_usd', cost_usd, 'unknown_costs', unknown_costs))
+	        FROM (SELECT task, model, COUNT(*) AS calls, COALESCE(SUM(cost_usd), 0) AS cost_usd,
+	              COUNT(*) - COUNT(cost_usd) AS unknown_costs
+	              FROM ai_calls WHERE sermon_id = s.id GROUP BY task, model ORDER BY task, model))
 	FROM sermons s
 	LEFT JOIN source_transcriptions t ON t.sermon_id = s.id
 	LEFT JOIN editing e ON e.sermon_id = s.id
@@ -180,14 +186,21 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 	var transcript, transcriptionMetadata, title, titleReasoning, speaker, oldTestamentReading, newTestamentReading, scriptures, scriptureOptions, topics, topicScores sql.NullString
 	var titleGenerated sql.NullBool
 	var editingDraft sql.NullString
+	var costs string
 	err := row.Scan(
 		&sm.ID, &sm.OriginalFilename, &sm.UploadedAt, &sm.UploadedBy,
 		&sm.Stage, &sm.Status, &sm.Progress, &sm.Error,
 		&sm.NormalizationGateAdjustment, &sm.NormalizationVolumeAdjustment,
 		&sm.NormalizationReviewed, &applied, &sm.EditApproved,
 		&transcript, &transcriptionMetadata, &title, &titleGenerated, &titleReasoning, &speaker,
-		&oldTestamentReading, &newTestamentReading, &scriptures, &scriptureOptions, &topics, &topicScores, &editingDraft, &sm.PlaybackVersion,
+		&oldTestamentReading, &newTestamentReading, &scriptures, &scriptureOptions, &topics, &topicScores, &editingDraft, &sm.PlaybackVersion, &costs,
 	)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal([]byte(costs), &sm.AICosts); err != nil {
+		return fmt.Errorf("decode AI costs: %w", err)
+	}
 	if editingDraft.Valid {
 		var draft Editing
 		if err := json.Unmarshal([]byte(editingDraft.String), &draft); err != nil {
