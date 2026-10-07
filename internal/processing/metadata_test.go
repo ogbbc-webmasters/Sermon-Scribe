@@ -63,6 +63,32 @@ func TestTranscriptionRetryChainsMetadataAndRetainsReturnState(t *testing.T) {
 		if got := req.FormValue("model"); got != "microsoft/mai-transcribe-2" {
 			t.Fatalf("unexpected transcription model %q", got)
 		}
+		if got := req.FormValue("response_format"); got != "verbose_json" {
+			t.Fatalf("transcription response format = %q, want verbose_json", got)
+		}
+		if got := req.MultipartForm.Value["timestamp_granularities[]"]; !reflect.DeepEqual(got, []string{"segment", "word"}) {
+			t.Fatalf("transcription timestamp granularities = %v", got)
+		}
+		var providerOptions struct {
+			Options struct {
+				Azure struct {
+					Diarization struct {
+						Enabled bool `json:"enabled"`
+					} `json:"diarization"`
+					EnhancedMode struct {
+						ModelOptions struct {
+							TranscribeStyle string `json:"transcribeStyle"`
+						} `json:"modelOptions"`
+					} `json:"enhancedMode"`
+				} `json:"azure"`
+			} `json:"options"`
+		}
+		if err := json.Unmarshal([]byte(req.FormValue("provider")), &providerOptions); err != nil {
+			t.Fatalf("decode provider options: %v", err)
+		}
+		if !providerOptions.Options.Azure.Diarization.Enabled || providerOptions.Options.Azure.EnhancedMode.ModelOptions.TranscribeStyle != "verbatim" {
+			t.Fatalf("unexpected provider options: %+v", providerOptions)
+		}
 		file, header, err := req.FormFile("file")
 		if err != nil {
 			t.Fatal(err)
@@ -72,7 +98,7 @@ func TestTranscriptionRetryChainsMetadataAndRetainsReturnState(t *testing.T) {
 		if err != nil || header.Filename != wantFile || string(audio) != wantAudio {
 			t.Fatalf("transcription source = %q %q, %v; want %q %q", header.Filename, audio, err, wantFile, wantAudio)
 		}
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"text":"New transcript"}`)), Header: make(http.Header)}, nil
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"text":"New transcript","language":"en","duration":3.2,"segments":[{"start":0.1,"end":1.4,"text":"New transcript","speaker":0}],"words":[{"word":"New","start":0.1,"end":0.7,"speaker":0,"speaker_label":"Speaker 1","confidence":0.98}]}`)), Header: make(http.Header)}, nil
 	})
 	const parameters = `{"return_stage":"normalization","return_status":"done"}`
 	result, err := h.Run(context.Background(), store.Job{SermonID: "transcription-retry", Parameters: parameters}, &recordingReporter{})
@@ -85,6 +111,15 @@ func TestTranscriptionRetryChainsMetadataAndRetainsReturnState(t *testing.T) {
 	}
 	if sm.Transcript == nil || *sm.Transcript != "New transcript" || result.Next == nil || result.Next.Type != "extract_metadata" || result.Next.Stage != "metadata" || result.Next.Parameters != parameters {
 		t.Fatalf("incorrect transcription retry result: %+v, %+v", sm, result)
+	}
+	if sm.TranscriptionMetadata == nil || sm.TranscriptionMetadata.Language != "en" || sm.TranscriptionMetadata.Duration != 3.2 || len(sm.TranscriptionMetadata.Segments) != 1 || len(sm.TranscriptionMetadata.Words) != 1 {
+		t.Fatalf("transcription metadata was not persisted: %+v", sm.TranscriptionMetadata)
+	}
+	if speaker := sm.TranscriptionMetadata.Segments[0].Speaker; speaker == nil || *speaker != 0 {
+		t.Fatalf("segment speaker = %v, want speaker 0", speaker)
+	}
+	if word := sm.TranscriptionMetadata.Words[0]; word.SpeakerLabel != "Speaker 1" || word.Confidence == nil || *word.Confidence != 0.98 {
+		t.Fatalf("word metadata was not retained: %+v", word)
 	}
 }
 

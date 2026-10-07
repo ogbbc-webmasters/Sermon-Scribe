@@ -588,6 +588,35 @@ h2::after {
   margin: 0;
 }
 
+.sermon-detail__transcript-segment {
+  border-bottom: 1px solid var(--line);
+  padding: var(--space-sm) 0;
+}
+
+.sermon-detail__transcript-segment-meta {
+  align-items: center;
+  color: var(--ink-soft);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-xs);
+}
+
+.sermon-detail__transcript-timestamp {
+  font-variant-numeric: tabular-nums;
+}
+
+.sermon-detail__transcript-speaker {
+  color: var(--green-dark);
+  font-weight: 600;
+}
+
+.sermon-detail__transcript-segment-text {
+  line-height: 1.6;
+  margin: 0;
+}
+
 /* spinner — progress indicator for in-flight actions */
 
 .spinner {

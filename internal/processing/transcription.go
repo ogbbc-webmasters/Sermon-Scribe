@@ -89,6 +89,30 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 	if err := form.WriteField("model", h.config.TranscriptionModel); err != nil {
 		return Result{}, err
 	}
+	if err := form.WriteField("response_format", "verbose_json"); err != nil {
+		return Result{}, err
+	}
+	for _, granularity := range []string{"segment", "word"} {
+		if err := form.WriteField("timestamp_granularities[]", granularity); err != nil {
+			return Result{}, err
+		}
+	}
+	providerOptions, err := json.Marshal(map[string]any{
+		"options": map[string]any{
+			"azure": map[string]any{
+				"diarization": map[string]bool{"enabled": true},
+				"enhancedMode": map[string]any{
+					"modelOptions": map[string]string{"transcribeStyle": "verbatim"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return Result{}, fmt.Errorf("encode transcription provider options: %w", err)
+	}
+	if err := form.WriteField("provider", string(providerOptions)); err != nil {
+		return Result{}, err
+	}
 	contentType := form.FormDataContentType()
 	if err := form.Close(); err != nil {
 		return Result{}, err
@@ -115,7 +139,23 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 		return Result{}, apiError(resp.StatusCode, responseBody)
 	}
 	var result struct {
-		Text string `json:"text"`
+		Text     string  `json:"text"`
+		Language string  `json:"language"`
+		Duration float64 `json:"duration"`
+		Segments []struct {
+			Start   float64 `json:"start"`
+			End     float64 `json:"end"`
+			Text    string  `json:"text"`
+			Speaker *int    `json:"speaker"`
+		} `json:"segments"`
+		Words []struct {
+			Word         string   `json:"word"`
+			Start        float64  `json:"start"`
+			End          float64  `json:"end"`
+			Speaker      *int     `json:"speaker"`
+			SpeakerLabel string   `json:"speaker_label"`
+			Confidence   *float64 `json:"confidence"`
+		} `json:"words"`
 	}
 	if err := json.Unmarshal(responseBody, &result); err != nil {
 		return Result{}, fmt.Errorf("decode transcription response: %w", err)
@@ -123,7 +163,24 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 	if strings.TrimSpace(result.Text) == "" {
 		return Result{}, fmt.Errorf("transcription response was empty")
 	}
-	if err := h.store.SaveTranscript(job.SermonID, result.Text); err != nil {
+	metadata := store.TranscriptionMetadata{
+		Language: result.Language,
+		Duration: result.Duration,
+		Segments: make([]store.TranscriptSegment, len(result.Segments)),
+		Words:    make([]store.TranscriptWord, len(result.Words)),
+	}
+	for i, segment := range result.Segments {
+		metadata.Segments[i] = store.TranscriptSegment{
+			Start: segment.Start, End: segment.End, Text: segment.Text, Speaker: segment.Speaker,
+		}
+	}
+	for i, word := range result.Words {
+		metadata.Words[i] = store.TranscriptWord{
+			Word: word.Word, Start: word.Start, End: word.End, Speaker: word.Speaker,
+			SpeakerLabel: word.SpeakerLabel, Confidence: word.Confidence,
+		}
+	}
+	if err := h.store.SaveTranscription(job.SermonID, result.Text, metadata); err != nil {
 		return Result{}, err
 	}
 	return Result{

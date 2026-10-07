@@ -300,12 +300,64 @@ viewDetailTranscript model sermon =
                             text ""
                         ]
                     , div [ class "sermon-detail__transcript", attribute "tabindex" "0", attribute "aria-label" "Transcript", attribute "role" "region" ]
-                        (List.reverse reversed ++ [ text (String.dropLeft offset transcript) ])
+                        (case sermon.transcriptionMetadata of
+                            Just metadata ->
+                                if not (List.isEmpty metadata.segments) && String.isEmpty model.transcriptSearch then
+                                    List.map viewTranscriptSegment metadata.segments
+
+                                else
+                                    List.reverse reversed ++ [ text (String.dropLeft offset transcript) ]
+
+                            Nothing ->
+                                List.reverse reversed ++ [ text (String.dropLeft offset transcript) ]
+                        )
                     ]
 
             Nothing ->
                 p [ Ui.panelText ] [ text "Transcript not available yet." ]
         ]
+
+
+viewTranscriptSegment : Api.TranscriptSegment -> Html Msg
+viewTranscriptSegment segment =
+    div [ class "sermon-detail__transcript-segment" ]
+        [ div [ class "sermon-detail__transcript-segment-meta" ]
+            [ span [ class "sermon-detail__transcript-timestamp" ]
+                [ text (formatTimestamp segment.start ++ "–" ++ formatTimestamp segment.end) ]
+            , case segment.speaker of
+                Just speaker ->
+                    span [ class "sermon-detail__transcript-speaker" ] [ text ("Speaker " ++ String.fromInt (speaker + 1)) ]
+
+                Nothing ->
+                    text ""
+            ]
+        , p [ class "sermon-detail__transcript-segment-text" ] [ text segment.text ]
+        ]
+
+
+formatTimestamp : Float -> String
+formatTimestamp seconds =
+    let
+        totalSeconds =
+            max 0 (floor seconds)
+
+        hours =
+            totalSeconds // 3600
+
+        minutes =
+            modBy 3600 totalSeconds // 60
+
+        remainder =
+            modBy 60 totalSeconds
+
+        padded value =
+            String.padLeft 2 '0' (String.fromInt value)
+    in
+    if hours > 0 then
+        String.fromInt hours ++ ":" ++ padded minutes ++ ":" ++ padded remainder
+
+    else
+        padded minutes ++ ":" ++ padded remainder
 
 
 highConfidenceTopics : List ( String, Float ) -> List ( String, Float )

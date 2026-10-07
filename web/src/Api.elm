@@ -1,6 +1,9 @@
 module Api exposing
     ( PipelineEvent(..)
     , Sermon
+    , TranscriptSegment
+    , TranscriptWord
+    , TranscriptionMetadata
     , deleteSermon
     , fetchSermons
     , pipelineEventDecoder
@@ -39,6 +42,33 @@ type alias Sermon =
     , scriptures : List String
     , topics : List String
     , topicScores : List ( String, Float )
+    , transcriptionMetadata : Maybe TranscriptionMetadata
+    }
+
+
+type alias TranscriptionMetadata =
+    { language : Maybe String
+    , duration : Maybe Float
+    , segments : List TranscriptSegment
+    , words : List TranscriptWord
+    }
+
+
+type alias TranscriptSegment =
+    { start : Float
+    , end : Float
+    , text : String
+    , speaker : Maybe Int
+    }
+
+
+type alias TranscriptWord =
+    { word : String
+    , start : Float
+    , end : Float
+    , speaker : Maybe Int
+    , speakerLabel : Maybe String
+    , confidence : Maybe Float
     }
 
 
@@ -64,11 +94,12 @@ sermonDecoder =
                 , scriptures = []
                 , topics = []
                 , topicScores = []
+                , transcriptionMetadata = Nothing
             }
         )
         (Decode.map8
             (\id originalFilename uploadedAt uploadedBy stage status progress error ->
-                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0 False Nothing Nothing Nothing Nothing Nothing [] [] []
+                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0 False Nothing Nothing Nothing Nothing Nothing [] [] [] Nothing
             )
             (Decode.field "id" Decode.string)
             (Decode.field "original_filename" Decode.string)
@@ -112,6 +143,41 @@ decodeMetadata sermon =
                     (\scores -> { decodedSermon | topicScores = Dict.toList scores })
                     (Decode.oneOf [ Decode.field "topic_scores" (Decode.dict Decode.float), Decode.succeed Dict.empty ])
             )
+        |> Decode.andThen
+            (\decodedSermon ->
+                Decode.map
+                    (\metadata -> { decodedSermon | transcriptionMetadata = metadata })
+                    (Decode.maybe (Decode.field "transcription_metadata" transcriptionMetadataDecoder))
+            )
+
+
+transcriptionMetadataDecoder : Decoder TranscriptionMetadata
+transcriptionMetadataDecoder =
+    Decode.map4 TranscriptionMetadata
+        (Decode.maybe (Decode.field "language" Decode.string))
+        (Decode.maybe (Decode.field "duration" Decode.float))
+        (Decode.oneOf [ Decode.field "segments" (Decode.list transcriptSegmentDecoder), Decode.succeed [] ])
+        (Decode.oneOf [ Decode.field "words" (Decode.list transcriptWordDecoder), Decode.succeed [] ])
+
+
+transcriptSegmentDecoder : Decoder TranscriptSegment
+transcriptSegmentDecoder =
+    Decode.map4 TranscriptSegment
+        (Decode.field "start" Decode.float)
+        (Decode.field "end" Decode.float)
+        (Decode.field "text" Decode.string)
+        (Decode.maybe (Decode.field "speaker" Decode.int))
+
+
+transcriptWordDecoder : Decoder TranscriptWord
+transcriptWordDecoder =
+    Decode.map6 TranscriptWord
+        (Decode.field "word" Decode.string)
+        (Decode.field "start" Decode.float)
+        (Decode.field "end" Decode.float)
+        (Decode.maybe (Decode.field "speaker" Decode.int))
+        (Decode.maybe (Decode.field "speaker_label" Decode.string))
+        (Decode.maybe (Decode.field "confidence" Decode.float))
 
 
 pipelineEventDecoder : Decoder PipelineEvent

@@ -15,27 +15,54 @@ import (
 
 // Sermon is one uploaded recording and its pipeline state.
 type Sermon struct {
-	ID                            string             `json:"id"`
-	OriginalFilename              string             `json:"original_filename"`
-	UploadedAt                    string             `json:"uploaded_at"`
-	UploadedBy                    *string            `json:"uploaded_by"`
-	Stage                         string             `json:"stage"`
-	Status                        string             `json:"status"`
-	Progress                      int                `json:"progress"`
-	Error                         *string            `json:"error"`
-	NormalizationGateAdjustment   int                `json:"normalization_gate_adjustment"`
-	NormalizationVolumeAdjustment int                `json:"normalization_volume_adjustment"`
-	NormalizationReviewed         bool               `json:"normalization_reviewed"`
-	AppliedRegions                json.RawMessage    `json:"applied_regions,omitempty"`
-	EditApproved                  bool               `json:"edit_approved"`
-	Transcript                    *string            `json:"transcript,omitempty"`
-	Title                         *string            `json:"title,omitempty"`
-	TitleGenerated                *bool              `json:"title_generated,omitempty"`
-	TitleReasoning                *string            `json:"title_reasoning,omitempty"`
-	Speaker                       *string            `json:"speaker,omitempty"`
-	Scriptures                    []string           `json:"scriptures,omitempty"`
-	Topics                        []string           `json:"topics,omitempty"`
-	TopicScores                   map[string]float64 `json:"topic_scores,omitempty"`
+	ID                            string                 `json:"id"`
+	OriginalFilename              string                 `json:"original_filename"`
+	UploadedAt                    string                 `json:"uploaded_at"`
+	UploadedBy                    *string                `json:"uploaded_by"`
+	Stage                         string                 `json:"stage"`
+	Status                        string                 `json:"status"`
+	Progress                      int                    `json:"progress"`
+	Error                         *string                `json:"error"`
+	NormalizationGateAdjustment   int                    `json:"normalization_gate_adjustment"`
+	NormalizationVolumeAdjustment int                    `json:"normalization_volume_adjustment"`
+	NormalizationReviewed         bool                   `json:"normalization_reviewed"`
+	AppliedRegions                json.RawMessage        `json:"applied_regions,omitempty"`
+	EditApproved                  bool                   `json:"edit_approved"`
+	Transcript                    *string                `json:"transcript,omitempty"`
+	TranscriptionMetadata         *TranscriptionMetadata `json:"transcription_metadata,omitempty"`
+	Title                         *string                `json:"title,omitempty"`
+	TitleGenerated                *bool                  `json:"title_generated,omitempty"`
+	TitleReasoning                *string                `json:"title_reasoning,omitempty"`
+	Speaker                       *string                `json:"speaker,omitempty"`
+	Scriptures                    []string               `json:"scriptures,omitempty"`
+	Topics                        []string               `json:"topics,omitempty"`
+	TopicScores                   map[string]float64     `json:"topic_scores,omitempty"`
+}
+
+// TranscriptionMetadata contains provider-supplied timing and diarization.
+type TranscriptionMetadata struct {
+	Language string              `json:"language,omitempty"`
+	Duration float64             `json:"duration,omitempty"`
+	Segments []TranscriptSegment `json:"segments,omitempty"`
+	Words    []TranscriptWord    `json:"words,omitempty"`
+}
+
+// TranscriptSegment is one timed phrase in the transcript.
+type TranscriptSegment struct {
+	Start   float64 `json:"start"`
+	End     float64 `json:"end"`
+	Text    string  `json:"text"`
+	Speaker *int    `json:"speaker,omitempty"`
+}
+
+// TranscriptWord is one timed word in the transcript.
+type TranscriptWord struct {
+	Word         string   `json:"word"`
+	Start        float64  `json:"start"`
+	End          float64  `json:"end"`
+	Speaker      *int     `json:"speaker,omitempty"`
+	SpeakerLabel string   `json:"speaker_label,omitempty"`
+	Confidence   *float64 `json:"confidence,omitempty"`
 }
 
 // Store wraps the SQLite database.
@@ -89,7 +116,7 @@ const sermonViewSQL = `
 	       s.stage, s.status, COALESCE(j.progress, 0), j.last_error,
 	       s.normalization_gate_adjustment, s.normalization_volume_adjustment,
 	       s.normalization_reviewed, s.applied_regions, s.edit_approved,
-	       s.transcript, s.title, s.title_generated, s.title_reasoning,
+	       s.transcript, s.transcription_metadata, s.title, s.title_generated, s.title_reasoning,
 	       s.speaker, s.scriptures, s.topics, s.topic_scores
 	FROM sermons s
 	LEFT JOIN jobs j ON j.id = (
@@ -139,14 +166,14 @@ func getSermon(q interface {
 
 func scanSermon(row rowScanner, sm *Sermon) error {
 	var applied []byte
-	var transcript, title, titleReasoning, speaker, scriptures, topics, topicScores sql.NullString
+	var transcript, transcriptionMetadata, title, titleReasoning, speaker, scriptures, topics, topicScores sql.NullString
 	var titleGenerated sql.NullBool
 	err := row.Scan(
 		&sm.ID, &sm.OriginalFilename, &sm.UploadedAt, &sm.UploadedBy,
 		&sm.Stage, &sm.Status, &sm.Progress, &sm.Error,
 		&sm.NormalizationGateAdjustment, &sm.NormalizationVolumeAdjustment,
 		&sm.NormalizationReviewed, &applied, &sm.EditApproved,
-		&transcript, &title, &titleGenerated, &titleReasoning, &speaker,
+		&transcript, &transcriptionMetadata, &title, &titleGenerated, &titleReasoning, &speaker,
 		&scriptures, &topics, &topicScores,
 	)
 	if len(applied) > 0 {
@@ -154,6 +181,13 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 	}
 	if transcript.Valid {
 		sm.Transcript = &transcript.String
+	}
+	if transcriptionMetadata.Valid {
+		var metadata TranscriptionMetadata
+		if err := json.Unmarshal([]byte(transcriptionMetadata.String), &metadata); err != nil {
+			return fmt.Errorf("decode transcription metadata for sermon %s: %w", sm.ID, err)
+		}
+		sm.TranscriptionMetadata = &metadata
 	}
 	if title.Valid {
 		title.String = titleCase(title.String)
@@ -177,6 +211,16 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 // SaveTranscript stores the transcript produced by the transcription stage.
 func (s *Store) SaveTranscript(id, transcript string) error {
 	_, err := s.db.Exec(`UPDATE sermons SET transcript=? WHERE id=?`, transcript, id)
+	return err
+}
+
+// SaveTranscription atomically stores transcript text and its structured timing metadata.
+func (s *Store) SaveTranscription(id, transcript string, metadata TranscriptionMetadata) error {
+	encoded, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("encode transcription metadata: %w", err)
+	}
+	_, err = s.db.Exec(`UPDATE sermons SET transcript=?, transcription_metadata=? WHERE id=?`, transcript, string(encoded), id)
 	return err
 }
 
