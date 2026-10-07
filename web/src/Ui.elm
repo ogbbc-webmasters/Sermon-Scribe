@@ -19,15 +19,16 @@ module Ui exposing
     , errorText
     , errorPanel
     , hint
-    , headingRow
     , icon
     , iconButton
     , iconDisclosure
     , iconDisclosureContent
     , panel
+    , panelActions
+    , panelHeader
+    , panelHeading
     , panelText
     , panelTitle
-    , inlinePanelTitle
     , primaryButton
     , progress
     , progressFill
@@ -163,6 +164,21 @@ panel =
     class "panel"
 
 
+panelHeader : Html.Attribute msg
+panelHeader =
+    class "panel__header"
+
+
+panelHeading : Html.Attribute msg
+panelHeading =
+    class "panel__heading"
+
+
+panelActions : Html.Attribute msg
+panelActions =
+    class "panel__actions"
+
+
 errorPanel : Html.Attribute msg
 errorPanel =
     class "panel panel--error"
@@ -171,16 +187,6 @@ errorPanel =
 panelTitle : Html.Attribute msg
 panelTitle =
     class "panel__title"
-
-
-inlinePanelTitle : Html.Attribute msg
-inlinePanelTitle =
-    class "panel__title panel__title--inline"
-
-
-headingRow : Html.Attribute msg
-headingRow =
-    class "heading-row"
 
 
 panelText : Html.Attribute msg

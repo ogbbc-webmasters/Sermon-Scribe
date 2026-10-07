@@ -1,6 +1,7 @@
 module View exposing (view)
 
 import Api exposing (Sermon)
+import Card
 import DateFormat exposing (formatDate)
 import Dict
 import Editor
@@ -67,18 +68,17 @@ viewSermonDetail model sermon =
                     [ button [ Ui.button, onClick CloseSermon ] [ text "← Back to Sermons" ]
                     , viewAIWarning
                     ]
-                , div [ class "sermon-detail__identity" ]
-                    [ div [ Ui.headingRow ]
-                        [ h2 [ class "sermon-detail__title" ] [ text (Maybe.withDefault "Title Unknown" sermon.title) ]
-                        , viewProcessingRetry model sermon "title" "Regenerate Title"
-                        , case sermon.titleReasoning of
-                            Just reasoning ->
-                                viewIconDisclosure "ph:info" "Why this title?" reasoning
+                , Card.view
+                    (h2 [ class "sermon-detail__title" ] [ text (Maybe.withDefault "Title Unknown" sermon.title) ])
+                    [ viewProcessingRetry model sermon "title" "Regenerate Title"
+                    , case sermon.titleReasoning of
+                        Just reasoning ->
+                            viewIconDisclosure "ph:info" "Why this title?" reasoning
 
-                            Nothing ->
-                                text ""
-                        ]
-                    , p [ class "sermon-detail__filename" ] [ text sermon.originalFilename ]
+                        Nothing ->
+                            text ""
+                    ]
+                    [ p [ class "sermon-detail__filename" ] [ text sermon.originalFilename ]
                     , case sermon.speaker of
                         Just speaker ->
                             if String.isEmpty (String.trim speaker) then
@@ -171,45 +171,33 @@ viewDetailStatus sermon =
 viewDetailMetadata : Model -> Sermon -> Html Msg
 viewDetailMetadata model sermon =
     div [ class "sermon-detail__sections" ]
-        (List.concat
-            [ [ div [ Ui.panel ]
-                    [ div [ Ui.headingRow ]
-                        [ strong [ Ui.inlinePanelTitle ] [ text "Scripture References" ]
-                        , viewProcessingRetry model sermon "scriptures" "Regenerate Scripture References"
-                        ]
-                    , if List.isEmpty (visibleScriptures sermon) then
-                        p [ Ui.panelText ] [ text "No scripture references yet." ]
+        [ Card.view (text "Scripture References")
+            [ viewProcessingRetry model sermon "scriptures" "Regenerate Scripture References" ]
+            [ if List.isEmpty (visibleScriptures sermon) then
+                p [ Ui.panelText ] [ text "No scripture references yet." ]
 
-                      else
-                        text ""
-                    , div [ class "sermon-detail__pills" ]
-                        (List.map (viewScripture sermon) (visibleScriptures sermon))
-                    ]
-                ]
-            , [ div [ Ui.panel ]
-                    [ div [ Ui.headingRow ]
-                        [ strong [ Ui.inlinePanelTitle ] [ text "Topics" ]
-                        , viewProcessingRetry model sermon "topics" "Regenerate Topics"
-                        ]
-                    , if List.isEmpty (highConfidenceTopics sermon.topicScores) then
-                        p [ Ui.panelText ] [ text "No high-confidence topics yet." ]
-
-                      else
-                        text ""
-                    , div [ class "sermon-detail__pills" ]
-                        (List.map
-                            (\( topic, score ) ->
-                                span
-                                    [ class "sermon-detail__pill sermon-detail__pill--topic"
-                                    ]
-                                    [ text (topic ++ " " ++ String.fromInt (round (score * 100)) ++ "%") ]
-                            )
-                            (highConfidenceTopics sermon.topicScores)
-                        )
-                    ]
-                ]
+              else
+                text ""
+            , div [ class "sermon-detail__pills" ]
+                (List.map (viewScripture sermon) (visibleScriptures sermon))
             ]
-        )
+        , Card.view (text "Topics")
+            [ viewProcessingRetry model sermon "topics" "Regenerate Topics" ]
+            [ if List.isEmpty (highConfidenceTopics sermon.topicScores) then
+                p [ Ui.panelText ] [ text "No high-confidence topics yet." ]
+
+              else
+                text ""
+            , div [ class "sermon-detail__pills" ]
+                (List.map
+                    (\( topic, score ) ->
+                        span [ class "sermon-detail__pill sermon-detail__pill--topic" ]
+                            [ text (topic ++ " " ++ String.fromInt (round (score * 100)) ++ "%") ]
+                    )
+                    (highConfidenceTopics sermon.topicScores)
+                )
+            ]
+        ]
 
 
 viewDetailAudio : Sermon -> Html Msg
@@ -224,36 +212,48 @@ viewDetailAudio sermon =
                     "original"
                 )
     in
-    div [ Ui.panel ]
-        [ strong [ Ui.panelTitle ] [ text "Audio" ]
-        , audio [ class "sermon-detail__audio", controls True, attribute "preload" "metadata", src source ] []
-        , a [ class "focusable", href (source ++ "?download=1"), download "" ] [ text "Download audio" ]
+    Card.view (text "Audio")
+        [ a
+            [ Ui.smallQuietIconButton
+            , href (source ++ "?download=1")
+            , download ""
+            , title "Download audio"
+            , attribute "aria-label" "Download audio"
+            ]
+            [ Ui.icon "ph:download-simple" ]
         ]
+        [ audio [ class "sermon-detail__audio", controls True, attribute "preload" "metadata", src source ] [] ]
 
 
 viewDetailTranscript : Model -> Sermon -> Html Msg
 viewDetailTranscript model sermon =
-    div [ Ui.panel ]
-        [ div [ class "sermon-detail__transcript-header" ]
-            [ div [ Ui.headingRow ]
-                [ strong [ Ui.inlinePanelTitle ] [ text "Transcript" ]
-                , viewProcessingRetry model sermon "transcription" "Regenerate Transcription"
-                ]
-            , case sermon.transcript of
-                Just transcript ->
-                    button [ Ui.button, onClick (CopyTranscript transcript) ]
-                        [ text
-                            (if model.transcriptCopyStatus == Just True then
-                                "Copied!"
+    Card.view (text "Transcript")
+        [ viewProcessingRetry model sermon "transcription" "Regenerate Transcription"
+        , case sermon.transcript of
+            Just transcript ->
+                button
+                    [ Ui.smallQuietIconButton
+                    , onClick (CopyTranscript transcript)
+                    , title "Copy Full Transcript"
+                    , attribute "aria-label" "Copy Full Transcript"
+                    ]
+                    [ Ui.icon
+                        (if model.transcriptCopyStatus == Just True then
+                            "ph:check"
 
-                             else
-                                "Copy Full Transcript"
-                            )
-                        ]
+                         else
+                            "ph:copy"
+                        )
+                    ]
 
-                Nothing ->
-                    text ""
-            ]
+            Nothing ->
+                text ""
+        ]
+        [ if model.transcriptCopyStatus == Just True then
+            p [ Ui.panelText, attribute "role" "status" ] [ text "Transcript copied." ]
+
+          else
+            text ""
         , if model.transcriptCopyStatus == Just False then
             p [ Ui.errorText, attribute "role" "status" ] [ text "Could not copy. Please select the transcript and copy it manually." ]
 
@@ -307,9 +307,9 @@ viewDetailTranscript model sermon =
                             []
                         , if count > 0 then
                             div [ class "sermon-detail__search-navigation" ]
-                                [ button [ Ui.button, attribute "aria-label" "Previous match", onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch - 1))) ] [ text "Prev" ]
+                                [ button [ Ui.smallQuietIconButton, title "Previous match", attribute "aria-label" "Previous match", onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch - 1))) ] [ Ui.icon "ph:caret-left" ]
                                 , span [ Ui.panelText, attribute "role" "status" ] [ text (String.fromInt (model.transcriptMatch + 1) ++ " of " ++ String.fromInt count) ]
-                                , button [ Ui.button, attribute "aria-label" "Next match", onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch + 1))) ] [ text "Next" ]
+                                , button [ Ui.smallQuietIconButton, title "Next match", attribute "aria-label" "Next match", onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch + 1))) ] [ Ui.icon "ph:caret-right" ]
                                 ]
 
                           else if not (String.isEmpty model.transcriptSearch) then

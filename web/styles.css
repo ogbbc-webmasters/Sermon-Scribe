@@ -640,13 +640,6 @@ h2::after {
   font-size: 1rem;
 }
 
-.heading-row {
-  align-items: center;
-  display: flex;
-  gap: var(--space-xs);
-  min-width: 0;
-}
-
 /* icon-disclosure — compact warning and information popovers */
 
 .icon-disclosure {
@@ -701,13 +694,30 @@ h2::after {
   color: var(--red);
 }
 
-.panel__title {
-  display: block;
+.panel__actions {
+  align-items: flex-start;
+  display: flex;
+  gap: var(--space-xs);
+  justify-content: flex-end;
+}
+
+.panel__header {
+  align-items: start;
+  display: grid;
+  gap: var(--space-sm);
+  grid-template-columns: minmax(0, 1fr) auto;
   margin-bottom: var(--space-sm);
 }
 
-.panel__title--inline {
-  margin-bottom: 0;
+.panel__heading {
+  font-weight: 600;
+  min-width: 0;
+  padding-top: var(--space-sm);
+}
+
+.panel__title {
+  display: block;
+  margin-bottom: var(--space-sm);
 }
 
 .panel__text {
@@ -797,7 +807,7 @@ h2::after {
 .sermon-detail__columns {
   display: grid;
   grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
-  gap: var(--space-2xl);
+  column-gap: var(--space-2xl);
 }
 
 .sermon-detail__columns--single {
@@ -810,16 +820,9 @@ h2::after {
 
 .sermon-detail__header {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   flex-direction: column;
   gap: var(--space-xl);
-  margin-bottom: var(--space-2xl);
-}
-
-.sermon-detail__identity {
-  min-width: 0;
-  width: 100%;
-  overflow-wrap: anywhere;
 }
 
 .sermon-detail__navigation {
@@ -933,14 +936,6 @@ h2::after {
   white-space: pre-wrap;
   line-height: 1.7;
   margin: 0;
-}
-
-.sermon-detail__transcript-header {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-sm);
-  justify-content: space-between;
 }
 
 /* spinner — progress indicator for in-flight actions */
