@@ -1,6 +1,6 @@
 module Card exposing (view)
 
-import Html exposing (Html, div)
+import Html exposing (Html, div, h2)
 import Ui
 
 
@@ -10,7 +10,7 @@ view : Html msg -> List (Html msg) -> List (Html msg) -> Html msg
 view heading actions content =
     div [ Ui.panel ]
         [ div [ Ui.panelHeader ]
-            [ div [ Ui.panelHeading ] [ heading ]
+            [ h2 [ Ui.panelHeading ] [ heading ]
             , div [ Ui.panelActions ] actions
             ]
         , div [] content

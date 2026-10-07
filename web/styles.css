@@ -400,9 +400,17 @@ h2::after {
 }
 
 .panel__heading {
+  color: inherit;
+  display: block;
+  font-family: inherit;
+  font-size: inherit;
   font-weight: 600;
+  margin: 0;
   min-width: 0;
-  padding-top: var(--space-sm);
+}
+
+.panel__heading::after {
+  display: none;
 }
 
 .panel__title {
@@ -523,29 +531,10 @@ h2::after {
   width: 100%;
 }
 
-.sermon-detail__title {
-  display: block;
-  font-size: 1.5rem;
-  line-height: 1.2;
-  margin: 0;
-}
-
-.sermon-detail__title::after {
-  content: none;
-}
-
 .sermon-detail__filename {
   color: var(--ink-soft);
   font-size: 0.95rem;
   margin: var(--space-sm) 0 0;
-}
-
-.sermon-detail__footer {
-  border-top: 1px solid var(--line);
-  display: grid;
-  gap: var(--space-lg);
-  margin-top: var(--space-2xl);
-  padding-top: var(--space-xl);
 }
 
 .sermon-detail__speaker {

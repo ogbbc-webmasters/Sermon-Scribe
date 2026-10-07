@@ -67,7 +67,7 @@ viewSermonDetail model sermon =
                     , viewAIWarning
                     ]
                 , Card.view
-                    (h2 [ class "sermon-detail__title" ] [ text (Maybe.withDefault "Title Unknown" sermon.title) ])
+                    (text (Maybe.withDefault "Title Unknown" sermon.title))
                     [ viewProcessingRetry model sermon "title" "Regenerate Title"
                     , case sermon.titleReasoning of
                         Just reasoning ->
@@ -98,6 +98,7 @@ viewSermonDetail model sermon =
                         , text (formatDate model.zone sermon.uploadedAt)
                         ]
                     , viewOptionalError model.deleteError
+                    , viewOptionalError model.retryError
                     , viewDeleteConfirmation model sermon
                     ]
                 ]
@@ -117,10 +118,6 @@ viewSermonDetail model sermon =
                     [ viewDetailAudio sermon
                     , viewDetailTranscript model sermon
                     ]
-                ]
-            , div [ class "sermon-detail__footer" ]
-                [ viewOptionalError model.retryError
-                , viewDetailActionButtons model sermon
                 ]
             ]
         ]
@@ -371,32 +368,6 @@ viewDeleteConfirmation model sermon =
 
         Nothing ->
             text ""
-
-
-viewDetailActionButtons : Model -> Sermon -> Html Msg
-viewDetailActionButtons model sermon =
-    div [ Ui.sermonActions ]
-        (List.concat
-            [ if sermon.status == "failed" then
-                [ button
-                    [ Ui.button
-                    , onClick (RetrySermon sermon)
-                    , disabled (Set.member sermon.id model.retrying || Set.member sermon.id model.deleting || model.confirmingDelete /= Nothing)
-                    ]
-                    [ text
-                        (if Set.member sermon.id model.retrying then
-                            "Regenerating…"
-
-                         else
-                            "Regenerate"
-                        )
-                    ]
-                ]
-
-              else
-                []
-            ]
-        )
 
 
 viewOptionalError : Maybe String -> Html Msg

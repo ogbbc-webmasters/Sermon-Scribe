@@ -5,7 +5,6 @@ module Api exposing
     , fetchSermons
     , pipelineEventDecoder
     , rerunNormalization
-    , retrySermon
     , retryProcessing
     , reviewNormalization
     , sermonDecoder
@@ -191,19 +190,6 @@ deleteSermon toMsg id =
         , url = "/api/sermons/" ++ id
         , body = Http.emptyBody
         , expect = Http.expectWhatever toMsg
-        , timeout = Nothing
-        , tracker = Nothing
-        }
-
-
-retrySermon : (Result Http.Error Sermon -> msg) -> String -> Cmd msg
-retrySermon toMsg id =
-    Http.request
-        { method = "POST"
-        , headers = []
-        , url = "/api/sermons/" ++ id ++ "/retry"
-        , body = Http.emptyBody
-        , expect = Http.expectJson toMsg sermonDecoder
         , timeout = Nothing
         , tracker = Nothing
         }

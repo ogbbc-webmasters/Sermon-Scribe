@@ -152,14 +152,6 @@ update msg model =
             , Cmd.none
             )
 
-        RetrySermon sermon ->
-            ( { model
-                | retrying = Set.insert sermon.id model.retrying
-                , retryError = Nothing
-              }
-            , Api.retrySermon (RetryFinished sermon) sermon.id
-            )
-
         RetryProcessing sermon part ->
             ( { model
                 | retrying = Set.insert sermon.id model.retrying
