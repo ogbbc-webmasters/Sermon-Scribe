@@ -82,20 +82,19 @@ viewAICosts sermon =
                 _ ->
                     task
     in
-    Card.view (text "AI cost")
-        []
-        (if List.isEmpty sermon.aiCosts then
-            [ p [ Ui.hint ] [ text "No OpenRouter calls tracked yet. Costs from before tracking was enabled are not included." ] ]
+    div []
+        [ p [] [ strong [] [ text "AI cost" ] ]
+        , div []
+            (if List.isEmpty sermon.aiCosts then
+                [ p [ Ui.hint ] [ text "No OpenRouter calls tracked yet. Costs from before tracking was enabled are not included." ] ]
 
-         else
-            [ p [] [ strong [] [ text (formatCost total ++ " USD") ], text " · Includes retries and regenerations" ]
-            , if unknown > 0 then
-                p [ Ui.hint ] [ text (String.fromInt unknown ++ " call(s) have unreported costs. This total includes only reported charges.") ]
+             else
+                [ p [] [ strong [] [ text (formatCost total ++ " USD") ], text " · Includes retries and regenerations" ]
+                , if unknown > 0 then
+                    p [ Ui.hint ] [ text (String.fromInt unknown ++ " call(s) have unreported costs. This total includes only reported charges.") ]
 
-              else
-                text ""
-            , Html.details []
-                [ Html.summary [] [ text "Breakdown by model and task" ]
+                  else
+                    text ""
                 , div []
                     (List.map
                         (\cost ->
@@ -112,11 +111,23 @@ viewAICosts sermon =
                                     text ""
                                 ]
                         )
-                        sermon.aiCosts
+                        (List.sortBy
+                            (\cost ->
+                                ( if cost.task == "transcribe" then
+                                    0
+
+                                  else
+                                    1
+                                , cost.task
+                                , cost.model
+                                )
+                            )
+                            sermon.aiCosts
+                        )
                     )
                 ]
-            ]
-        )
+            )
+        ]
 
 
 formatCost : Float -> String
@@ -135,7 +146,7 @@ viewDetailMessage message =
             [ div [ class "sermon-detail__header" ]
                 [ div [ class "sermon-detail__navigation" ]
                     [ Button.view "a" Button.back False [ href "/" ]
-                    , viewAIWarning
+                    , viewAIWarning Nothing
                     ]
                 , Card.view (text "Sermon") [] [ p [] [ text message ] ]
                 ]
@@ -159,7 +170,7 @@ viewSermonDetail model sermon =
             [ div [ class "sermon-detail__header" ]
                 [ div [ class "sermon-detail__navigation" ]
                     [ Button.view "a" Button.back False [ href "/" ]
-                    , viewAIWarning
+                    , viewAIWarning (Just sermon)
                     ]
                 , Card.view
                     (text (Maybe.withDefault "Title Unknown" sermon.title))
@@ -198,7 +209,6 @@ viewSermonDetail model sermon =
                     ]
                 ]
             , viewDetailStatus model sermon
-            , viewAICosts sermon
             , if Editing.isOpen sermon.id model.editor then
                 Html.map EditingMsg (Editing.view model.editor sermon.transcriptionMetadata)
 
@@ -231,9 +241,12 @@ viewSermonDetail model sermon =
         ]
 
 
-viewAIWarning : Html Msg
-viewAIWarning =
-    Button.disclosure Button.warning "This page includes AI-generated content to save you time. Please carefully verify the metadata before publishing."
+viewAIWarning : Maybe Sermon -> Html Msg
+viewAIWarning sermon =
+    Button.disclosureWithContent Button.warning
+        [ p [ Ui.panelText ] [ text "This page includes AI-generated content to save you time. Please carefully verify the metadata before publishing." ]
+        , Maybe.map viewAICosts sermon |> Maybe.withDefault (text "")
+        ]
 
 
 viewDetailStatus : Model -> Sermon -> Html Msg

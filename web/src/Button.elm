@@ -1,4 +1,4 @@
-module Button exposing (Config, action, applyEdits, back, button, cancelDialog, confirmRegeneration, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSection, deleteSermon, disclosure, downloadAudio, editAudio, icon, keepSection, labeled, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, textAction, titleInfo, uploadSermon, view, warning)
+module Button exposing (Config, action, applyEdits, back, button, cancelDialog, confirmRegeneration, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSection, deleteSermon, disclosure, disclosureWithContent, downloadAudio, editAudio, icon, keepSection, labeled, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, textAction, titleInfo, uploadSermon, view, warning)
 
 import Html exposing (Html, details, div, p, strong, text)
 import Html.Attributes exposing (attribute, class, title, type_)
@@ -165,19 +165,25 @@ description as its icon-only variant.
 -}
 labeled : String -> Config -> Bool -> List (Html.Attribute msg) -> Html msg
 labeled caption config busy attributes =
-    viewContent "button" config busy (class "icon-control icon-control--labeled" :: attributes)
+    viewContent "button"
+        config
+        busy
+        (class "icon-control icon-control--labeled" :: attributes)
         (Html.span [ class "button__content" ] [ icon config.icon, text caption ])
 
 
 disclosure : Config -> String -> Html msg
 disclosure config body =
+    disclosureWithContent config [ p [ Ui.panelText ] [ text body ] ]
+
+
+disclosureWithContent : Config -> List (Html msg) -> Html msg
+disclosureWithContent config content =
     details [ class "icon-disclosure" ]
         [ view "summary" config False []
         , div [ class "icon-disclosure__content" ]
             [ div [ Ui.panel ]
-                [ strong [ Ui.panelTitle ] [ text config.label ]
-                , p [ Ui.panelText ] [ text body ]
-                ]
+                (strong [ Ui.panelTitle ] [ text config.label ] :: content)
             ]
         ]
 
