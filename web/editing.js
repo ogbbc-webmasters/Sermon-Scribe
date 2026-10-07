@@ -1,6 +1,7 @@
 // Native dialogs supply focus trapping and Escape behavior; Elm owns their state.
-customElements.define("editing-dialog", class extends HTMLElement {
+customElements.define("app-dialog", class extends HTMLElement {
   connectedCallback() {
+    this.returnFocus = document.activeElement;
     this.frame = requestAnimationFrame(() => {
       this.dialog = this.querySelector("dialog");
       this.dialog.showModal();
@@ -9,6 +10,7 @@ customElements.define("editing-dialog", class extends HTMLElement {
   disconnectedCallback() {
     cancelAnimationFrame(this.frame);
     this.dialog?.close();
+    this.returnFocus?.focus();
   }
 });
 

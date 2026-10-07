@@ -269,6 +269,23 @@ h2::after {
   flex-wrap: wrap;
 }
 
+/* dialog — shared native modal surface */
+
+.dialog {
+  background: var(--card);
+  border: var(--editor-border) solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  max-width: calc(100% - var(--space-xl) * 2);
+  padding: var(--space-2xl);
+  width: var(--dialog-width);
+}
+
+.dialog::backdrop {
+  background: var(--dialog-backdrop);
+}
+
 /* editor — audio-first section list and one open adjustment at a time */
 
 .editor__actions {
@@ -344,21 +361,6 @@ h2::after {
   display: inline-flex;
   gap: var(--space-xs);
   min-height: var(--control-size-small);
-}
-
-.editor__dialog {
-  background: var(--card);
-  border: var(--editor-border) solid var(--line);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow);
-  color: var(--ink);
-  max-width: calc(100% - var(--space-xl) * 2);
-  padding: var(--space-2xl);
-  width: var(--dialog-width);
-}
-
-.editor__dialog::backdrop {
-  background: var(--dialog-backdrop);
 }
 
 .editor__dialog-options {

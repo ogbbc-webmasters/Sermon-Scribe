@@ -9,6 +9,7 @@ module Ui exposing
     , confirmBoxButtons
     , confirmBoxQuestion
     , deletedPanel
+    , dialog
     , emptyState
     , errorPanel
     , errorText
@@ -141,6 +142,11 @@ sermonActions =
 
 
 -- CONFIRMATION
+
+
+dialog : Html.Attribute msg
+dialog =
+    class "dialog"
 
 
 {-| Inline confirmation panel for destructive actions.

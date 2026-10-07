@@ -692,9 +692,9 @@ view model =
 
 regenerationDialog : Model -> Html Msg
 regenerationDialog model =
-    Html.node "editing-dialog" []
+    Html.node "app-dialog" []
         [ Html.node "dialog"
-            [ class "editor__dialog"
+            [ Ui.dialog
             , attribute "aria-labelledby" "regenerate-title"
             , preventDefaultOn "cancel" (Decode.succeed ( CancelRegenerate, True ))
             ]

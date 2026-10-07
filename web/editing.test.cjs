@@ -102,3 +102,24 @@ test("preview completion and playback failures report their actual outcome", asy
   await failed;
   assert.equal(s.statuses.at(-1), "Could not play audio. Try listening again.");
 });
+
+test("modal removal restores focus to its original trigger", () => {
+  let Dialog, frame;
+  const calls = [];
+  const dialog = { showModal() { calls.push("open"); }, close() { calls.push("close"); } };
+  const document = { activeElement: { focus() { calls.push("trigger focus"); } } };
+  runInNewContext(readFileSync(__dirname + "/editing.js", "utf8"), {
+    window: {}, document,
+    HTMLElement: class { querySelector() { return dialog; } },
+    customElements: { define(name, cls) { if (name === "app-dialog") Dialog = cls; } },
+    requestAnimationFrame(callback) { frame = callback; return 7; },
+    cancelAnimationFrame(id) { assert.equal(id, 7); }
+  });
+  const modal = new Dialog();
+  modal.connectedCallback();
+  assert.deepEqual(calls, [], "wait for Elm to insert dialog children");
+  frame();
+  document.activeElement = { focus() { calls.push("wrong focus"); } };
+  modal.disconnectedCallback();
+  assert.deepEqual(calls, ["open", "close", "trigger focus"]);
+});
