@@ -59,6 +59,62 @@ test("nearest breakpoint wins inside the pixel hit area at different widths", ()
   assert.deepEqual(selection(wave, 315, 500), { kind: "boundary", index: 3 });
 });
 
+test("left and right arrows traverse sections and breakpoints in time order", () => {
+  const wave = setup();
+  wave.load = () => {};
+  wave.connectedCallback();
+  wave.setAttribute("data-selection", "section:0");
+
+  const press = key => {
+    const eventCount = wave.events.length;
+    let prevented = false;
+    wave.canvas.listeners.keydown({ key, preventDefault() { prevented = true; } });
+    const event = wave.events.length > eventCount ? wave.events.at(-1) : null;
+    if (event) wave.setAttribute("data-selection", `${event.detail.kind}:${event.detail.index}`);
+    return {
+      selection: event && { kind: event.detail.kind, index: event.detail.index },
+      keyboard: event?.detail.keyboard ?? false,
+      prevented
+    };
+  };
+
+  assert.deepEqual(press("ArrowLeft"), { selection: { kind: "section", index: 0 }, keyboard: true, prevented: true });
+  assert.deepEqual(press("ArrowRight").selection, { kind: "boundary", index: 1 });
+  assert.deepEqual(press("ArrowRight").selection, { kind: "section", index: 1 });
+  assert.deepEqual(press("ArrowRight").selection, { kind: "boundary", index: 2 });
+  assert.deepEqual(press("ArrowRight").selection, { kind: "section", index: 2 });
+  assert.deepEqual(press("ArrowRight").selection, { kind: "boundary", index: 3 });
+  assert.deepEqual(press("ArrowRight").selection, { kind: "section", index: 3 });
+  assert.deepEqual(press("ArrowRight").selection, { kind: "section", index: 3 });
+  assert.deepEqual(press("ArrowLeft").selection, { kind: "boundary", index: 3 });
+  assert.deepEqual(press("ArrowLeft").selection, { kind: "section", index: 2 });
+
+  assert.deepEqual(press("ArrowUp"), { selection: null, keyboard: false, prevented: false });
+  assert.deepEqual(press("ArrowDown"), { selection: null, keyboard: false, prevented: false });
+});
+
+test("Delete and Backspace remove a selected interior breakpoint on the waveform", () => {
+  for (const key of ["Delete", "Backspace"]) {
+    const wave = setup();
+    wave.load = () => {};
+    wave.connectedCallback();
+    wave.setAttribute("data-selection", "boundary:1");
+    let prevented = false;
+
+    wave.canvas.listeners.keydown({ key, preventDefault() { prevented = true; } });
+
+    assert.equal(prevented, true);
+    assert.equal(wave.events[0].type, "waveformdelete");
+  }
+
+  const endpoint = setup();
+  endpoint.load = () => {};
+  endpoint.connectedCallback();
+  endpoint.setAttribute("data-selection", "boundary:0");
+  endpoint.canvas.listeners.keydown({ key: "Delete", preventDefault() {} });
+  assert.equal(endpoint.events.length, 0);
+});
+
 test("breakpoints are clickable along their lines and sections have a separate strip", () => {
   const wave = setup();
   wave.load = () => {};
@@ -75,6 +131,7 @@ test("breakpoints are clickable along their lines and sections have a separate s
   tap(63);
   assert.equal(wave.events[0].detail.kind, "boundary");
   assert.equal(wave.events[0].detail.index, 3);
+  assert.equal(wave.events[0].detail.keyboard, undefined);
   tap(65);
   assert.equal(wave.events[1].detail.kind, "boundary");
   assert.equal(wave.events[1].detail.index, 3);

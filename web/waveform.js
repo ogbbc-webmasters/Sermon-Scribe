@@ -11,8 +11,8 @@ customElements.define("editing-waveform", class extends HTMLElement {
     this.canvas.className = "editor__waveform-canvas";
     this.canvas.tabIndex = 0;
     this.canvas.setAttribute("role", "button");
-    this.canvas.setAttribute("aria-label", "Audio waveform. Scroll or pinch to zoom, drag to pan, double-click to show all audio. Left and right arrows select sections; up and down arrows select breakpoints.");
-    this.canvas.title = "Scroll or pinch to zoom · Drag to pan · Double-click to reset";
+    this.canvas.setAttribute("aria-label", "Audio waveform. Scroll or pinch to zoom, drag to pan, double-click to show all audio. Left and right arrows step through sections and breakpoints; Enter or Space selects the current item; Delete or Backspace removes a selected breakpoint; Escape cancels adding a breakpoint.");
+    this.canvas.title = "Scroll or pinch to zoom · Drag to pan · Double-click to reset · ←/→: step through sections and breakpoints · Enter/Space: select · Delete/Backspace: remove breakpoint · Esc: cancel adding";
     this.pointers = new Map();
     this.drag = null;
     this.pinch = null;
@@ -94,13 +94,22 @@ customElements.define("editing-waveform", class extends HTMLElement {
       const [kind, index] = (this.getAttribute("data-selection") || "section:0").split(":");
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         event.preventDefault();
-        this.select({ kind: "section", index: Math.max(0, Math.min(draft.sections.length - 1, Number(index) + (event.key === "ArrowLeft" ? -1 : 1))) });
-      } else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && draft.breakpoints.length > 2) {
-        event.preventDefault();
-        this.select({ kind: "boundary", index: Math.max(1, Math.min(draft.breakpoints.length - 2, Number(index) + (event.key === "ArrowUp" ? -1 : 1))) });
+        const direction = event.key === "ArrowLeft" ? -1 : 1;
+        const current = kind === "boundary" ? Number(index) * 2 - 1 : Number(index) * 2;
+        const next = Math.max(0, Math.min(2 * draft.sections.length - 2, current + direction));
+        this.select(next % 2 === 0
+          ? { kind: "section", index: next / 2 }
+          : { kind: "boundary", index: (next + 1) / 2 }, true);
       } else if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        this.select({ kind, index: Number(index) });
+        this.select({ kind, index: Number(index) }, true);
+      } else if ((event.key === "Delete" || event.key === "Backspace")
+        && kind === "boundary"
+        && Number(index) > 0
+        && Number(index) < draft.breakpoints.length - 1
+        && this.getAttribute("data-disabled") !== "true") {
+        event.preventDefault();
+        this.dispatchEvent(new CustomEvent("waveformdelete"));
       }
     });
     this.resize = new ResizeObserver(() => this.draw());
@@ -279,9 +288,9 @@ customElements.define("editing-waveform", class extends HTMLElement {
     this.dispatchEvent(new CustomEvent("waveformadd", { detail: { time } }));
   }
 
-  select(selection) {
+  select(selection, keyboard = false) {
     if (!selection || this.getAttribute("data-disabled") === "true") return;
-    this.dispatchEvent(new CustomEvent("waveformselect", { detail: selection }));
+    this.dispatchEvent(new CustomEvent("waveformselect", { detail: keyboard ? { ...selection, keyboard: true } : selection }));
   }
 
   draw() {

@@ -68,6 +68,7 @@ type Msg
     | Loaded Int (Result Http.Error Draft)
     | Close
     | Select Selection
+    | SelectWaveform Bool Selection
     | Keep Int Bool
     | Nudge Float
     | ToggleAddingBoundary
@@ -226,24 +227,10 @@ update msg model =
                         ( { model | regenerating = False, error = Just (saveError err) }, Cmd.none, Nothing )
 
         Select selection ->
-            ( { model
-                | selection = Just selection
-                , addingBreakpoint = False
-                , audioStatus = ""
-                , playhead = sectionStart selection model
-              }
-            , if model.selection == Just selection then
-                Cmd.none
+            selectSelection True selection model
 
-              else
-                case selection of
-                    Boundary _ ->
-                        Task.attempt Focused (Browser.Dom.focus "breakpoint-adjustment")
-
-                    Passage _ ->
-                        Cmd.none
-            , stop
-            )
+        SelectWaveform keyboard selection ->
+            selectSelection (not keyboard) selection model
 
         IgnoreClick ->
             ( model, Cmd.none, Nothing )
@@ -347,7 +334,10 @@ update msg model =
                                 ( next, cmd, audioEffect ) =
                                     change (\d -> { d | breakpoints = removeAt index d.breakpoints, sections = removeAt index (replaceAt (index - 1) (\section -> { section | keep = left.keep || right.keep }) d.sections) }) model
                             in
-                            ( { next | selection = Just (Passage (index - 1)) }, cmd, audioEffect )
+                            ( { next | selection = Just (Passage (index - 1)) }
+                            , Cmd.batch [ cmd, Task.attempt Focused (Browser.Dom.focus "editing-waveform-canvas") ]
+                            , audioEffect
+                            )
 
                         _ ->
                             ( model, Cmd.none, Nothing )
@@ -451,6 +441,31 @@ update msg model =
 
         AudioStatus status ->
             ( { model | audioStatus = status }, Cmd.none, Nothing )
+
+
+selectSelection : Bool -> Selection -> Model -> ( Model, Cmd Msg, Maybe Encode.Value )
+selectSelection moveFocus selection model =
+    ( { model
+        | selection = Just selection
+        , addingBreakpoint = False
+        , audioStatus = ""
+        , playhead = sectionStart selection model
+      }
+    , if model.selection == Just selection then
+        Cmd.none
+
+      else if moveFocus then
+        case selection of
+            Boundary _ ->
+                Task.attempt Focused (Browser.Dom.focus "breakpoint-adjustment")
+
+            Passage _ ->
+                Cmd.none
+
+      else
+        Cmd.none
+    , stop
+    )
 
 
 saveError : Http.Error -> String
@@ -763,11 +778,12 @@ waveform model draft =
             )
         , on "waveformadd" (Decode.at [ "detail", "time" ] Decode.float |> Decode.map PlaceBoundary)
         , on "waveformcancel" (Decode.succeed ToggleAddingBoundary)
+        , on "waveformdelete" (Decode.succeed RemoveBoundary)
         , on "waveformselect"
             (Decode.at [ "detail" ]
-                (Decode.map2
-                    (\kind index ->
-                        Select
+                (Decode.map3
+                    (\keyboard kind index ->
+                        SelectWaveform keyboard
                             (if kind == "boundary" then
                                 Boundary index
 
@@ -775,6 +791,7 @@ waveform model draft =
                                 Passage index
                             )
                     )
+                    (Decode.oneOf [ Decode.field "keyboard" Decode.bool, Decode.succeed False ])
                     (Decode.field "kind" Decode.string)
                     (Decode.field "index" Decode.int)
                 )
@@ -816,10 +833,10 @@ navigation model draft =
     in
     div [ class "editor__navigation" ]
         [ div [ Ui.sermonActions ]
-            [ Button.action "ph:caret-left" "Previous section" False [ onClick (Select (Passage previousSection)), disabled (busy || previousSection < 0) ]
-            , Button.action "ph:caret-right" "Next section" False [ onClick (Select (Passage nextSection)), disabled (busy || nextSection >= List.length draft.sections) ]
-            , Button.action "ph:skip-back" "Previous breakpoint" False [ onClick (Select (Boundary previousBoundary)), disabled (busy || previousBoundary < 1) ]
-            , Button.action "ph:skip-forward" "Next breakpoint" False [ onClick (Select (Boundary nextBoundary)), disabled (busy || nextBoundary >= List.length draft.breakpoints - 1) ]
+            [ Button.action "ph:caret-left" "Previous section (Left arrow key)" False [ onClick (Select (Passage previousSection)), disabled (busy || previousSection < 0) ]
+            , Button.action "ph:caret-right" "Next section (Right arrow key)" False [ onClick (Select (Passage nextSection)), disabled (busy || nextSection >= List.length draft.sections) ]
+            , Button.action "ph:skip-back" "Previous breakpoint (Left arrow key)" False [ onClick (Select (Boundary previousBoundary)), disabled (busy || previousBoundary < 1) ]
+            , Button.action "ph:skip-forward" "Next breakpoint (Right arrow key)" False [ onClick (Select (Boundary nextBoundary)), disabled (busy || nextBoundary >= List.length draft.breakpoints - 1) ]
             , (if model.addingBreakpoint then
                 Button.action
 
@@ -833,7 +850,7 @@ navigation model draft =
                     "ph:plus"
                 )
                 (if model.addingBreakpoint then
-                    "Cancel adding breakpoint"
+                    "Cancel adding breakpoint (Esc)"
 
                  else
                     "Add breakpoint"
@@ -953,45 +970,46 @@ boundaryPanel model draft index b =
             preventDefaultOn "keydown"
                 (Decode.map2
                     (\key shift ->
-                        ( Nudge
-                            (if key == "ArrowLeft" then
-                                if shift then
-                                    -1
+                        if key == "ArrowLeft" then
+                            ( Nudge (if shift then -1 else -0.1), True )
 
-                                else
-                                    -0.1
+                        else if key == "ArrowRight" then
+                            ( Nudge (if shift then 1 else 0.1), True )
 
-                             else if shift then
-                                1
-
-                             else
-                                0.1
-                            )
-                        , True
-                        )
+                        else
+                            ( RemoveBoundary, True )
                     )
                     (Decode.field "key" Decode.string
                         |> Decode.andThen
                             (\key ->
-                                if not busy && (key == "ArrowLeft" || key == "ArrowRight") then
+                                if not busy
+                                    && (key == "ArrowLeft"
+                                            || key == "ArrowRight"
+                                            || ((key == "Delete" || key == "Backspace") && index > 0 && index < List.length draft.breakpoints - 1)
+                                       )
+                                then
                                     Decode.succeed key
 
                                 else
-                                    Decode.fail "not a nudge"
+                                    Decode.fail "not a breakpoint shortcut"
                             )
                     )
                     (Decode.field "shiftKey" Decode.bool)
                 )
     in
     Card.viewWithAttributes
-        [ id "breakpoint-adjustment", attribute "tabindex" "-1", attribute "aria-label" "Adjust breakpoint", keyboard ]
+        [ id "breakpoint-adjustment"
+        , attribute "tabindex" "-1"
+        , attribute "aria-label" "Adjust breakpoint. Left and right arrows move it by 0.1 seconds; Shift moves it by 1 second. Delete or Backspace removes it."
+        , keyboard
+        ]
         (text (kindLabel b.kind))
         (Just (text (timestamp b.time)))
         [ div [ class "editor__breakpoint-actions" ]
             [ Button.primaryAction "ph:headphones" "Listen around breakpoint" False [ onClick Preview, disabled busy ]
-            , Button.textAction "−0.1s" "Earlier by 0.1 seconds" False [ onClick (Nudge -0.1), disabled busy ]
-            , Button.textAction "+0.1s" "Later by 0.1 seconds" False [ onClick (Nudge 0.1), disabled busy ]
-            , Button.dangerAction "ph:trash" "Remove breakpoint" False [ onClick RemoveBoundary, disabled (busy || index == 0 || index == List.length draft.breakpoints - 1) ]
+            , Button.textAction "−0.1s" "Earlier 0.1 seconds (Left arrow; Shift+Left: 1 second)" False [ onClick (Nudge -0.1), disabled busy ]
+            , Button.textAction "+0.1s" "Later 0.1 seconds (Right arrow; Shift+Right: 1 second)" False [ onClick (Nudge 0.1), disabled busy ]
+            , Button.dangerAction "ph:trash" "Remove breakpoint (Delete/Backspace)" False [ onClick RemoveBoundary, disabled (busy || index == 0 || index == List.length draft.breakpoints - 1) ]
             ]
         ]
         []
