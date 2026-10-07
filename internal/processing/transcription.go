@@ -38,7 +38,7 @@ type TranscriptionHandler struct {
 
 func NewTranscriptionHandler(st *store.Store, uploadsDir string, config AIConfig) *TranscriptionHandler {
 	if config.TranscriptionModel == "" {
-		config.TranscriptionModel = "microsoft/mai-transcribe-1.5"
+		config.TranscriptionModel = "microsoft/mai-transcribe-2"
 	}
 	return &TranscriptionHandler{store: st, uploadsDir: uploadsDir, config: config, client: &http.Client{Timeout: 5 * time.Minute}}
 }

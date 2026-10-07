@@ -50,6 +50,13 @@ func TestTranscriptionRetryChainsMetadataAndRetainsReturnState(t *testing.T) {
 		if req.URL.String() != openRouterURL+"/audio/transcriptions" {
 			t.Fatalf("unexpected URL %s", req.URL)
 		}
+		if err := req.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatal(err)
+		}
+		defer req.MultipartForm.RemoveAll()
+		if got := req.FormValue("model"); got != "microsoft/mai-transcribe-2" {
+			t.Fatalf("unexpected transcription model %q", got)
+		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"text":"New transcript"}`)), Header: make(http.Header)}, nil
 	})
 	const parameters = `{"return_stage":"normalization","return_status":"done"}`
