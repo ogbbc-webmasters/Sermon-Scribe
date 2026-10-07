@@ -39,6 +39,35 @@ func (s *Store) SaveSourceTranscription(id, text string, m TranscriptionMetadata
 	_, err = s.db.Exec(`INSERT INTO source_transcriptions VALUES(?,?,?) ON CONFLICT(sermon_id) DO UPDATE SET text=excluded.text,metadata=excluded.metadata`, id, text, string(raw))
 	return err
 }
+
+// RefreshEditingTranscription replaces the source transcript and the applied
+// transcript without changing the saved editing draft or its revision.
+func (s *Store) RefreshEditingTranscription(id, sourceText string, sourceMetadata TranscriptionMetadata, transcript string, transcriptMetadata TranscriptionMetadata) error {
+	sourceRaw, err := json.Marshal(sourceMetadata)
+	if err != nil {
+		return fmt.Errorf("encode source transcription metadata: %w", err)
+	}
+	transcriptRaw, err := json.Marshal(transcriptMetadata)
+	if err != nil {
+		return fmt.Errorf("encode transcript metadata: %w", err)
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.Exec(`INSERT INTO source_transcriptions VALUES(?,?,?) ON CONFLICT(sermon_id) DO UPDATE SET text=excluded.text,metadata=excluded.metadata`, id, sourceText, string(sourceRaw)); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`UPDATE editing SET source_text=?,source_metadata=? WHERE sermon_id=?`, sourceText, string(sourceRaw), id); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(`UPDATE sermons SET transcript=?,transcription_metadata=? WHERE id=?`, transcript, string(transcriptRaw), id); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
 func (s *Store) SourceTranscription(id string) (string, TranscriptionMetadata, error) {
 	var text, raw string
 	var m TranscriptionMetadata

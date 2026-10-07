@@ -34,6 +34,11 @@ type Selection
     | Passage Int
 
 
+type DeleteSide
+    = DeleteBeforeBreakpoint
+    | DeleteAfterBreakpoint
+
+
 type alias Model =
     { sermonId : Maybe String
     , visible : Bool
@@ -54,12 +59,13 @@ type alias Model =
     , showingDurationDialog : Bool
     , preserveEdited : Bool
     , addingBreakpoint : Bool
+    , confirmingDelete : Maybe DeleteSide
     }
 
 
 init : Model
 init =
-    Model Nothing False Nothing Nothing Nothing False False False Nothing Nothing "" 0 [] 0 0 False False True False
+    Model Nothing False Nothing Nothing Nothing False False False Nothing Nothing "" 0 [] 0 0 False False True False Nothing
 
 
 type Msg
@@ -85,6 +91,9 @@ type Msg
     | Regenerate
     | ConfirmRegenerate
     | CancelRegenerate
+    | RequestDelete DeleteSide
+    | ConfirmDelete
+    | CancelDelete
     | DismissDurationDialog
     | ChooseRegenerateMode Bool
     | Regenerated Int (Result Http.Error Draft)
@@ -185,16 +194,43 @@ update msg model =
                         ( { model | error = Just "Could not load editing suggestions. Try again.", pendingApply = Nothing }, Cmd.none, Nothing )
 
         Close ->
-            ( { model | visible = False, confirmingRegenerate = False, addingBreakpoint = False }, Cmd.none, stop )
+            ( { model | visible = False, confirmingRegenerate = False, confirmingDelete = Nothing, addingBreakpoint = False }, Cmd.none, stop )
 
         Reload ->
             update (Open (Maybe.withDefault "" model.sermonId)) { model | draft = Nothing }
 
         Regenerate ->
-            ( { model | confirmingRegenerate = True, preserveEdited = True, addingBreakpoint = False }, Cmd.none, stop )
+            ( { model | confirmingRegenerate = True, confirmingDelete = Nothing, preserveEdited = True, addingBreakpoint = False }, Cmd.none, stop )
 
         CancelRegenerate ->
             ( { model | confirmingRegenerate = False }, Task.attempt Focused (Browser.Dom.focus "regenerate-breakpoints"), Nothing )
+
+        RequestDelete side ->
+            case ( model.draft, model.selection ) of
+                ( Just draft, Just (Boundary index) ) ->
+                    if index > 0 && index < List.length draft.breakpoints - 1 && not model.regenerating && not model.applying && model.pendingApply == Nothing then
+                        ( { model | confirmingDelete = Just side }, Cmd.none, stop )
+
+                    else
+                        ( model, Cmd.none, Nothing )
+
+                _ ->
+                    ( model, Cmd.none, Nothing )
+
+        ConfirmDelete ->
+            case model.confirmingDelete of
+                Just side ->
+                    let
+                        ( next, cmd, audioEffect ) =
+                            deleteBoundarySide side model
+                    in
+                    ( { next | confirmingDelete = Nothing }, cmd, audioEffect )
+
+                Nothing ->
+                    ( model, Cmd.none, Nothing )
+
+        CancelDelete ->
+            ( { model | confirmingDelete = Nothing }, Task.attempt Focused (Browser.Dom.focus "breakpoint-adjustment"), Nothing )
 
         ChooseRegenerateMode preserve ->
             ( { model | preserveEdited = preserve }, Cmd.none, Nothing )
@@ -442,6 +478,47 @@ update msg model =
         AudioStatus status ->
             ( { model | audioStatus = status }, Cmd.none, Nothing )
 
+deleteBoundarySide : DeleteSide -> Model -> ( Model, Cmd Msg, Maybe Encode.Value )
+deleteBoundarySide side model =
+    case ( model.draft, model.selection ) of
+        ( Just draft, Just (Boundary index) ) ->
+            case side of
+                DeleteBeforeBreakpoint ->
+                    case ( at 0 draft.breakpoints, at index draft.breakpoints, at 0 draft.sections ) of
+                        ( Just start, Just selected, Just firstSection ) ->
+                            let
+                                collapseEarlierSections current =
+                                    { current
+                                        | breakpoints = [ start, selected ] ++ List.drop (index + 1) current.breakpoints
+                                        , sections = { firstSection | keep = False } :: List.drop index current.sections
+                                    }
+
+                                ( next, cmd, audioEffect ) =
+                                    change collapseEarlierSections model
+                            in
+                            ( { next | selection = Just (Boundary 1) }, cmd, audioEffect )
+
+                        _ ->
+                            ( model, Cmd.none, Nothing )
+
+                DeleteAfterBreakpoint ->
+                    case ( List.reverse draft.breakpoints |> List.head, at index draft.breakpoints, at index draft.sections ) of
+                        ( Just finish, Just selected, Just firstSection ) ->
+                            let
+                                collapseLaterSections current =
+                                    { current
+                                        | breakpoints = List.take (index + 1) current.breakpoints ++ [ finish ]
+                                        , sections = List.take index current.sections ++ [ { firstSection | keep = False } ]
+                                    }
+                            in
+                            change collapseLaterSections model
+
+                        _ ->
+                            ( model, Cmd.none, Nothing )
+
+        _ ->
+            ( model, Cmd.none, Nothing )
+
 
 selectSelection : Bool -> Selection -> Model -> ( Model, Cmd Msg, Maybe Encode.Value )
 selectSelection moveFocus selection model =
@@ -653,13 +730,13 @@ view model transcript =
             (text "Edit recording")
             (Maybe.map (\draft -> text ("Kept duration: " ++ timestamp (keptDuration draft))) model.draft)
             [ div [ class "editor__actions" ]
-                [ Button.view "button"
-                    (Button.regenerate "Regenerate breakpoints")
+                [ Button.labeled "Regenerate" (Button.regenerate "Regenerate breakpoints")
                     model.regenerating
                     [ onClick Regenerate
                     , id "regenerate-breakpoints"
                     , disabled (model.draft == Nothing || model.saving || busy || model.draft /= model.saved)
                     ]
+                , Button.labeled "Undo" { icon = "ph:arrow-counter-clockwise", label = "Undo last edit", backgroundColor = "var(--ink-soft)" } False [ onClick Undo, disabled (busy || List.isEmpty model.undo) ]
                 , div [ class "editor__finish-actions" ]
                     [ case ( model.sermonId, model.draft ) of
                         ( Just sermonId, Just draft ) ->
@@ -677,6 +754,9 @@ view model transcript =
 
               else
                 text ""
+            , model.confirmingDelete
+                |> Maybe.map deleteDialog
+                |> Maybe.withDefault (text "")
             , if model.showingDurationDialog then
                 Dialog.view
                     { id = "duration-limit", title = "Audio too long", onClose = DismissDurationDialog }
@@ -742,6 +822,36 @@ regenerationDialog model =
         ]
         [ Button.labeled "Cancel" Button.cancelDialog False [ onClick CancelRegenerate, autofocus True ]
         , Button.labeled "Regenerate" Button.confirmRegeneration False [ onClick ConfirmRegenerate ]
+        ]
+
+
+deleteDialog : DeleteSide -> Html Msg
+deleteDialog side =
+    let
+        ( title, caption, direction ) =
+            case side of
+                DeleteBeforeBreakpoint ->
+                    ( "Delete before breakpoint?", "Delete Before", "before" )
+
+                DeleteAfterBreakpoint ->
+                    ( "Delete after breakpoint?", "Delete After", "after" )
+
+        dialogId =
+            case side of
+                DeleteBeforeBreakpoint ->
+                    "delete-before-breakpoint"
+
+                DeleteAfterBreakpoint ->
+                    "delete-after-breakpoint"
+    in
+    Dialog.view
+        { id = dialogId, title = title, onClose = CancelDelete }
+        []
+        [ p [ Ui.panelText ]
+            [ text ("This removes the breakpoints between this breakpoint and the recording's " ++ (if direction == "before" then "start" else "end") ++ ", and marks that audio for deletion. Use Undo before applying edits to restore the previous layout.") ]
+        ]
+        [ Button.labeled "Cancel" Button.cancelDialog False [ onClick CancelDelete, autofocus True ]
+        , Button.labeled caption { icon = "ph:trash", label = caption, backgroundColor = "var(--red)" } False [ onClick ConfirmDelete ]
         ]
 
 
@@ -912,7 +1022,7 @@ sectionCard model draft transcript index section =
         )
         (text ("Section " ++ String.fromInt (index + 1)))
         (Just (text range))
-        [ Button.primaryAction "ph:headphones" "Preview start & finish" False [ onClick Preview, disabled busy ]
+        [ Button.labeled "Preview" { icon = "ph:headphones", label = "Preview start & finish", backgroundColor = "var(--green)" } False [ onClick Preview, disabled busy ]
         , if section.keep then
             Button.labeled "Delete" Button.deleteSection False [ onClick (Keep index False), disabled busy ]
 
@@ -1006,10 +1116,12 @@ boundaryPanel model draft transcript index b =
         (text (kindLabel b.kind))
         (Just (text (timestamp b.time)))
         [ div [ class "editor__breakpoint-actions" ]
-            [ Button.primaryAction "ph:headphones" "Listen around breakpoint" False [ onClick Preview, disabled busy ]
+            [ Button.labeled "Preview" { icon = "ph:headphones", label = "Listen around breakpoint", backgroundColor = "var(--green)" } False [ onClick Preview, disabled busy ]
             , Button.textAction "−0.1s" "Earlier 0.1 seconds (Left arrow; Shift+Left: 1 second)" False [ onClick (Nudge -0.1), disabled busy ]
             , Button.textAction "+0.1s" "Later 0.1 seconds (Right arrow; Shift+Right: 1 second)" False [ onClick (Nudge 0.1), disabled busy ]
-            , Button.dangerAction "ph:trash" "Remove breakpoint (Delete/Backspace)" False [ onClick RemoveBoundary, disabled (busy || index == 0 || index == List.length draft.breakpoints - 1) ]
+            , Button.labeled "Delete" { icon = "ph:trash", label = "Remove breakpoint (Delete/Backspace)", backgroundColor = "var(--red)" } False [ onClick RemoveBoundary, disabled (busy || index == 0 || index == List.length draft.breakpoints - 1) ]
+            , Button.labeled "Delete Before" { icon = "ph:trash", label = "Delete Before", backgroundColor = "var(--red)" } False [ onClick (RequestDelete DeleteBeforeBreakpoint), disabled (busy || index == 0) ]
+            , Button.labeled "Delete After" { icon = "ph:trash", label = "Delete After", backgroundColor = "var(--red)" } False [ onClick (RequestDelete DeleteAfterBreakpoint), disabled (busy || index == List.length draft.breakpoints - 1) ]
             ]
         ]
         (boundaryTranscripts draft transcript index)
@@ -1018,17 +1130,89 @@ boundaryPanel model draft transcript index b =
 boundaryTranscripts : Draft -> Maybe TranscriptionMetadata -> Int -> List (Html Msg)
 boundaryTranscripts draft transcript index =
     let
-        sectionExcerpt label sectionIndex =
-            sectionTranscript draft sectionIndex transcript
+        sectionExcerpt label words =
+            words
                 |> Maybe.map
                     (\content ->
                         div []
                             [ p [ Ui.hint ] [ text label ]
-                            , p [ class "editor__section-transcript" ] [ text content ]
+                            , p [ class "editor__section-transcript" ] [ text ("… " ++ String.join " " content ++ " …") ]
                             ]
                     )
+
+        snippets breakpoint metadata =
+            let
+                words =
+                    timedTranscriptWords metadata
+
+                previewStart =
+                    max 0 (breakpoint.time - 3)
+
+                previewEnd =
+                    min draft.duration (breakpoint.time + 3)
+
+                before =
+                    words
+                        |> List.filter (\word -> word.time >= previewStart && word.time < breakpoint.time)
+                        |> List.map .word
+
+                after =
+                    words
+                        |> List.filter (\word -> word.time >= breakpoint.time && word.time < previewEnd)
+                        |> List.map .word
+            in
+            ( if List.isEmpty before then
+                Nothing
+
+              else
+                Just before
+            , if List.isEmpty after then
+                Nothing
+
+              else
+                Just after
+            )
+
+        excerpts =
+            Maybe.map2 snippets (at index draft.breakpoints) transcript
     in
     List.filterMap identity
-        [ sectionExcerpt ("Section " ++ String.fromInt index ++ " before this breakpoint") (index - 1)
-        , sectionExcerpt ("Section " ++ String.fromInt (index + 1) ++ " after this breakpoint") index
+        [ excerpts |> Maybe.andThen (Tuple.first >> sectionExcerpt "Before this breakpoint")
+        , excerpts |> Maybe.andThen (Tuple.second >> sectionExcerpt "After this breakpoint")
         ]
+
+
+timedTranscriptWords : TranscriptionMetadata -> List { time : Float, word : String }
+timedTranscriptWords metadata =
+    if not (List.isEmpty metadata.words) then
+        metadata.words
+            |> List.map (\word -> { time = midpoint word.start word.end, word = word.word })
+            |> List.sortBy .time
+
+    else
+        metadata.segments
+            |> List.concatMap
+                (\segment ->
+                    let
+                        words =
+                            String.words segment.text
+
+                        count =
+                            List.length words
+
+                        duration =
+                            segment.end - segment.start
+                    in
+                    if count == 0 then
+                        []
+
+                    else
+                        List.indexedMap
+                            (\wordIndex word ->
+                                { time = segment.start + ((toFloat wordIndex + 0.5) / toFloat count) * duration
+                                , word = word
+                                }
+                            )
+                            words
+                )
+            |> List.sortBy .time

@@ -21,7 +21,7 @@ func TestRegenerateSpeakerBreakpoints(t *testing.T) {
 		t.Fatal(err)
 	}
 	speaker := 0
-	metadata := store.TranscriptionMetadata{Duration: 8, Segments: []store.TranscriptSegment{{Start: 0.08, End: 2, Speaker: &speaker}, {Start: 3.4, End: 7, Speaker: &speaker}}}
+	metadata := store.TranscriptionMetadata{Duration: 8, Segments: []store.TranscriptSegment{{Start: 0.08, End: 2, Text: "first phrase", Speaker: &speaker}, {Start: 3.4, End: 7, Text: "second phrase", Speaker: &speaker}}}
 	if err := srv.Store.SaveSourceTranscription("regenerate", "original", metadata); err != nil {
 		t.Fatal(err)
 	}
@@ -56,9 +56,9 @@ func TestRegenerateSpeakerBreakpoints(t *testing.T) {
 	if got.Revision != 2 || len(got.Breakpoints) != 4 || got.Breakpoints[1].Time != 0.08 || got.Breakpoints[2].Time != 3.4 || len(got.Sections) != 3 {
 		t.Fatalf("regenerated draft: %+v", got)
 	}
-	for _, section := range got.Sections {
-		if !section.Keep {
-			t.Fatal("regeneration preserved old delete choice")
+	for i, keep := range []bool{false, true, true} {
+		if got.Sections[i].Keep != keep {
+			t.Fatalf("regenerated section %d keep = %t, want %t", i, got.Sections[i].Keep, keep)
 		}
 	}
 	request(`{"revision":1}`, 409)

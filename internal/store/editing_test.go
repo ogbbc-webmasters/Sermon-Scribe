@@ -242,6 +242,47 @@ func TestEditingConflictsSnapshotAndPreservation(t *testing.T) {
 	}
 }
 
+func TestRefreshEditingTranscriptionPreservesDraft(t *testing.T) {
+	st, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.CreateSermon(Sermon{ID: "refresh", Stage: "metadata", Status: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	draft := editingFixture()
+	draft.Sections[0].Keep = false
+	if err := st.PrepareEditing("refresh", draft, "old source", TranscriptionMetadata{Duration: 10}); err != nil {
+		t.Fatal(err)
+	}
+	savedDraft, err := st.GetEditing("refresh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceMetadata := TranscriptionMetadata{Language: "en", Duration: 10, Words: []TranscriptWord{{Word: "new", Start: 6, End: 7}}}
+	keptMetadata := TranscriptionMetadata{Language: "en", Duration: 4, Words: []TranscriptWord{{Word: "kept", Start: 0, End: 1}}}
+	if err := st.RefreshEditingTranscription("refresh", "new source", sourceMetadata, "kept transcript", keptMetadata); err != nil {
+		t.Fatal(err)
+	}
+	gotDraft, err := st.GetEditing("refresh")
+	if err != nil || !reflect.DeepEqual(gotDraft, savedDraft) {
+		t.Fatalf("draft changed during transcript refresh: %+v, want %+v; %v", gotDraft, savedDraft, err)
+	}
+	sourceText, gotSourceMetadata, err := st.SourceTranscription("refresh")
+	if err != nil || sourceText != "new source" || !reflect.DeepEqual(gotSourceMetadata, sourceMetadata) {
+		t.Fatalf("source transcription: %q %+v, %v", sourceText, gotSourceMetadata, err)
+	}
+	sermon, err := st.GetSermon("refresh")
+	if err != nil || sermon.Transcript == nil || *sermon.Transcript != "kept transcript" || !reflect.DeepEqual(sermon.TranscriptionMetadata, &keptMetadata) {
+		t.Fatalf("applied transcript: %+v, %v", sermon, err)
+	}
+	var editingSource string
+	if err := st.db.QueryRow(`SELECT source_text FROM editing WHERE sermon_id=?`, "refresh").Scan(&editingSource); err != nil || editingSource != "new source" {
+		t.Fatalf("editing source transcript: %q, %v", editingSource, err)
+	}
+}
+
 func TestMetadataCannotBypassEditingPause(t *testing.T) {
 	st, err := Open(":memory:")
 	if err != nil {

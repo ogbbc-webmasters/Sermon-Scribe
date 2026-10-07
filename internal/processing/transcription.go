@@ -3,8 +3,10 @@ package processing
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -157,6 +159,25 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 			Word: word.Word, Start: word.Start, End: word.End, Speaker: word.Speaker,
 			SpeakerLabel: word.SpeakerLabel, Confidence: word.Confidence,
 		}
+	}
+	if draft, err := h.store.GetEditing(job.SermonID); err == nil {
+		ranges := keptRanges(store.EditSnapshot{Draft: draft})
+		if len(ranges) == 0 {
+			ranges = []AudioRange{{Start: 0, End: draft.Duration}}
+		}
+		transcript, transcriptMetadata := MapTranscript(metadata, ranges)
+		if err := h.store.RefreshEditingTranscription(job.SermonID, result.Text, metadata, transcript, transcriptMetadata); err != nil {
+			return Result{}, err
+		}
+		return Result{
+			Next: &store.NewJob{
+				ID:    uuid.New().String(),
+				Type:  "extract_metadata",
+				Stage: "metadata",
+			},
+		}, reporter.Progress(100, nil)
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return Result{}, err
 	}
 	if err := h.store.SaveSourceTranscription(job.SermonID, result.Text, metadata); err != nil {
 		return Result{}, err

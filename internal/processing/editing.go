@@ -27,9 +27,12 @@ func NewEditingHandler(st *store.Store, dir string) *EditingHandler { return &Ed
 
 type AudioRange struct{ Start, End float64 }
 
+const breakpointPreviewSeconds = 3
+
 // SpeakerDraft uses diarized segment starts and marks long pauses at the end of
 // the preceding segment. Edited boundaries take priority when preserving edits.
-func SpeakerDraft(d store.Editing, segments []store.TranscriptSegment, preserveEdited bool) store.Editing {
+func SpeakerDraft(d store.Editing, metadata store.TranscriptionMetadata, preserveEdited bool) store.Editing {
+	segments := metadata.Segments
 	var starts []float64
 	var speaking []store.TranscriptSegment
 	for _, segment := range segments {
@@ -104,9 +107,9 @@ func SpeakerDraft(d store.Editing, segments []store.TranscriptSegment, preserveE
 	d.Sections = make([]store.Section, len(d.Breakpoints)-1)
 	for i := range d.Sections {
 		startsInSilence := d.Breakpoints[i].Kind == "silence_start"
-		d.Sections[i] = store.Section{ID: uuid.NewString(), Keep: !preserveEdited && !startsInSilence}
+		start, end := d.Breakpoints[i].Time, d.Breakpoints[i+1].Time
+		d.Sections[i] = store.Section{ID: uuid.NewString(), Keep: !preserveEdited && !startsInSilence && sectionHasTranscript(metadata, start, end)}
 		if preserveEdited {
-			start, end := d.Breakpoints[i].Time, d.Breakpoints[i+1].Time
 			for j, section := range old.Sections {
 				left, right := old.Breakpoints[j].Time, old.Breakpoints[j+1].Time
 				if start == left && end == right {
@@ -122,6 +125,25 @@ func SpeakerDraft(d store.Editing, segments []store.TranscriptSegment, preserveE
 		}
 	}
 	return d
+}
+
+func sectionHasTranscript(metadata store.TranscriptionMetadata, start, end float64) bool {
+	if len(metadata.Words) > 0 {
+		for _, word := range metadata.Words {
+			mid := (word.Start + word.End) / 2
+			if mid >= start && mid < end && strings.TrimSpace(word.Word) != "" {
+				return true
+			}
+		}
+		return false
+	}
+	for _, segment := range metadata.Segments {
+		mid := (segment.Start + segment.End) / 2
+		if mid >= start && mid < end && strings.TrimSpace(segment.Text) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func audioDuration(ctx context.Context, path string) (float64, error) {
@@ -249,7 +271,7 @@ func (h *EditingHandler) Run(ctx context.Context, job store.Job, reporter Report
 			},
 			Sections: []store.Section{{ID: uuid.NewString(), Keep: true}},
 		}
-		d = SpeakerDraft(d, m.Segments, false)
+		d = SpeakerDraft(d, m, false)
 		if err = h.store.PrepareEditing(job.SermonID, d, text, m); err != nil {
 			return Result{}, err
 		}
@@ -380,8 +402,8 @@ func PreviewAudio(ctx context.Context, input, mode string, start, end, duration 
 	var filters []string
 	args := []string{"-v", "error"}
 	if mode == "breakpoint" {
-		clipStart := math.Max(0, start-1)
-		clipEnd := math.Min(duration, start+1)
+		clipStart := math.Max(0, start-breakpointPreviewSeconds)
+		clipEnd := math.Min(duration, start+breakpointPreviewSeconds)
 		edge := start - clipStart
 		args = append(args, "-ss", fmt.Sprintf("%.9f", clipStart), "-t", fmt.Sprintf("%.9f", clipEnd-clipStart), "-i", input)
 		filters = []string{fmt.Sprintf("[0:a]atrim=start=0:end=%.9f,asetpts=PTS-STARTPTS[a]", edge), "sine=frequency=1200:duration=0.5,aformat=sample_rates=44100:channel_layouts=mono,adelay=250:all=1,apad=pad_dur=0.25[b]", fmt.Sprintf("[0:a]atrim=start=%.9f,asetpts=PTS-STARTPTS[c]", edge), "[a][b][c]concat=n=3:v=0:a=1[out]"}

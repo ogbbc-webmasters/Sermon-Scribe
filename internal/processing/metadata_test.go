@@ -124,6 +124,71 @@ func TestTranscriptionRetryPreparesEditingWithoutReturnState(t *testing.T) {
 	}
 }
 
+func TestTranscriptionRetryPreservesEditingDraftAndMapsKeptTranscript(t *testing.T) {
+	st := processingTestStore(t)
+	const sermonID = "transcription-retry-with-draft"
+	if err := st.CreateSermon(store.Sermon{ID: sermonID, OriginalFilename: "source.mp3", UploadedAt: "2026-10-06T00:00:00Z", Stage: "transcription", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	draft := store.Editing{
+		Duration: 3.2,
+		Revision: 8,
+		Breakpoints: []store.Breakpoint{
+			{ID: "start", Kind: "start"},
+			{ID: "custom", Time: 1.5, Kind: "manual", Edited: true},
+			{ID: "end", Time: 3.2, Kind: "end"},
+		},
+		Sections: []store.Section{{ID: "deleted", Keep: false}, {ID: "kept", Keep: true}},
+	}
+	if err := st.PrepareEditing(sermonID, draft, "old source", store.TranscriptionMetadata{Duration: 3.2}); err != nil {
+		t.Fatal(err)
+	}
+	savedDraft, err := st.GetEditing(sermonID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	uploads := t.TempDir()
+	dir := filepath.Join(uploads, sermonID)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "normalized.mp3"), []byte("full recording"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := NewTranscriptionHandler(st, uploads, AIConfig{APIKey: "test-key"})
+	h.client.Transport = metadataTransport(func(req *http.Request) (*http.Response, error) {
+		file, _, err := req.FormFile("file")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer file.Close()
+		audio, err := io.ReadAll(file)
+		if err != nil || string(audio) != "full recording" {
+			t.Fatalf("transcription did not receive full source audio: %q, %v", audio, err)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"text":"one two three four","language":"en","duration":3.2,"segments":[{"start":0,"end":3.2,"text":"one two three four"}],"words":[{"word":"one","start":0.1,"end":0.4},{"word":"two","start":0.8,"end":1.1},{"word":"three","start":2,"end":2.3},{"word":"four","start":2.7,"end":3}]}`)), Header: make(http.Header)}, nil
+	})
+	result, err := h.Run(context.Background(), store.Job{SermonID: sermonID}, &recordingReporter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Next == nil || result.Next.Type != "extract_metadata" || result.Next.Stage != "metadata" {
+		t.Fatalf("retry should proceed to metadata extraction: %+v", result.Next)
+	}
+	gotDraft, err := st.GetEditing(sermonID)
+	if err != nil || !reflect.DeepEqual(gotDraft, savedDraft) {
+		t.Fatalf("editing draft changed after transcription: %+v, want %+v; %v", gotDraft, savedDraft, err)
+	}
+	fullText, _, err := st.SourceTranscription(sermonID)
+	if err != nil || fullText != "one two three four" {
+		t.Fatalf("full source transcript = %q, %v", fullText, err)
+	}
+	sermon, err := st.GetSermon(sermonID)
+	if err != nil || sermon.Transcript == nil || *sermon.Transcript != "three four" {
+		t.Fatalf("kept transcript = %+v, %v", sermon.Transcript, err)
+	}
+}
+
 func TestTranscriptionReducesOversizedProxyBeforeSending(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not installed")

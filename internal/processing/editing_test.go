@@ -21,12 +21,13 @@ func TestSpeakerDraftUsesEverySegmentStart(t *testing.T) {
 		Sections:    []store.Section{{ID: "old-a", Keep: false}, {ID: "old-b", Keep: true}},
 	}
 	segments := []store.TranscriptSegment{
-		{Start: 5, End: 7, Speaker: &speaker}, {Start: 0, End: 0.01, Speaker: &speaker},
-		{Start: 0.049, End: 0.05, Speaker: &speaker}, {Start: 0.05, End: 0.06, Speaker: &speaker},
-		{Start: 2, End: 2.5, Speaker: &speaker}, {Start: 2, End: 2.5, Speaker: &speaker},
-		{Start: 3}, {Start: 9.95, End: 9.96, Speaker: &speaker}, {Start: 10, End: 10.01, Speaker: &speaker},
+		{Start: 5, End: 7, Text: "speech", Speaker: &speaker}, {Start: 0, End: 0.01, Text: "speech", Speaker: &speaker},
+		{Start: 0.049, End: 0.05, Text: "speech", Speaker: &speaker}, {Start: 0.05, End: 0.06, Text: "speech", Speaker: &speaker},
+		{Start: 2, End: 2.5, Text: "speech", Speaker: &speaker}, {Start: 2, End: 2.5, Text: "speech", Speaker: &speaker},
+		{Start: 3}, {Start: 9.95, End: 9.96, Text: "speech", Speaker: &speaker}, {Start: 10, End: 10.01, Speaker: &speaker},
 	}
-	got := SpeakerDraft(d, segments, false)
+	metadata := store.TranscriptionMetadata{Segments: segments}
+	got := SpeakerDraft(d, metadata, false)
 	var times []float64
 	for _, b := range got.Breakpoints {
 		times = append(times, b.Time)
@@ -61,13 +62,14 @@ func TestSpeakerDraftMarksLongSilenceForDeletion(t *testing.T) {
 		Sections: []store.Section{{ID: "whole", Keep: true}},
 	}
 	segments := []store.TranscriptSegment{
-		{Start: 1, End: 2, Speaker: &speaker},
-		{Start: 5, End: 6, Speaker: &speaker},
-		{Start: 9, End: 9.5, Speaker: &speaker},
-		{Start: 13, End: 14, Speaker: &speaker},
+		{Start: 1, End: 2, Text: "speech", Speaker: &speaker},
+		{Start: 5, End: 6, Text: "speech", Speaker: &speaker},
+		{Start: 9, End: 9.5, Text: "speech", Speaker: &speaker},
+		{Start: 13, End: 14, Text: "speech", Speaker: &speaker},
 	}
+	metadata := store.TranscriptionMetadata{Segments: segments}
 
-	got := SpeakerDraft(d, segments, false)
+	got := SpeakerDraft(d, metadata, false)
 	wantTimes := []float64{0, 1, 5, 9, 9.5, 13, 20}
 	if len(got.Breakpoints) != len(wantTimes) {
 		t.Fatalf("breakpoint count: %d, want %d", len(got.Breakpoints), len(wantTimes))
@@ -88,9 +90,39 @@ func TestSpeakerDraftMarksLongSilenceForDeletion(t *testing.T) {
 	}
 
 	got.Sections[4].Keep = true
-	regenerated := SpeakerDraft(got, segments, true)
+	regenerated := SpeakerDraft(got, metadata, true)
 	if !regenerated.Sections[4].Keep {
 		t.Fatal("regeneration discarded an explicit keep choice for an unchanged silence section")
+	}
+}
+
+func TestSpeakerDraftMarksSectionsWithoutTranscriptForDeletion(t *testing.T) {
+	speaker := 0
+	d := store.Editing{
+		Duration:    10,
+		Breakpoints: []store.Breakpoint{{ID: "start", Kind: "start"}, {ID: "end", Time: 10, Kind: "end"}},
+		Sections:    []store.Section{{ID: "whole", Keep: true}},
+	}
+	metadata := store.TranscriptionMetadata{
+		Segments: []store.TranscriptSegment{
+			{Start: 2, End: 3, Text: "first phrase", Speaker: &speaker},
+			{Start: 7, End: 8, Text: "second phrase", Speaker: &speaker},
+		},
+		Words: []store.TranscriptWord{
+			{Word: "first", Start: 2, End: 2.4},
+			{Word: "second", Start: 7, End: 7.4},
+		},
+	}
+
+	got := SpeakerDraft(d, metadata, false)
+	if len(got.Sections) != 4 {
+		t.Fatalf("sections: %+v", got.Sections)
+	}
+	wantKeep := []bool{false, true, false, true}
+	for i, keep := range wantKeep {
+		if got.Sections[i].Keep != keep {
+			t.Errorf("section %d keep = %t, want %t", i, got.Sections[i].Keep, keep)
+		}
 	}
 }
 
@@ -106,8 +138,13 @@ func TestSpeakerDraftPreservesEditedBoundariesAndSections(t *testing.T) {
 		},
 		Sections: []store.Section{{ID: "a", Keep: false}, {ID: "b", Keep: true}, {ID: "c", Keep: false}},
 	}
-	segments := []store.TranscriptSegment{{Start: 2, End: 4.8, Speaker: &speaker}, {Start: 5, End: 6.8, Speaker: &speaker}, {Start: 7, End: 8, Speaker: &speaker}}
-	got := SpeakerDraft(d, segments, true)
+	metadata := store.TranscriptionMetadata{Segments: []store.TranscriptSegment{
+		{Start: 0.5, End: 1, Text: "opening"},
+		{Start: 2, End: 4.8, Text: "first phrase", Speaker: &speaker},
+		{Start: 5, End: 6.8, Text: "second phrase", Speaker: &speaker},
+		{Start: 7, End: 8, Text: "third phrase", Speaker: &speaker},
+	}}
+	got := SpeakerDraft(d, metadata, true)
 	var times []float64
 	for _, b := range got.Breakpoints {
 		times = append(times, b.Time)
@@ -124,7 +161,7 @@ func TestSpeakerDraftPreservesEditedBoundariesAndSections(t *testing.T) {
 	if err := got.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	reset := SpeakerDraft(d, segments, false)
+	reset := SpeakerDraft(d, metadata, false)
 	if reset.Breakpoints[1].Time != 2 || reset.Breakpoints[2].Time != 5 || !reset.Sections[0].Keep {
 		t.Fatalf("all mode did not reset: %+v", reset)
 	}
@@ -136,7 +173,7 @@ func TestSpeakerDraftPreservesLegacyMovedBoundary(t *testing.T) {
 		Breakpoints: []store.Breakpoint{{ID: "start", Kind: "start"}, {ID: "moved", Time: 2.3, Kind: "speaker"}, {ID: "end", Time: 10, Kind: "end"}},
 		Sections:    []store.Section{{ID: "a", Keep: false}, {ID: "b", Keep: true}},
 	}
-	got := SpeakerDraft(d, []store.TranscriptSegment{{Start: 2, Speaker: &speaker}}, true)
+	got := SpeakerDraft(d, store.TranscriptionMetadata{Segments: []store.TranscriptSegment{{Start: 2, End: 3, Text: "speech", Speaker: &speaker}}}, true)
 	if len(got.Breakpoints) != 3 || got.Breakpoints[1].Time != 2.3 || !got.Breakpoints[1].Edited || *got.Breakpoints[1].SourceTime != 2 {
 		t.Fatalf("legacy move lost or duplicated: %+v", got.Breakpoints)
 	}
@@ -238,7 +275,7 @@ func TestEditingFFmpegPipelinePauseAndRedo(t *testing.T) {
 	for _, tc := range []struct {
 		mode             string
 		start, end, want float64
-	}{{"breakpoint", 0, 0, 2}, {"breakpoint", 5, 0, 3}, {"breakpoint", 8, 0, 2}, {"section", 0, 8, 7}, {"section", 1, 4, 3}} {
+	}{{"breakpoint", 0, 0, 4}, {"breakpoint", 5, 0, 7}, {"breakpoint", 8, 0, 4}, {"section", 0, 8, 7}, {"section", 1, 4, 3}} {
 		audio, err := PreviewAudio(ctx, source, tc.mode, tc.start, tc.end, 8)
 		if err != nil || len(audio) < 44 || string(audio[:4]) != "RIFF" {
 			t.Fatalf("preview %+v: %v", tc, err)

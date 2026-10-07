@@ -84,7 +84,7 @@ func (s *Server) handleRegenerateEditing(w http.ResponseWriter, r *http.Request)
 		editingError(w, err)
 		return
 	}
-	d = processing.SpeakerDraft(d, metadata.Segments, body.PreserveEdited)
+	d = processing.SpeakerDraft(d, metadata, body.PreserveEdited)
 	saved, err := s.Store.MutateEditing(id, &d, *body.Revision, false, "")
 	if err != nil {
 		editingError(w, err)
