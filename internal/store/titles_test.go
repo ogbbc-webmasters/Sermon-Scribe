@@ -11,6 +11,10 @@ func TestTitleCase(t *testing.T) {
 		{"wisdom: the gift of God", "Wisdom: The Gift of God"},
 		{"hope in the LORD", "Hope in the LORD"},
 		{"God’s grace and god-given wisdom", "God’s Grace and God-Given Wisdom"},
+		{"the gift of wisdom.", "The Gift of Wisdom"},
+		{"faith in the LORD...", "Faith in the LORD"},
+		{"  grace. and faith. \t", "  Grace. And Faith \t"},
+		{"is there hope?", "Is There Hope?"},
 		{"  “éternal wisdom”\tand faith  ", "  “Éternal Wisdom”\tand Faith  "},
 		{"", ""},
 	} {
@@ -30,7 +34,7 @@ func TestTitleCaseAtStorageBoundary(t *testing.T) {
 	if err := st.CreateSermon(Sermon{ID: "title", OriginalFilename: "source.mp3", UploadedAt: "2026-10-06T00:00:00Z", Stage: "metadata", Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SaveMetadata("title", "receiving wisdom", true, "Reason", "Speaker", nil, nil, nil); err != nil {
+	if err := st.SaveMetadata("title", "receiving wisdom.", true, "Reason", "Speaker", nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	var persisted string
@@ -40,7 +44,7 @@ func TestTitleCaseAtStorageBoundary(t *testing.T) {
 	if persisted != "Receiving Wisdom" {
 		t.Fatalf("metadata persisted title = %q", persisted)
 	}
-	if err := st.SaveTitle("title", "the gift of wisdom", false, "New reason"); err != nil {
+	if err := st.SaveTitle("title", "the gift of wisdom...", false, "New reason"); err != nil {
 		t.Fatal(err)
 	}
 	if err := st.db.QueryRow(`SELECT title FROM sermons WHERE id='title'`).Scan(&persisted); err != nil {
@@ -51,7 +55,7 @@ func TestTitleCaseAtStorageBoundary(t *testing.T) {
 	}
 	// Existing records need no regeneration or database backfill to display
 	// consistently. Reads leave their stored value untouched.
-	if _, err := st.db.Exec(`UPDATE sermons SET title='receiving wisdom' WHERE id='title'`); err != nil {
+	if _, err := st.db.Exec(`UPDATE sermons SET title='receiving wisdom.' WHERE id='title'`); err != nil {
 		t.Fatal(err)
 	}
 	for _, list := range []bool{false, true} {
@@ -76,7 +80,7 @@ func TestTitleCaseAtStorageBoundary(t *testing.T) {
 	if err := st.db.QueryRow(`SELECT title FROM sermons WHERE id='title'`).Scan(&persisted); err != nil {
 		t.Fatal(err)
 	}
-	if persisted != "receiving wisdom" {
+	if persisted != "receiving wisdom." {
 		t.Fatal("reading legacy title changed stored data")
 	}
 }

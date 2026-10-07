@@ -317,9 +317,11 @@ func (s *Store) SaveTitle(id, title string, generated bool, reasoning string) er
 
 var titleWords = regexp.MustCompile(`[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*`)
 
-// titleCase applies English headline casing without rewriting the quote's
-// punctuation, spacing, or existing acronyms.
+// titleCase removes trailing periods and applies English headline casing,
+// preserving other punctuation, spacing, and existing acronyms.
 func titleCase(title string) string {
+	trimmed := strings.TrimRightFunc(title, unicode.IsSpace)
+	title = strings.TrimRight(trimmed, ".") + title[len(trimmed):]
 	words := titleWords.FindAllStringIndex(title, -1)
 	var result strings.Builder
 	end := 0
