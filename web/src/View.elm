@@ -122,6 +122,9 @@ viewSermonDetail model sermon =
             , if Editing.isOpen sermon.id model.editor then
                 text ""
 
+              else if sermon.stage == "upload" then
+                text ""
+
               else
                 div
                     [ class
@@ -277,8 +280,8 @@ viewDetailAudio model sermon =
 
           else
             audio [ class "sermon-detail__audio", controls True, attribute "preload" "metadata", src source ] []
-        , if sermon.transcriptionMetadata |> Maybe.andThen .duration |> Maybe.map (\seconds -> seconds >= 80 * 60) |> Maybe.withDefault False then
-            p [ Ui.hint ] [ text "Please edit the audio to under 80 minutes." ]
+        , if sermon.transcriptionMetadata |> Maybe.andThen .duration |> Maybe.map (\seconds -> seconds >= 90 * 60) |> Maybe.withDefault False then
+            p [ Ui.hint ] [ text "Please edit the audio to under 90 minutes." ]
 
           else
             text ""
@@ -292,22 +295,27 @@ viewDetailAudio model sermon =
 
 viewDetailTranscript : Model -> Sermon -> Html Msg
 viewDetailTranscript model sermon =
+    case sermon.transcript of
+        Just transcript ->
+            viewTranscriptCard model sermon transcript
+
+        Nothing ->
+            text ""
+
+
+viewTranscriptCard : Model -> Sermon -> String -> Html Msg
+viewTranscriptCard model sermon transcript =
     Card.view (text "Transcript")
         [ viewProcessingRetry model sermon "transcription" "Regenerate Transcription"
-        , case sermon.transcript of
-            Just transcript ->
-                Button.view "button"
-                    (if model.transcriptCopyStatus == Just True then
-                        Button.copiedTranscript
+        , Button.view "button"
+            (if model.transcriptCopyStatus == Just True then
+                Button.copiedTranscript
 
-                     else
-                        Button.copyTranscript
-                    )
-                    False
-                    [ onClick (CopyTranscript transcript) ]
-
-            Nothing ->
-                text ""
+             else
+                Button.copyTranscript
+            )
+            False
+            [ onClick (CopyTranscript transcript) ]
         ]
         [ if model.transcriptCopyStatus == Just True then
             p [ Ui.panelText, attribute "role" "status" ] [ text "Transcript copied." ]
@@ -319,81 +327,76 @@ viewDetailTranscript model sermon =
 
           else
             text ""
-        , case sermon.transcript of
-            Just transcript ->
-                let
-                    matches =
-                        if String.isEmpty model.transcriptSearch then
-                            []
+        , let
+            matches =
+                if String.isEmpty model.transcriptSearch then
+                    []
+
+                else
+                    String.indexes (String.toLower model.transcriptSearch) (String.toLower transcript)
+
+            count =
+                List.length matches
+
+            ( offset, reversed ) =
+                List.indexedMap Tuple.pair matches
+                    |> List.foldl
+                        (\( index, start ) ( previousEnd, nodes ) ->
+                            ( start + String.length model.transcriptSearch
+                            , mark
+                                [ class
+                                    (if index == model.transcriptMatch then
+                                        "sermon-detail__match sermon-detail__match--active"
+
+                                     else
+                                        "sermon-detail__match"
+                                    )
+                                , attribute "data-transcript-match" (String.fromInt index)
+                                ]
+                                [ text (String.slice start (start + String.length model.transcriptSearch) transcript) ]
+                                :: text (String.slice previousEnd start transcript)
+                                :: nodes
+                            )
+                        )
+                        ( 0, [] )
+          in
+          div []
+            [ div [ class "sermon-detail__search" ]
+                [ input
+                    [ class "sermon-detail__search-input focusable"
+                    , type_ "search"
+                    , attribute "aria-label" "Search transcript"
+                    , placeholder "Search transcript…"
+                    , value model.transcriptSearch
+                    , onInput SearchTranscript
+                    ]
+                    []
+                , if count > 0 then
+                    div [ class "sermon-detail__search-navigation" ]
+                        [ Button.view "button" Button.previousMatch False [ onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch - 1))) ]
+                        , span [ Ui.panelText, attribute "role" "status" ] [ text (String.fromInt (model.transcriptMatch + 1) ++ " of " ++ String.fromInt count) ]
+                        , Button.view "button" Button.nextMatch False [ onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch + 1))) ]
+                        ]
+
+                  else if not (String.isEmpty model.transcriptSearch) then
+                    span [ Ui.panelText, attribute "role" "status" ] [ text "No matches" ]
+
+                  else
+                    text ""
+                ]
+            , div [ class "sermon-detail__transcript", attribute "tabindex" "0", attribute "aria-label" "Transcript", attribute "role" "region" ]
+                (case sermon.transcriptionMetadata of
+                    Just metadata ->
+                        if not (List.isEmpty metadata.segments) && String.isEmpty model.transcriptSearch then
+                            List.map viewTranscriptSegment metadata.segments
 
                         else
-                            String.indexes (String.toLower model.transcriptSearch) (String.toLower transcript)
+                            List.reverse reversed ++ [ text (String.dropLeft offset transcript) ]
 
-                    count =
-                        List.length matches
-
-                    ( offset, reversed ) =
-                        List.indexedMap Tuple.pair matches
-                            |> List.foldl
-                                (\( index, start ) ( previousEnd, nodes ) ->
-                                    ( start + String.length model.transcriptSearch
-                                    , mark
-                                        [ class
-                                            (if index == model.transcriptMatch then
-                                                "sermon-detail__match sermon-detail__match--active"
-
-                                             else
-                                                "sermon-detail__match"
-                                            )
-                                        , attribute "data-transcript-match" (String.fromInt index)
-                                        ]
-                                        [ text (String.slice start (start + String.length model.transcriptSearch) transcript) ]
-                                        :: text (String.slice previousEnd start transcript)
-                                        :: nodes
-                                    )
-                                )
-                                ( 0, [] )
-                in
-                div []
-                    [ div [ class "sermon-detail__search" ]
-                        [ input
-                            [ class "sermon-detail__search-input focusable"
-                            , type_ "search"
-                            , attribute "aria-label" "Search transcript"
-                            , placeholder "Search transcript…"
-                            , value model.transcriptSearch
-                            , onInput SearchTranscript
-                            ]
-                            []
-                        , if count > 0 then
-                            div [ class "sermon-detail__search-navigation" ]
-                                [ Button.view "button" Button.previousMatch False [ onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch - 1))) ]
-                                , span [ Ui.panelText, attribute "role" "status" ] [ text (String.fromInt (model.transcriptMatch + 1) ++ " of " ++ String.fromInt count) ]
-                                , Button.view "button" Button.nextMatch False [ onClick (SelectTranscriptMatch (modBy count (model.transcriptMatch + 1))) ]
-                                ]
-
-                          else if not (String.isEmpty model.transcriptSearch) then
-                            span [ Ui.panelText, attribute "role" "status" ] [ text "No matches" ]
-
-                          else
-                            text ""
-                        ]
-                    , div [ class "sermon-detail__transcript", attribute "tabindex" "0", attribute "aria-label" "Transcript", attribute "role" "region" ]
-                        (case sermon.transcriptionMetadata of
-                            Just metadata ->
-                                if not (List.isEmpty metadata.segments) && String.isEmpty model.transcriptSearch then
-                                    List.map viewTranscriptSegment metadata.segments
-
-                                else
-                                    List.reverse reversed ++ [ text (String.dropLeft offset transcript) ]
-
-                            Nothing ->
-                                List.reverse reversed ++ [ text (String.dropLeft offset transcript) ]
-                        )
-                    ]
-
-            Nothing ->
-                p [ Ui.panelText ] [ text "Transcript not available yet." ]
+                    Nothing ->
+                        List.reverse reversed ++ [ text (String.dropLeft offset transcript) ]
+                )
+            ]
         ]
 
 
