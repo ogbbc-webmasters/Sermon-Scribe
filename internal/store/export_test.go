@@ -19,7 +19,7 @@ func TestExportSnapshotsAppliedSourceAndRestoresState(t *testing.T) {
 			if err := st.PrepareEditing("sermon", d, "text", TranscriptionMetadata{Duration: 12}); err != nil {
 				t.Fatal(err)
 			}
-			if err := st.CommitEditing("sermon", "edit-first/edited.mp3", "text", TranscriptionMetadata{Duration: 4}, applied); err != nil {
+			if err := st.CommitEditing("sermon", "edit-first/edited.mp3", d, applied); err != nil {
 				t.Fatal(err)
 			}
 			if err := st.SetNormalizationAdjustments("sermon", 1, -2); err != nil {
