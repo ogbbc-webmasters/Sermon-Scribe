@@ -58,7 +58,10 @@ func main() {
 	transcribe := processing.NewTranscriptionHandler(st, *uploadsDir, aiConfig)
 	metadata := processing.NewMetadataHandler(st, aiConfig)
 	normalize := processing.NewNormalizeHandler(st, *uploadsDir)
+	editor := processing.NewEditingHandler(st, *uploadsDir)
 	queue := processing.NewQueue(st, map[string]processing.Handler{
+		"prepare_edit":       editor,
+		"render_edit":        editor,
 		"transcribe":         transcribe,
 		"extract_metadata":   metadata,
 		"extract_title":      metadata,

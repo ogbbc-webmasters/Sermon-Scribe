@@ -60,6 +60,10 @@ func (s *Server) Routes(webFS fs.FS) http.Handler {
 	mux.HandleFunc("POST /api/sermons/{id}/normalize", s.handleRerunNormalization)
 	mux.HandleFunc("POST /api/sermons/{id}/review-normalization", s.handleReviewNormalization)
 	mux.HandleFunc("GET /api/sermons/{id}/audio/{type}", s.handleSermonAudio)
+	mux.HandleFunc("GET /api/sermons/{id}/editing", s.handleEditing)
+	mux.HandleFunc("PUT /api/sermons/{id}/editing", s.handleEditing)
+	mux.HandleFunc("POST /api/sermons/{id}/editing/apply", s.handleApplyEditing)
+	mux.HandleFunc("GET /api/sermons/{id}/editing/preview", s.handleEditingPreview)
 	mux.HandleFunc("GET /api/events", s.handleEvents)
 	files := http.FileServerFS(webFS)
 	mux.HandleFunc("GET /sermons/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -487,10 +491,20 @@ func (s *Server) handleSermonAudio(w http.ResponseWriter, r *http.Request) {
 	audioType := r.PathValue("type")
 	var path, contentType, downloadName string
 	switch audioType {
+	case "source":
+		path = filepath.Join(dir, "normalized.flac")
+		contentType, downloadName = "audio/flac", "normalized.flac"
 	case "playback":
-		// Prefer existing legacy renders, then normalized audio. Old uploads
-		// without either artifact can still play their original recording.
-		for _, name := range []string{"final.mp3", "normalized.mp3"} {
+		committed, playbackErr := s.Store.EditingPlayback(id)
+		if playbackErr != nil {
+			writeError(w, http.StatusInternalServerError, "could not load playback")
+			return
+		}
+		names := []string{"normalized.mp3"}
+		if committed != "" {
+			names = append([]string{committed}, names...)
+		}
+		for _, name := range names {
 			candidate := filepath.Join(dir, name)
 			if _, statErr := os.Stat(candidate); statErr == nil {
 				path, contentType, downloadName = candidate, "audio/mpeg", name

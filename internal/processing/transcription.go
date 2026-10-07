@@ -158,15 +158,14 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 			SpeakerLabel: word.SpeakerLabel, Confidence: word.Confidence,
 		}
 	}
-	if err := h.store.SaveTranscription(job.SermonID, result.Text, metadata); err != nil {
+	if err := h.store.SaveSourceTranscription(job.SermonID, result.Text, metadata); err != nil {
 		return Result{}, err
 	}
 	return Result{
 		Next: &store.NewJob{
-			ID:         uuid.New().String(),
-			Type:       "extract_metadata",
-			Stage:      "metadata",
-			Parameters: job.Parameters,
+			ID:    uuid.New().String(),
+			Type:  "prepare_edit",
+			Stage: "editing",
 		},
 	}, reporter.Progress(100, nil)
 }

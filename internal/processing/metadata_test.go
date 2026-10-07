@@ -34,7 +34,7 @@ func TestMetadataModelDefaults(t *testing.T) {
 	}
 }
 
-func TestTranscriptionRetryChainsMetadataAndRetainsReturnState(t *testing.T) {
+func TestTranscriptionRetryPreparesEditingWithoutReturnState(t *testing.T) {
 	st := processingTestStore(t)
 	if err := st.CreateSermon(store.Sermon{ID: "transcription-retry", OriginalFilename: "source.mp3", UploadedAt: "2026-10-06T00:00:00Z", Stage: "transcription", Status: "running"}); err != nil {
 		t.Fatal(err)
@@ -109,16 +109,17 @@ func TestTranscriptionRetryChainsMetadataAndRetainsReturnState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sm.Transcript == nil || *sm.Transcript != "New transcript" || result.Next == nil || result.Next.Type != "extract_metadata" || result.Next.Stage != "metadata" || result.Next.Parameters != parameters {
+	text, metadata, sourceErr := st.SourceTranscription("transcription-retry")
+	if sourceErr != nil || text != "New transcript" || result.Next == nil || result.Next.Type != "prepare_edit" || result.Next.Stage != "editing" || result.Next.Parameters != "" {
 		t.Fatalf("incorrect transcription retry result: %+v, %+v", sm, result)
 	}
-	if sm.TranscriptionMetadata == nil || sm.TranscriptionMetadata.Language != "en" || sm.TranscriptionMetadata.Duration != 3.2 || len(sm.TranscriptionMetadata.Segments) != 1 || len(sm.TranscriptionMetadata.Words) != 1 {
-		t.Fatalf("transcription metadata was not persisted: %+v", sm.TranscriptionMetadata)
+	if metadata.Language != "en" || metadata.Duration != 3.2 || len(metadata.Segments) != 1 || len(metadata.Words) != 1 {
+		t.Fatalf("source transcription metadata was not persisted: %+v", metadata)
 	}
-	if speaker := sm.TranscriptionMetadata.Segments[0].Speaker; speaker == nil || *speaker != 0 {
+	if speaker := metadata.Segments[0].Speaker; speaker == nil || *speaker != 0 {
 		t.Fatalf("segment speaker = %v, want speaker 0", speaker)
 	}
-	if word := sm.TranscriptionMetadata.Words[0]; word.SpeakerLabel != "Speaker 1" || word.Confidence == nil || *word.Confidence != 0.98 {
+	if word := metadata.Words[0]; word.SpeakerLabel != "Speaker 1" || word.Confidence == nil || *word.Confidence != 0.98 {
 		t.Fatalf("word metadata was not retained: %+v", word)
 	}
 }

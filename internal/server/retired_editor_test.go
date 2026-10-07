@@ -33,7 +33,11 @@ func TestPlaybackChoosesExistingAudioAfterMetadata(t *testing.T) {
 		}
 		body, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
-		if err != nil || resp.StatusCode != http.StatusOK || string(body) != name || resp.Header.Get("Cache-Control") != "no-store" {
+		want := name
+		if name == "final.mp3" {
+			want = "normalized.mp3"
+		}
+		if err != nil || resp.StatusCode != http.StatusOK || string(body) != want || resp.Header.Get("Cache-Control") != "no-store" {
 			t.Fatalf("playback after adding %s = %d %q, %v", name, resp.StatusCode, body, err)
 		}
 	}
