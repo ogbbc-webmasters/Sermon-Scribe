@@ -76,6 +76,7 @@
   --detail-width: 1120px;
   --popover-width: 320px;
   --transcript-height: 360px;
+  --section-transcript-height: 12rem;
   --control-size: 48px;
   --control-size-small: 40px;
   --compact-action-width: 56px;
@@ -418,6 +419,14 @@ h2::after {
 
 .editor__section-title:focus-visible {
   outline: var(--focus-width) solid var(--focus);
+}
+
+.editor__section-transcript {
+  line-height: 1.6;
+  margin: var(--space-md) 0 0;
+  max-height: var(--section-transcript-height);
+  overflow-y: auto;
+  white-space: pre-wrap;
 }
 
 .editor__waveform {

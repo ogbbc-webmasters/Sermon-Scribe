@@ -21,10 +21,10 @@ func TestSpeakerDraftUsesEverySegmentStart(t *testing.T) {
 		Sections:    []store.Section{{ID: "old-a", Keep: false}, {ID: "old-b", Keep: true}},
 	}
 	segments := []store.TranscriptSegment{
-		{Start: 5, Speaker: &speaker}, {Start: 0, Speaker: &speaker},
-		{Start: 0.049, Speaker: &speaker}, {Start: 0.05, Speaker: &speaker},
-		{Start: 2, Speaker: &speaker}, {Start: 2, Speaker: &speaker},
-		{Start: 3}, {Start: 9.95, Speaker: &speaker}, {Start: 10, Speaker: &speaker},
+		{Start: 5, End: 7, Speaker: &speaker}, {Start: 0, End: 0.01, Speaker: &speaker},
+		{Start: 0.049, End: 0.05, Speaker: &speaker}, {Start: 0.05, End: 0.06, Speaker: &speaker},
+		{Start: 2, End: 2.5, Speaker: &speaker}, {Start: 2, End: 2.5, Speaker: &speaker},
+		{Start: 3}, {Start: 9.95, End: 9.96, Speaker: &speaker}, {Start: 10, End: 10.01, Speaker: &speaker},
 	}
 	got := SpeakerDraft(d, segments, false)
 	var times []float64
@@ -50,6 +50,50 @@ func TestSpeakerDraftUsesEverySegmentStart(t *testing.T) {
 	}
 }
 
+func TestSpeakerDraftMarksLongSilenceForDeletion(t *testing.T) {
+	speaker := 0
+	d := store.Editing{
+		Duration: 20,
+		Breakpoints: []store.Breakpoint{
+			{ID: "start", Kind: "start"},
+			{ID: "end", Time: 20, Kind: "end"},
+		},
+		Sections: []store.Section{{ID: "whole", Keep: true}},
+	}
+	segments := []store.TranscriptSegment{
+		{Start: 1, End: 2, Speaker: &speaker},
+		{Start: 5, End: 6, Speaker: &speaker},
+		{Start: 9, End: 9.5, Speaker: &speaker},
+		{Start: 13, End: 14, Speaker: &speaker},
+	}
+
+	got := SpeakerDraft(d, segments, false)
+	wantTimes := []float64{0, 1, 5, 9, 9.5, 13, 20}
+	if len(got.Breakpoints) != len(wantTimes) {
+		t.Fatalf("breakpoint count: %d, want %d", len(got.Breakpoints), len(wantTimes))
+	}
+	for i, want := range wantTimes {
+		if got.Breakpoints[i].Time != want {
+			t.Fatalf("breakpoint %d time: %v, want %v", i, got.Breakpoints[i].Time, want)
+		}
+	}
+	if got.Breakpoints[4].Kind != "silence_start" {
+		t.Fatalf("long pause boundary kind: %q", got.Breakpoints[4].Kind)
+	}
+	if !got.Sections[3].Keep || got.Sections[4].Keep {
+		t.Fatalf("speech/silence keep decisions: %+v", got.Sections)
+	}
+	if err := got.Validate(); err != nil {
+		t.Fatal(err)
+	}
+
+	got.Sections[4].Keep = true
+	regenerated := SpeakerDraft(got, segments, true)
+	if !regenerated.Sections[4].Keep {
+		t.Fatal("regeneration discarded an explicit keep choice for an unchanged silence section")
+	}
+}
+
 func TestSpeakerDraftPreservesEditedBoundariesAndSections(t *testing.T) {
 	speaker := 0
 	origin := 2.0
@@ -62,7 +106,7 @@ func TestSpeakerDraftPreservesEditedBoundariesAndSections(t *testing.T) {
 		},
 		Sections: []store.Section{{ID: "a", Keep: false}, {ID: "b", Keep: true}, {ID: "c", Keep: false}},
 	}
-	segments := []store.TranscriptSegment{{Start: 2, Speaker: &speaker}, {Start: 5, Speaker: &speaker}, {Start: 7, Speaker: &speaker}}
+	segments := []store.TranscriptSegment{{Start: 2, End: 4.8, Speaker: &speaker}, {Start: 5, End: 6.8, Speaker: &speaker}, {Start: 7, End: 8, Speaker: &speaker}}
 	got := SpeakerDraft(d, segments, true)
 	var times []float64
 	for _, b := range got.Breakpoints {
@@ -292,22 +336,28 @@ func TestWaveformPeaksPreserveTimeAndSignedAmplitude(t *testing.T) {
 	if out, err := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "aevalsrc=if(lt(t\\,1)\\,0.2\\,if(lt(t\\,2)\\,-0.6\\,if(lt(t\\,3)\\,0\\,0.1))):s=8000:d=4", input).CombinedOutput(); err != nil {
 		t.Fatalf("fixture: %v %s", err, out)
 	}
-	peaks, err := WaveformPeaks(context.Background(), input, 4)
+	peaks, hires, err := WaveformPeaks(context.Background(), input, 4)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(peaks) != 4000 {
 		t.Fatalf("peak count: %d", len(peaks))
 	}
+	if len(hires) != 400 {
+		t.Fatalf("high-resolution pair count: %d", len(hires)/2)
+	}
 	for index, want := range map[int]float64{100: 0.2, 1200: 0.6, 2200: 0, 3500: 0.1} {
 		if math.Abs(peaks[index]-want) > 0.0001 {
 			t.Fatalf("peak %d: %f, want %f", index, peaks[index], want)
 		}
 	}
-	if _, err := WaveformPeaks(context.Background(), input, 0); err == nil {
+	if hires[0] <= 0 || hires[1] <= 0 || hires[100] >= 0 || hires[101] >= 0 || hires[200] != 0 || hires[201] != 0 || hires[300] <= 0 || hires[301] <= 0 {
+		t.Fatalf("high-resolution signed min/max pairs: %+v", hires[:8])
+	}
+	if _, _, err := WaveformPeaks(context.Background(), input, 0); err == nil {
 		t.Fatal("accepted zero duration")
 	}
-	if _, err := WaveformPeaks(context.Background(), input+"missing", 4); err == nil {
+	if _, _, err := WaveformPeaks(context.Background(), input+"missing", 4); err == nil {
 		t.Fatal("accepted missing source")
 	}
 }

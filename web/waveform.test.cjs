@@ -265,3 +265,32 @@ test("manual placement uses the zoomed click time; dragging and disabled clicks 
   wave.canvas.listeners.keydown({ key: "Escape", preventDefault() {} });
   assert.equal(wave.events[1].type, "waveformcancel");
 });
+
+test("manual breakpoints snap to nearby quiet audio", () => {
+  const wave = setup();
+  wave.setAttribute("data-draft", JSON.stringify({
+    duration: 2,
+    breakpoints: [{ time: 0 }, { time: 2 }],
+    sections: [{ keep: true }]
+  }));
+  wave.hires = new Int16Array(200).fill(12000);
+  for (let pair = 50; pair <= 55; pair++) {
+    wave.hires[pair * 2] = 0;
+    wave.hires[pair * 2 + 1] = 0;
+  }
+
+  wave.addAt(470, 1000);
+  assert.ok(Math.abs(wave.events[0].detail.time - 1.03) < 1e-9);
+});
+
+test("quiet snapping stays at the requested position when there is no quieter nearby point", () => {
+  const wave = setup();
+  wave.setAttribute("data-draft", JSON.stringify({
+    duration: 2,
+    breakpoints: [{ time: 0 }, { time: 2 }],
+    sections: [{ keep: true }]
+  }));
+  wave.hires = new Int16Array(200).fill(12000);
+
+  assert.equal(wave.snapToQuiet(1), 1);
+});

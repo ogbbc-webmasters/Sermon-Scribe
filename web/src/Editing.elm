@@ -1,5 +1,6 @@
 module Editing exposing (Model, Msg(..), init, isOpen, keptDuration, update, view)
 
+import Api exposing (TranscriptionMetadata)
 import Browser.Dom
 import Button
 import Card
@@ -626,8 +627,8 @@ kindLabel kind =
             "Manual breakpoint"
 
 
-view : Model -> Html Msg
-view model =
+view : Model -> Maybe TranscriptionMetadata -> Html Msg
+view model transcript =
     let
         busy =
             model.regenerating || model.applying || model.pendingApply /= Nothing
@@ -702,7 +703,7 @@ view model =
                     div []
                         [ waveform model draft
                         , navigation model draft
-                        , selectedCard model draft
+                        , selectedCard model draft transcript
                         ]
             ]
         ]
@@ -840,16 +841,21 @@ navigation model draft =
                 False
                 [ onClick ToggleAddingBoundary, disabled busy ]
             ]
+        , if model.addingBreakpoint then
+            p [ Ui.hint ] [ text "Breakpoints snap to a nearby quiet point." ]
+
+          else
+            text ""
         ]
 
 
-selectedCard : Model -> Draft -> Html Msg
-selectedCard model draft =
+selectedCard : Model -> Draft -> Maybe TranscriptionMetadata -> Html Msg
+selectedCard model draft transcript =
     case model.selection of
         Just (Passage index) ->
             case at index draft.sections of
                 Just section ->
-                    sectionCard model draft index section
+                    sectionCard model draft transcript index section
 
                 Nothing ->
                     text ""
@@ -866,14 +872,19 @@ selectedCard model draft =
             text ""
 
 
-sectionCard : Model -> Draft -> Int -> Section -> Html Msg
-sectionCard model draft index section =
+sectionCard : Model -> Draft -> Maybe TranscriptionMetadata -> Int -> Section -> Html Msg
+sectionCard model draft transcript index section =
     let
         range =
             Maybe.map2 (\a b -> timestamp a.time ++ "–" ++ timestamp b.time) (at index draft.breakpoints) (at (index + 1) draft.breakpoints) |> Maybe.withDefault ""
 
         busy =
             model.regenerating || model.applying || model.pendingApply /= Nothing
+
+        transcriptContent =
+            sectionTranscript draft index transcript
+                |> Maybe.map (\content -> [ p [ class "editor__section-transcript" ] [ text content ] ])
+                |> Maybe.withDefault []
     in
     Card.viewWithAttributes
         (if section.keep then
@@ -891,7 +902,45 @@ sectionCard model draft index section =
           else
             Button.labeled "Keep" Button.keepSection False [ onClick (Keep index True), disabled busy ]
         ]
-        []
+        transcriptContent
+
+
+sectionTranscript : Draft -> Int -> Maybe TranscriptionMetadata -> Maybe String
+sectionTranscript draft index transcript =
+    Maybe.map2 (\start end -> ( start.time, end.time )) (at index draft.breakpoints) (at (index + 1) draft.breakpoints)
+        |> Maybe.andThen
+            (\( start, end ) ->
+                Maybe.andThen (transcriptBetween start end) transcript
+            )
+
+
+transcriptBetween : Float -> Float -> TranscriptionMetadata -> Maybe String
+transcriptBetween start end metadata =
+    let
+        words =
+            List.filter (\word -> midpoint word.start word.end >= start && midpoint word.start word.end < end) metadata.words
+
+        phrases =
+            if List.isEmpty metadata.words then
+                List.filter (\segment -> midpoint segment.start segment.end >= start && midpoint segment.start segment.end < end) metadata.segments
+                    |> List.map .text
+
+            else
+                List.map .word words
+
+        content =
+            String.join " " phrases |> String.trim
+    in
+    if String.isEmpty content then
+        Nothing
+
+    else
+        Just content
+
+
+midpoint : Float -> Float -> Float
+midpoint start end =
+    (start + end) / 2
 
 
 boundaryPanel : Model -> Draft -> Int -> Breakpoint -> Html Msg

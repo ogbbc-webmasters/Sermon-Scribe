@@ -1,5 +1,6 @@
-// Elm owns selections and edit decisions; this element draws their audio overview.
+// Elm owns edit decisions; this element draws the waveform and suggests quiet snap points.
 const waveformTargetSize = 44;
+const hiresRate = 50;
 
 customElements.define("editing-waveform", class extends HTMLElement {
   static observedAttributes = ["src", "data-draft", "data-selection", "data-disabled", "data-placing"];
@@ -15,6 +16,7 @@ customElements.define("editing-waveform", class extends HTMLElement {
     this.pointers = new Map();
     this.drag = null;
     this.pinch = null;
+    this.hires = null;
     this.append(this.canvas);
     this.canvas.addEventListener("wheel", event => {
       event.preventDefault();
@@ -134,7 +136,11 @@ customElements.define("editing-waveform", class extends HTMLElement {
     if (!this.canvas) return;
     if (name === "src") this.load();
     else if (name === "data-placing") {
-      this.canvas.classList.toggle("editor__waveform-canvas--placing", this.getAttribute("data-placing") === "true");
+      const placing = this.getAttribute("data-placing") === "true";
+      this.canvas.classList.toggle("editor__waveform-canvas--placing", placing);
+      this.canvas.title = placing
+        ? "Click near a quiet point to snap"
+        : "Scroll or pinch to zoom · Drag to pan · Double-click to reset";
       this.canvas.classList.remove("editor__waveform-canvas--selecting");
     } else if (name === "data-selection") this.revealSelection();
     else this.draw();
@@ -183,6 +189,7 @@ customElements.define("editing-waveform", class extends HTMLElement {
     const request = this.request = new AbortController();
     this.setAttribute("aria-busy", "true");
     this.peaks = [];
+    this.hires = null;
     this.draw();
     try {
       const response = await fetch(this.getAttribute("src"), { signal: request.signal });
@@ -192,6 +199,19 @@ customElements.define("editing-waveform", class extends HTMLElement {
       this.peaks = wave.peaks;
       this.removeAttribute("title");
       this.draw();
+      try {
+        const hiresResponse = await fetch(this.getAttribute("src") + "/highres", { signal: request.signal });
+        if (!hiresResponse.ok) throw new Error("High-resolution waveform unavailable");
+        const buffer = await hiresResponse.arrayBuffer();
+        if (buffer.byteLength % 4 !== 0 || Number(hiresResponse.headers.get("X-Waveform-Rate")) !== hiresRate) {
+          throw new Error("Invalid high-resolution waveform");
+        }
+        const view = new DataView(buffer);
+        this.hires = new Int16Array(buffer.byteLength / 2);
+        for (let i = 0; i < this.hires.length; i++) this.hires[i] = view.getInt16(i * 2, true);
+      } catch (error) {
+        if (error.name !== "AbortError") this.hires = null;
+      }
     } catch (error) {
       if (error.name !== "AbortError") this.setAttribute("title", "Waveform unavailable. You can still select sections with the arrow keys.");
     } finally {
@@ -227,10 +247,35 @@ customElements.define("editing-waveform", class extends HTMLElement {
     return { kind: "section", index: index < 0 ? draft.sections.length - 1 : index };
   }
 
+  snapToQuiet(time) {
+    if (!this.hires || this.hires.length < 4) return time;
+    const pairs = this.hires.length / 2;
+    const centre = Math.round(time * hiresRate);
+    const span = Math.round(0.5 * hiresRate);
+    const from = Math.max(0, centre - span);
+    const to = Math.min(pairs - 1, centre + span);
+    if (to <= from) return time;
+    const level = pair => Math.max(Math.abs(this.hires[pair * 2]), Math.abs(this.hires[pair * 2 + 1]));
+    let bestPair = Math.max(from, Math.min(to, centre));
+    let bestLevel = Infinity;
+    for (let pair = from; pair <= to; pair++) {
+      const smooth = (level(Math.max(from, pair - 1)) + level(pair) + level(Math.min(to, pair + 1))) / 3;
+      if (smooth < bestLevel - 1e-6 || (Math.abs(smooth - bestLevel) <= 1e-6 && Math.abs(pair - centre) < Math.abs(bestPair - centre))) {
+        bestLevel = smooth;
+        bestPair = pair;
+      }
+    }
+    const centrePair = Math.max(from, Math.min(to, centre));
+    const centreLevel = (level(Math.max(from, centrePair - 1)) + level(centrePair) + level(Math.min(to, centrePair + 1))) / 3;
+    if (bestLevel >= centreLevel - 1e-6) return time;
+    return Math.max(0, Math.min(this.draft.duration, (bestPair + 0.5) / hiresRate));
+  }
+
   addAt(x, width) {
     if (width <= 0 || this.getAttribute("data-disabled") === "true") return;
     const { start, span } = this.view;
-    const time = start + Math.max(0, Math.min(1, x / width)) * span;
+    const requested = start + Math.max(0, Math.min(1, x / width)) * span;
+    const time = this.snapToQuiet(requested);
     this.dispatchEvent(new CustomEvent("waveformadd", { detail: { time } }));
   }
 

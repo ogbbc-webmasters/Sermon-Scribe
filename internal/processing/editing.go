@@ -27,16 +27,36 @@ func NewEditingHandler(st *store.Store, dir string) *EditingHandler { return &Ed
 
 type AudioRange struct{ Start, End float64 }
 
-// SpeakerDraft uses every diarized segment start, not word-level speaker changes.
-// Edited boundaries take priority over regenerated ones when preservation is requested.
+// SpeakerDraft uses diarized segment starts and marks long pauses at the end of
+// the preceding segment. Edited boundaries take priority when preserving edits.
 func SpeakerDraft(d store.Editing, segments []store.TranscriptSegment, preserveEdited bool) store.Editing {
 	var starts []float64
+	var speaking []store.TranscriptSegment
 	for _, segment := range segments {
 		if segment.Speaker != nil {
 			starts = append(starts, segment.Start)
+			if !math.IsNaN(segment.Start) && !math.IsInf(segment.Start, 0) && !math.IsNaN(segment.End) && !math.IsInf(segment.End, 0) && segment.Start >= 0 && segment.End > segment.Start && segment.End <= d.Duration {
+				speaking = append(speaking, segment)
+			}
 		}
 	}
 	sort.Float64s(starts)
+	sort.SliceStable(speaking, func(i, j int) bool { return speaking[i].Start < speaking[j].Start })
+	type candidate struct {
+		time float64
+		kind string
+	}
+	boundaries := make([]candidate, 0, len(starts)*2)
+	for _, start := range starts {
+		boundaries = append(boundaries, candidate{time: start, kind: "speaker"})
+	}
+	for i := 0; i+1 < len(speaking); i++ {
+		segment, next := speaking[i], speaking[i+1]
+		if next.Start-segment.End > 3 {
+			boundaries = append(boundaries, candidate{time: segment.End, kind: "silence_start"})
+		}
+	}
+	sort.SliceStable(boundaries, func(i, j int) bool { return boundaries[i].time < boundaries[j].time })
 	old := d
 	d.Breakpoints = []store.Breakpoint{old.Breakpoints[0], old.Breakpoints[len(old.Breakpoints)-1]}
 	if preserveEdited {
@@ -58,19 +78,20 @@ func SpeakerDraft(d store.Editing, segments []store.TranscriptSegment, preserveE
 			}
 		}
 	}
-	for _, start := range starts {
-		allowed := start >= 0.05-1e-9 && d.Duration-start >= 0.05-1e-9
+	for _, candidate := range boundaries {
+		allowed := candidate.time >= 0.05-1e-9 && d.Duration-candidate.time >= 0.05-1e-9
 		for _, b := range d.Breakpoints {
-			if math.Abs(start-b.Time) < 0.05-1e-9 || (b.SourceTime != nil && math.Abs(start-*b.SourceTime) < 1e-9) {
+			if math.Abs(candidate.time-b.Time) < 0.05-1e-9 || (b.SourceTime != nil && math.Abs(candidate.time-*b.SourceTime) < 1e-9) {
 				allowed = false
 				break
 			}
 		}
 		if allowed {
-			b := store.Breakpoint{ID: uuid.NewString(), Time: start, Kind: "speaker", SourceTime: &start}
+			sourceTime := candidate.time
+			b := store.Breakpoint{ID: uuid.NewString(), Time: candidate.time, Kind: candidate.kind, SourceTime: &sourceTime}
 			if preserveEdited {
 				for _, previous := range old.Breakpoints {
-					if previous.Kind == "speaker" && previous.Time == start && !previous.Edited {
+					if previous.Kind == candidate.kind && previous.Time == candidate.time && !previous.Edited {
 						b.ID = previous.ID
 						break
 					}
@@ -82,17 +103,19 @@ func SpeakerDraft(d store.Editing, segments []store.TranscriptSegment, preserveE
 	sort.Slice(d.Breakpoints, func(i, j int) bool { return d.Breakpoints[i].Time < d.Breakpoints[j].Time })
 	d.Sections = make([]store.Section, len(d.Breakpoints)-1)
 	for i := range d.Sections {
-		d.Sections[i] = store.Section{ID: uuid.NewString(), Keep: !preserveEdited}
+		startsInSilence := d.Breakpoints[i].Kind == "silence_start"
+		d.Sections[i] = store.Section{ID: uuid.NewString(), Keep: !preserveEdited && !startsInSilence}
 		if preserveEdited {
 			start, end := d.Breakpoints[i].Time, d.Breakpoints[i+1].Time
 			for j, section := range old.Sections {
 				left, right := old.Breakpoints[j].Time, old.Breakpoints[j+1].Time
 				if start == left && end == right {
 					d.Sections[i].ID = section.ID
+					d.Sections[i].Keep = section.Keep
 				}
-				// A regenerated interval is deleted only if all overlapping
-				// source sections were deleted; never silently discard kept audio.
-				if end > left && start < right && section.Keep {
+				// Silence intervals default to deleted; other regenerated
+				// intervals retain kept audio from overlapping source sections.
+				if !startsInSilence && end > left && start < right && section.Keep {
 					d.Sections[i].Keep = true
 				}
 			}
@@ -296,22 +319,25 @@ func (h *EditingHandler) Run(ctx context.Context, job store.Job, reporter Report
 	return Result{Next: &store.NewJob{ID: uuid.NewString(), Type: "extract_metadata", Stage: "metadata"}}, nil
 }
 
-// WaveformPeaks reduces source audio to a fixed-size overview without retaining
-// the decoded recording in memory.
-func WaveformPeaks(ctx context.Context, input string, duration float64) ([]float64, error) {
+// WaveformPeaks produces a fixed-size overview and 20 ms min/max pairs without
+// retaining the decoded recording in memory.
+func WaveformPeaks(ctx context.Context, input string, duration float64) ([]float64, []int16, error) {
 	if duration <= 0 || math.IsNaN(duration) || math.IsInf(duration, 0) {
-		return nil, fmt.Errorf("invalid waveform duration")
+		return nil, nil, fmt.Errorf("invalid waveform duration")
 	}
 	const count = 4000
 	const rate = 8000
+	const hiresRate = 50
+	const samplesPerHiresPair = rate / hiresRate
 	peaks := make([]float64, count)
+	var hires []int16
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-i", input, "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "pipe:1")
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if err = cmd.Start(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var sample int64
 	var data [16000]byte
@@ -319,23 +345,31 @@ func WaveformPeaks(ctx context.Context, input string, duration float64) ([]float
 		n, readErr := io.ReadFull(pipe, data[:])
 		for i := 0; i+1 < n; i += 2 {
 			bucket := min(count-1, int(float64(sample)*count/(duration*rate)))
-			amplitude := math.Abs(float64(int16(binary.LittleEndian.Uint16(data[i:i+2])))) / 32768
+			value := int16(binary.LittleEndian.Uint16(data[i : i+2]))
+			amplitude := math.Abs(float64(value)) / 32768
 			peaks[bucket] = math.Max(peaks[bucket], amplitude)
+			pair := int(sample/samplesPerHiresPair) * 2
+			if pair == len(hires) {
+				hires = append(hires, value, value)
+			} else {
+				hires[pair] = min(hires[pair], value)
+				hires[pair+1] = max(hires[pair+1], value)
+			}
 			sample++
 		}
 		if readErr != nil {
 			if readErr != io.EOF && readErr != io.ErrUnexpectedEOF {
 				_ = cmd.Process.Kill()
 				_ = cmd.Wait()
-				return nil, readErr
+				return nil, nil, readErr
 			}
 			break
 		}
 	}
 	if err = cmd.Wait(); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return peaks, nil
+	return peaks, hires, nil
 }
 
 // PreviewAudio generates at most six seconds of source audio plus a short cue.

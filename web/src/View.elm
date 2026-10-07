@@ -115,7 +115,7 @@ viewSermonDetail model sermon =
                 ]
             , viewDetailStatus model sermon
             , if Editing.isOpen sermon.id model.editor then
-                Html.map EditingMsg (Editing.view model.editor)
+                Html.map EditingMsg (Editing.view model.editor sermon.transcriptionMetadata)
 
               else
                 text ""
@@ -528,9 +528,12 @@ viewSermonListHeader upload =
             ]
         , case upload of
             Uploading fraction ->
-                div [ attribute "role" "status" ]
-                    [ p [ Ui.hint ] [ text ("Uploading… " ++ percent fraction) ]
-                    , viewProgressBar fraction
+                Card.view (text "Uploading sermon")
+                    []
+                    [ div [ attribute "role" "status" ]
+                        [ p [ Ui.hint ] [ text ("Uploading… " ++ percent fraction) ]
+                        , viewProgressBar fraction
+                        ]
                     ]
 
             UploadFailed message ->

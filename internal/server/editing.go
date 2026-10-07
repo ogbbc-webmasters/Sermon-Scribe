@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io"
@@ -122,42 +123,77 @@ func (s *Server) handleApplyEditing(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, sm)
 }
 func (s *Server) handleEditingWaveform(w http.ResponseWriter, r *http.Request) {
+	wave, _, ok := s.cachedEditingWaveform(w, r)
+	if !ok {
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, wave)
+}
+
+func (s *Server) handleEditingWaveformHighRes(w http.ResponseWriter, r *http.Request) {
+	_, path, ok := s.cachedEditingWaveform(w, r)
+	if !ok {
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("X-Waveform-Rate", "50")
+	http.ServeFile(w, r, path)
+}
+
+type waveformCache struct {
+	Modified    int64     `json:"modified"`
+	Size        int64     `json:"size"`
+	Duration    float64   `json:"duration"`
+	Peaks       []float64 `json:"peaks"`
+	HiresValues int       `json:"hires_values"`
+}
+
+func (s *Server) cachedEditingWaveform(w http.ResponseWriter, r *http.Request) (waveformCache, string, bool) {
 	d, err := s.Store.GetEditing(r.PathValue("id"))
 	if err != nil {
 		editingError(w, err)
-		return
+		return waveformCache{}, "", false
 	}
 	dir := filepath.Join(s.UploadsDir, r.PathValue("id"))
 	source := filepath.Join(dir, "normalized.flac")
 	info, err := os.Stat(source)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "source audio is not available")
-		return
-	}
-	var wave struct {
-		Modified int64     `json:"modified"`
-		Size     int64     `json:"size"`
-		Duration float64   `json:"duration"`
-		Peaks    []float64 `json:"peaks"`
+		return waveformCache{}, "", false
 	}
 	cache := filepath.Join(dir, "waveform.json")
+	hiresPath := filepath.Join(dir, "waveform-hires.bin")
+	var wave waveformCache
 	raw, _ := os.ReadFile(cache)
-	if json.Unmarshal(raw, &wave) != nil || wave.Modified != info.ModTime().UnixNano() || wave.Size != info.Size() || wave.Duration != d.Duration || len(wave.Peaks) != 4000 {
+	cacheValid := json.Unmarshal(raw, &wave) == nil && wave.Modified == info.ModTime().UnixNano() && wave.Size == info.Size() && wave.Duration == d.Duration && len(wave.Peaks) == 4000 && wave.HiresValues > 0
+	hiresInfo, hiresErr := os.Stat(hiresPath)
+	if !cacheValid || hiresErr != nil || hiresInfo.Size() != int64(wave.HiresValues*2) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
 		defer cancel()
-		wave.Peaks, err = processing.WaveformPeaks(ctx, source, d.Duration)
+		var hires []int16
+		wave.Peaks, hires, err = processing.WaveformPeaks(ctx, source, d.Duration)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "could not generate waveform")
-			return
+			return waveformCache{}, "", false
+		}
+		encoded := make([]byte, len(hires)*2)
+		for i, sample := range hires {
+			binary.LittleEndian.PutUint16(encoded[i*2:], uint16(sample))
+		}
+		if err = os.WriteFile(hiresPath, encoded, 0600); err != nil {
+			writeError(w, http.StatusInternalServerError, "could not cache waveform")
+			return waveformCache{}, "", false
 		}
 		wave.Modified, wave.Size, wave.Duration = info.ModTime().UnixNano(), info.Size(), d.Duration
+		wave.HiresValues = len(hires)
 		if raw, err = json.Marshal(wave); err == nil {
 			// A missing or incomplete cache is regenerated on the next request.
 			_ = os.WriteFile(cache, raw, 0600)
 		}
 	}
-	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, wave)
+	return wave, hiresPath, true
 }
 
 func (s *Server) handleEditingPreview(w http.ResponseWriter, r *http.Request) {

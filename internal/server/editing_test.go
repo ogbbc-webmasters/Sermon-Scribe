@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -201,8 +202,35 @@ func TestEditingWaveformCacheTracksSourceNotDraft(t *testing.T) {
 			t.Fatalf("waveform response: %d, duration=%f, count=%d", resp.StatusCode, got.Duration, len(got.Peaks))
 		}
 	}
+	readHires := func(want int16) {
+		t.Helper()
+		resp, err := http.Get(ts.URL + "/api/sermons/waveform/editing/waveform/highres")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != 200 || resp.Header.Get("Content-Type") != "application/octet-stream" || resp.Header.Get("X-Waveform-Rate") != "50" || len(data) != 4*50*2*2 {
+			t.Fatalf("high-resolution response: status=%d type=%q rate=%q bytes=%d", resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header.Get("X-Waveform-Rate"), len(data))
+		}
+		got := int(binary.LittleEndian.Uint16(data))
+		if got >= 1<<15 {
+			got -= 1 << 16
+		}
+		delta := got - int(want)
+		if delta < 0 {
+			delta = -delta
+		}
+		if delta > 1 {
+			t.Fatalf("first high-resolution pair: %d, want %d", got, want)
+		}
+	}
 	writeSource("0.2")
 	read(0.2)
+	readHires(6553)
 	if _, err := os.Stat(filepath.Join(dir, "waveform.json")); err != nil {
 		t.Fatal("cache not written:", err)
 	}
@@ -214,4 +242,5 @@ func TestEditingWaveformCacheTracksSourceNotDraft(t *testing.T) {
 	read(0.2)
 	writeSource("-0.6")
 	read(0.6)
+	readHires(-19660)
 }
