@@ -86,7 +86,7 @@ keepSection =
 
 exportAudio : Config
 exportAudio =
-    Config "ph:export" "Export normalized audio" "var(--ink-soft)"
+    Config "ph:export" "Export audio" "var(--ink-soft)"
 
 
 editAudio : Config

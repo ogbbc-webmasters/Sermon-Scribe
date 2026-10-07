@@ -99,7 +99,7 @@ func (s *Store) CompleteUpload(sermonID, jobID string, now time.Time) (Sermon, e
 
 	job := NewJob{
 		ID: jobID, SermonID: sermonID, Type: "normalize", Stage: "normalization",
-		Parameters: `{"gate_adjustment":0,"volume_adjustment":0,"prepare_only":true}`,
+		Parameters: `{"gate_adjustment":0,"volume_adjustment":0}`,
 	}
 	if err := enqueueJobTx(tx, job, now); err != nil {
 		return Sermon{}, err

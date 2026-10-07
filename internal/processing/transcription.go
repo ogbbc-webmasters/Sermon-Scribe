@@ -55,12 +55,12 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 	dir := filepath.Join(h.uploadsDir, job.SermonID)
 	input := filepath.Join(dir, "normalized.mp3")
 	if _, err := os.Stat(input); os.IsNotExist(err) {
-		// Prepare legacy uploads on their first regeneration too. Never send
+		// Normalize legacy uploads on their first regeneration too. Never send
 		// the original upload to OpenRouter, regardless of its size or format.
 		normalize := NewNormalizeHandler(h.store, h.uploadsDir)
 		_, err := normalize.Run(ctx, store.Job{
 			ID: "normalize-" + job.ID, SermonID: job.SermonID,
-			Parameters: `{"gate_adjustment":0,"volume_adjustment":0,"prepare_only":true}`,
+			Parameters: `{"gate_adjustment":0,"volume_adjustment":0}`,
 		}, reporter)
 		if err != nil {
 			return Result{}, err

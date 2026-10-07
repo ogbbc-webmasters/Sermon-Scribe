@@ -324,6 +324,9 @@ func TestEditingFFmpegPipelinePauseAndRedo(t *testing.T) {
 	if err != nil || path == "" {
 		t.Fatal("missing committed playback")
 	}
+	if err := probeAudio(filepath.Join(dir, path), audioSpec{codec: "mp3", sampleRate: 44100, channels: 1, bitRate: 32000}); err != nil {
+		t.Fatalf("applied audio is not export-ready: %v", err)
+	}
 	duration, err := audioDuration(ctx, filepath.Join(dir, filepath.Dir(path), "edited.flac"))
 	if err != nil || math.Abs(duration-3) > 0.01 {
 		t.Fatalf("render duration %v %v", duration, err)

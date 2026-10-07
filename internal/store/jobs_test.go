@@ -55,7 +55,7 @@ func TestCompleteUploadEnqueuesNormalization(t *testing.T) {
 	if job.Type != "normalize" || job.Stage != "normalization" || job.State != "queued" || job.Attempts != 0 {
 		t.Fatalf("unexpected job: %+v", job)
 	}
-	if job.Parameters != `{"gate_adjustment":0,"volume_adjustment":0,"prepare_only":true}` ||
+	if job.Parameters != `{"gate_adjustment":0,"volume_adjustment":0}` ||
 		sm.NormalizationGateAdjustment != 0 || sm.NormalizationVolumeAdjustment != 0 {
 		t.Fatalf("normalization defaults = parameters %q, adjustments %d/%d",
 			job.Parameters, sm.NormalizationGateAdjustment, sm.NormalizationVolumeAdjustment)

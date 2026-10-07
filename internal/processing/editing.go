@@ -263,7 +263,7 @@ func (h *EditingHandler) Run(ctx context.Context, job store.Job, reporter Report
 		if err := renderRanges(ctx, source, flacTemp, ranges); err != nil {
 			return Result{}, err
 		}
-		out, encodeErr := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-y", "-i", flacTemp, "-vn", "-codec:a", "libmp3lame", "-q:a", "2", mp3Temp).CombinedOutput()
+		out, encodeErr := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-y", "-i", flacTemp, "-vn", "-ac", "1", "-ar", "44100", "-codec:a", "libmp3lame", "-b:a", "32k", mp3Temp).CombinedOutput()
 		if encodeErr != nil {
 			return Result{}, fmt.Errorf("encode edited MP3: %w: %s", encodeErr, out)
 		}

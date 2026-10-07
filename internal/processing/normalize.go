@@ -21,9 +21,8 @@ const normalizationPipelineVersion = 2
 
 // NormalizationSettings are relative adjustments from the default treatment.
 type NormalizationSettings struct {
-	GateAdjustment   int  `json:"gate_adjustment"`
-	VolumeAdjustment int  `json:"volume_adjustment"`
-	PrepareOnly      bool `json:"prepare_only,omitempty"`
+	GateAdjustment   int `json:"gate_adjustment"`
+	VolumeAdjustment int `json:"volume_adjustment"`
 }
 
 // NormalizationAdjustment identifies one relative user-requested change.
@@ -108,6 +107,7 @@ type audioSpec struct {
 	codec      string
 	sampleRate int
 	channels   int
+	bitRate    int
 }
 
 type ffmpegRunner func(context.Context, string, string, string, string, func(int) error) error
@@ -141,11 +141,6 @@ func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Repo
 	flacTemp := filepath.Join(dir, ".normalize-"+job.ID+".flac")
 	mp3Temp := filepath.Join(dir, ".normalize-"+job.ID+".mp3")
 	markerPath := filepath.Join(dir, ".normalization-complete.json")
-	if settings.PrepareOnly {
-		// Retain historical filenames for playback/editor compatibility, but
-		// distinguish untreated sources from older normalized recordings.
-		markerPath = filepath.Join(dir, ".source-prepared.json")
-	}
 	defer os.Remove(flacTemp)
 	defer os.Remove(mp3Temp)
 
@@ -171,9 +166,6 @@ func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Repo
 			return Result{}, err
 		}
 		filter := normalizationFilter(settings)
-		if settings.PrepareOnly {
-			filter = "aformat=channel_layouts=mono,aresample=44100"
-		}
 		if err := h.runFFmpeg(ctx, input, flacTemp, mp3Temp, filter, func(percent int) error {
 			return reporter.Progress(percent, nil)
 		}); err != nil {
@@ -358,7 +350,7 @@ func probeDuration(ctx context.Context, path string) (float64, error) {
 
 func probeAudio(path string, expected audioSpec) error {
 	output, err := exec.Command("ffprobe", "-v", "error", "-select_streams", "a:0",
-		"-show_entries", "stream=codec_name,sample_rate,channels", "-of", "json", path).Output()
+		"-show_entries", "stream=codec_name,sample_rate,channels,bit_rate", "-of", "json", path).Output()
 	if err != nil {
 		return fmt.Errorf("probe audio: %w", err)
 	}
@@ -367,6 +359,7 @@ func probeAudio(path string, expected audioSpec) error {
 			CodecName  string `json:"codec_name"`
 			SampleRate string `json:"sample_rate"`
 			Channels   int    `json:"channels"`
+			BitRate    string `json:"bit_rate"`
 		} `json:"streams"`
 	}
 	if err := json.Unmarshal(output, &result); err != nil {
@@ -384,6 +377,9 @@ func probeAudio(path string, expected audioSpec) error {
 		return fmt.Errorf("audio is %s/%dHz/%dch, want %s/%dHz/%dch",
 			stream.CodecName, sampleRate, stream.Channels,
 			expected.codec, expected.sampleRate, expected.channels)
+	}
+	if expected.bitRate != 0 && stream.BitRate != strconv.Itoa(expected.bitRate) {
+		return fmt.Errorf("audio bitrate is %s, want %d", stream.BitRate, expected.bitRate)
 	}
 	return nil
 }

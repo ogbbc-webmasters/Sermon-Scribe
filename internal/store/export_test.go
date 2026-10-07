@@ -22,9 +22,6 @@ func TestExportSnapshotsAppliedSourceAndRestoresState(t *testing.T) {
 			if err := st.CommitEditing("sermon", "edit-first/edited.mp3", d, applied); err != nil {
 				t.Fatal(err)
 			}
-			if err := st.SetNormalizationAdjustments("sermon", 1, -2); err != nil {
-				t.Fatal(err)
-			}
 			now := time.Now()
 			if _, err := st.EnqueueExport("sermon", "export", now); err != nil {
 				t.Fatal(err)
@@ -43,11 +40,11 @@ func TestExportSnapshotsAppliedSourceAndRestoresState(t *testing.T) {
 			if err := json.Unmarshal([]byte(job.Parameters), &snap); err != nil {
 				t.Fatal(err)
 			}
-			want := "normalized.flac"
+			want := "normalized.mp3"
 			if applied {
-				want = "edit-first/edited.flac"
+				want = "edit-first/edited.mp3"
 			}
-			if snap.Source != want || snap.GateAdjustment != 1 || snap.VolumeAdjustment != -2 {
+			if snap.Source != want {
 				t.Fatalf("snapshot: %+v", snap)
 			}
 			sm, err := st.CompleteJob(job, nil, now)
@@ -58,23 +55,12 @@ func TestExportSnapshotsAppliedSourceAndRestoresState(t *testing.T) {
 	}
 }
 
-func TestExportLegacySermonWithoutEditingDraft(t *testing.T) {
+func TestExportRequiresEditingPreparation(t *testing.T) {
 	st := openTestStore(t)
 	if err := st.CreateSermon(Sermon{ID: "legacy", Stage: "metadata", Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := st.EnqueueExport("legacy", "export", time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	job, err := st.GetJob("export")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var snapshot ExportSnapshot
-	if err := json.Unmarshal([]byte(job.Parameters), &snapshot); err != nil {
-		t.Fatal(err)
-	}
-	if snapshot.Source != "normalized.flac" {
-		t.Fatalf("legacy source: %s", snapshot.Source)
+	if _, err := st.EnqueueExport("legacy", "export", time.Now()); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("export without editing preparation: %v", err)
 	}
 }

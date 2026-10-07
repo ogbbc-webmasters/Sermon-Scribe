@@ -2,16 +2,12 @@ package store
 
 import (
 	"encoding/json"
-	"errors"
-	"path/filepath"
 	"time"
 )
 
-// ExportSnapshot pins the applied audio and settings while the export runs.
+// ExportSnapshot pins the applied audio while the export runs.
 type ExportSnapshot struct {
-	Source           string `json:"source"`
-	GateAdjustment   int    `json:"gate_adjustment"`
-	VolumeAdjustment int    `json:"volume_adjustment"`
+	Source string `json:"source"`
 	processingReturnState
 }
 
@@ -30,16 +26,15 @@ func (s *Store) EnqueueExport(sermonID, jobID string, now time.Time) (Sermon, er
 		return Sermon{}, ErrEditConflict
 	}
 	var playback string
-	if err := tx.QueryRow(`SELECT CASE WHEN active THEN playback ELSE '' END FROM editing WHERE sermon_id=?`, sermonID).Scan(&playback); err != nil && !errors.Is(err, ErrNotFound) {
+	if err := tx.QueryRow(`SELECT CASE WHEN active THEN playback ELSE '' END FROM editing WHERE sermon_id=?`, sermonID).Scan(&playback); err != nil {
 		return Sermon{}, err
 	}
-	source := "normalized.flac"
+	source := "normalized.mp3"
 	if playback != "" {
-		source = filepath.Join(filepath.Dir(playback), "edited.flac")
+		source = playback
 	}
 	snapshot := ExportSnapshot{
-		Source:         source,
-		GateAdjustment: sm.NormalizationGateAdjustment, VolumeAdjustment: sm.NormalizationVolumeAdjustment,
+		Source:                source,
 		processingReturnState: processingReturnState{Stage: sm.Stage, Status: sm.Status},
 	}
 	parameters, err := json.Marshal(snapshot)

@@ -405,7 +405,7 @@ viewDetailAudio model sermon =
         , if exporting then
             p [ Ui.hint, attribute "role" "status" ]
                 [ text
-                    ("Normalizing export…"
+                    ("Exporting…"
                         ++ (Dict.get sermon.id model.exporting
                                 |> Maybe.map
                                     (\job ->
@@ -779,20 +779,20 @@ describeStage sermon =
             "Uploaded"
 
         ( "normalization", "pending" ) ->
-            "Waiting to prepare audio"
+            "Waiting to normalize"
 
         ( "normalization", "running" ) ->
             if sermon.progress < 0 then
-                "Preparing audio…"
+                "Normalizing…"
 
             else
-                "Preparing audio… " ++ String.fromInt sermon.progress ++ "%"
+                "Normalizing… " ++ String.fromInt sermon.progress ++ "%"
 
         ( "normalization", "done" ) ->
-            "Audio prepared"
+            "Normalization finished"
 
         ( "normalization", "failed" ) ->
-            "Audio preparation failed"
+            "Normalization failed"
 
         ( "editing", "done" ) ->
             "Awaiting editing"
