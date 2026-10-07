@@ -880,7 +880,7 @@ selectedCard model draft transcript =
         Just (Boundary index) ->
             case at index draft.breakpoints of
                 Just b ->
-                    boundaryPanel model draft index b
+                    boundaryPanel model draft transcript index b
 
                 Nothing ->
                     text ""
@@ -960,8 +960,8 @@ midpoint start end =
     (start + end) / 2
 
 
-boundaryPanel : Model -> Draft -> Int -> Breakpoint -> Html Msg
-boundaryPanel model draft index b =
+boundaryPanel : Model -> Draft -> Maybe TranscriptionMetadata -> Int -> Breakpoint -> Html Msg
+boundaryPanel model draft transcript index b =
     let
         busy =
             model.regenerating || model.applying || model.pendingApply /= Nothing
@@ -1012,4 +1012,23 @@ boundaryPanel model draft index b =
             , Button.dangerAction "ph:trash" "Remove breakpoint (Delete/Backspace)" False [ onClick RemoveBoundary, disabled (busy || index == 0 || index == List.length draft.breakpoints - 1) ]
             ]
         ]
-        []
+        (boundaryTranscripts draft transcript index)
+
+
+boundaryTranscripts : Draft -> Maybe TranscriptionMetadata -> Int -> List (Html Msg)
+boundaryTranscripts draft transcript index =
+    let
+        sectionExcerpt label sectionIndex =
+            sectionTranscript draft sectionIndex transcript
+                |> Maybe.map
+                    (\content ->
+                        div []
+                            [ p [ Ui.hint ] [ text label ]
+                            , p [ class "editor__section-transcript" ] [ text content ]
+                            ]
+                    )
+    in
+    List.filterMap identity
+        [ sectionExcerpt ("Section " ++ String.fromInt index ++ " before this breakpoint") (index - 1)
+        , sectionExcerpt ("Section " ++ String.fromInt (index + 1) ++ " after this breakpoint") index
+        ]
