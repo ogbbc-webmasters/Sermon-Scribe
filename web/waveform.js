@@ -1,4 +1,6 @@
 // Elm owns selections and edit decisions; this element draws their audio overview.
+const breakpointTargetSize = 44;
+
 customElements.define("editing-waveform", class extends HTMLElement {
   static observedAttributes = ["src", "data-draft", "data-selection", "data-disabled", "data-placing"];
 
@@ -8,8 +10,11 @@ customElements.define("editing-waveform", class extends HTMLElement {
     this.canvas.className = "editor__waveform-canvas";
     this.canvas.tabIndex = 0;
     this.canvas.setAttribute("role", "button");
-    this.canvas.setAttribute("aria-label", "Audio waveform. Scroll to zoom, drag to pan, double-click to show all audio. Left and right arrows select sections; up and down arrows select breakpoints.");
-    this.canvas.title = "Scroll to zoom · Drag to pan · Double-click to reset";
+    this.canvas.setAttribute("aria-label", "Audio waveform. Scroll or pinch to zoom, drag to pan, double-click to show all audio. Left and right arrows select sections; up and down arrows select breakpoints.");
+    this.canvas.title = "Scroll or pinch to zoom · Drag to pan · Double-click to reset";
+    this.pointers = new Map();
+    this.drag = null;
+    this.pinch = null;
     this.append(this.canvas);
     this.canvas.addEventListener("wheel", event => {
       event.preventDefault();
@@ -22,36 +27,50 @@ customElements.define("editing-waveform", class extends HTMLElement {
       }
     }, { passive: false });
     this.canvas.addEventListener("pointerdown", event => {
-      if (event.button !== 0) return;
+      if (event.button !== 0 || this.pointers.size >= 2) return;
       this.canvas.focus();
       this.canvas.setPointerCapture(event.pointerId);
-      this.drag = { x: event.clientX, start: this.view.start, moved: false };
+      this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (this.pointers.size === 2) {
+        const [a, b] = this.pointers.values();
+        const bounds = this.canvas.getBoundingClientRect();
+        this.pinch = {
+          distance: Math.hypot(b.x - a.x, b.y - a.y),
+          span: this.view.span,
+          time: this.view.start + ((a.x + b.x) / 2 - bounds.left) / bounds.width * this.view.span
+        };
+        this.drag.moved = true;
+        this.canvas.classList.add("editor__waveform-canvas--dragging");
+      } else {
+        this.drag = { x: event.clientX, y: event.clientY, start: this.view.start, moved: false };
+      }
     });
     this.canvas.addEventListener("pointermove", event => {
-      if (!this.drag) return;
+      if (!this.pointers.has(event.pointerId)) return;
+      this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (this.pinch) {
+        const [a, b] = this.pointers.values();
+        const distance = Math.hypot(b.x - a.x, b.y - a.y);
+        if (!distance || !this.pinch.distance) return;
+        const bounds = this.canvas.getBoundingClientRect();
+        const span = Math.max(Math.min(this.draft.duration, 0.5), Math.min(this.draft.duration, this.pinch.span * this.pinch.distance / distance));
+        this.setView(this.pinch.time - ((a.x + b.x) / 2 - bounds.left) / bounds.width * span, span);
+        return;
+      }
       const distance = event.clientX - this.drag.x;
-      if (Math.abs(distance) > 4) this.drag.moved = true;
+      if (Math.hypot(distance, event.clientY - this.drag.y) > 4) this.drag.moved = true;
       if (this.drag.moved) {
         this.canvas.classList.add("editor__waveform-canvas--dragging");
         this.setView(this.drag.start - distance / this.canvas.clientWidth * this.view.span, this.view.span);
       }
     });
     this.canvas.addEventListener("pointerup", event => {
-      if (!this.drag) return;
-      const moved = this.drag.moved;
-      this.drag = null;
-      this.canvas.classList.remove("editor__waveform-canvas--dragging");
+      if (!this.pointers.has(event.pointerId)) return;
+      this.endPointer(event);
       this.canvas.releasePointerCapture(event.pointerId);
-      if (!moved) {
-        const bounds = this.canvas.getBoundingClientRect();
-        if (this.getAttribute("data-placing") === "true") this.addAt(event.clientX - bounds.left, bounds.width);
-        else this.select(this.selectionAt(event.clientX - bounds.left, bounds.width, event.clientY - bounds.top < 24 ? "boundary" : "section"));
-      }
     });
-    this.canvas.addEventListener("lostpointercapture", () => {
-      this.drag = null;
-      this.canvas.classList.remove("editor__waveform-canvas--dragging");
-    });
+    this.canvas.addEventListener("pointercancel", event => this.endPointer(event, true));
+    this.canvas.addEventListener("lostpointercapture", event => this.endPointer(event, true));
     this.canvas.addEventListener("dblclick", () => {
       this.setView(0, this.draft.duration);
     });
@@ -78,6 +97,24 @@ customElements.define("editing-waveform", class extends HTMLElement {
     this.resize = new ResizeObserver(() => this.draw());
     this.resize.observe(this);
     this.load();
+  }
+
+  endPointer(event, cancelled = false) {
+    if (!this.pointers.delete(event.pointerId)) return;
+    this.pinch = null;
+    if (this.pointers.size) {
+      const [remaining] = this.pointers.values();
+      this.drag = { ...remaining, start: this.view.start, moved: true };
+      return;
+    }
+    const moved = this.drag.moved;
+    this.drag = null;
+    this.canvas.classList.remove("editor__waveform-canvas--dragging");
+    if (!cancelled && !moved) {
+      const bounds = this.canvas.getBoundingClientRect();
+      if (this.getAttribute("data-placing") === "true") this.addAt(event.clientX - bounds.left, bounds.width);
+      else this.select(this.selectionAt(event.clientX - bounds.left, bounds.width, event.clientY - bounds.top < breakpointTargetSize ? "boundary" : "section"));
+    }
   }
 
   disconnectedCallback() {
@@ -158,7 +195,7 @@ customElements.define("editing-waveform", class extends HTMLElement {
     if (!draft || width <= 0) return null;
     const { start, span } = this.view;
     const time = start + Math.max(0, Math.min(1, x / width)) * span;
-    let closest = null, distance = target === "boundary" ? 12 : 8;
+    let closest = null, distance = target === "boundary" ? breakpointTargetSize / 2 : 8;
     draft.breakpoints.forEach((boundary, index) => {
       if (index === 0 || index === draft.breakpoints.length - 1) return;
       if (boundary.time < start || boundary.time > start + span) return;

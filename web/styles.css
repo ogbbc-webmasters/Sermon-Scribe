@@ -429,6 +429,7 @@ h2::after {
   cursor: grab;
   display: block;
   height: 100%;
+  touch-action: none;
   width: 100%;
 }
 

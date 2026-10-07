@@ -58,6 +58,76 @@ test("nearest breakpoint wins inside the pixel hit area at different widths", ()
   assert.deepEqual(selection(wave, 315, 500), { kind: "boundary", index: 3 });
 });
 
+test("breakpoint taps cover 44 pixels while section taps keep their own area", () => {
+  const wave = setup();
+  wave.load = () => {};
+  wave.connectedCallback();
+  for (const x of [609, 651]) assert.equal(wave.selectionAt(x, 1000, "boundary").index, 3);
+  for (const x of [607, 653]) assert.equal(wave.selectionAt(x, 1000, "boundary"), null);
+  assert.equal(wave.selectionAt(104, 1000, "boundary").index, 1);
+  assert.equal(wave.selectionAt(106, 1000, "boundary").index, 2);
+  const tap = y => {
+    const event = { button: 0, pointerId: 1, clientX: 661, clientY: y };
+    wave.canvas.listeners.pointerdown(event);
+    wave.canvas.listeners.pointerup(event);
+  };
+  tap(63);
+  assert.equal(wave.events[0].detail.kind, "boundary");
+  assert.equal(wave.events[0].detail.index, 3);
+  tap(65);
+  assert.equal(wave.events[1].detail.kind, "section");
+  assert.equal(wave.events[1].detail.index, 3);
+});
+
+test("two-finger zoom follows the midpoint and resumes panning without selecting", () => {
+  const wave = setup();
+  wave.load = () => {};
+  wave.connectedCallback();
+  wave.setView(20, 50);
+  wave.setAttribute("data-placing", "true");
+  const pointer = (pointerId, clientX) => ({ button: 0, pointerId, clientX, clientY: 70, pointerType: "touch" });
+  wave.canvas.listeners.pointerdown(pointer(1, 210));
+  wave.canvas.listeners.pointerdown(pointer(2, 510));
+  wave.canvas.listeners.pointermove(pointer(1, 110));
+  wave.canvas.listeners.pointermove(pointer(2, 610));
+  assert.equal(wave.view.span, 30);
+  assert.equal(wave.view.start, 27);
+  wave.canvas.listeners.pointermove(pointer(1, 210));
+  wave.canvas.listeners.pointermove(pointer(2, 710));
+  assert.equal(wave.view.span, 30);
+  assert.equal(wave.view.start, 24);
+  wave.canvas.listeners.pointerup(pointer(2, 710));
+  wave.canvas.listeners.pointermove(pointer(1, 310));
+  assert.equal(wave.view.start, 21);
+  wave.canvas.listeners.pointerup(pointer(1, 310));
+  assert.equal(wave.events.length, 0);
+  wave.setAttribute("data-placing", "false");
+  wave.canvas.listeners.pointerdown(pointer(3, 200));
+  wave.canvas.listeners.pointercancel(pointer(3, 200));
+  assert.equal(wave.events.length, 0, "cancelled touches must not select");
+  wave.canvas.listeners.pointerdown(pointer(4, 200));
+  wave.canvas.listeners.pointerup(pointer(4, 200));
+  assert.equal(wave.events.length, 1, "a later tap must still work");
+});
+
+test("touch pinch clamps zoom and lost capture does not turn into a tap", () => {
+  const wave = setup();
+  wave.load = () => {};
+  wave.connectedCallback();
+  wave.setView(20, 50);
+  const pointer = (pointerId, clientX) => ({ button: 0, pointerId, clientX, clientY: 70 });
+  wave.canvas.listeners.pointerdown(pointer(1, 210));
+  wave.canvas.listeners.pointerdown(pointer(2, 510));
+  wave.canvas.listeners.pointermove(pointer(2, 210.001));
+  assert.equal(wave.view.span, 100);
+  assert.equal(wave.view.start, 0);
+  wave.canvas.listeners.pointermove(pointer(2, 100000));
+  assert.equal(wave.view.span, 0.5);
+  wave.canvas.listeners.lostpointercapture(pointer(1, 210));
+  wave.canvas.listeners.pointerup(pointer(2, 100000));
+  assert.equal(wave.events.length, 0);
+});
+
 test("selection only emits navigation and is disabled during mutations", () => {
   const wave = setup();
   wave.select(wave.selectionAt(400, 1000));
