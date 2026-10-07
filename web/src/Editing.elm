@@ -3,7 +3,7 @@ module Editing exposing (Model, Msg(..), init, isOpen, keptDuration, update, vie
 import Browser.Dom
 import Button
 import Card
-import Html exposing (Html, div, input, label, p, strong, text)
+import Html exposing (Html, div, h2, input, label, p, strong, text)
 import Html.Attributes exposing (attribute, checked, class, disabled, id, name, type_)
 import Html.Events exposing (on, onClick, preventDefaultOn)
 import Http
@@ -16,7 +16,7 @@ import Url
 
 
 type alias Breakpoint =
-    { id : String, time : Float, kind : String }
+    { id : String, time : Float, kind : String, edited : Bool, sourceTime : Maybe Float }
 
 
 type alias Section =
@@ -48,12 +48,14 @@ type alias Model =
     , undo : List Draft
     , generation : Int
     , sequence : Int
+    , confirmingRegenerate : Bool
+    , preserveEdited : Bool
     }
 
 
 init : Model
 init =
-    Model Nothing False Nothing Nothing Nothing False False False Nothing Nothing "" 0 [] 0 0
+    Model Nothing False Nothing Nothing Nothing False False False Nothing Nothing "" 0 [] 0 0 False True
 
 
 type Msg
@@ -74,6 +76,9 @@ type Msg
     | Applied Int (Result Http.Error ())
     | Reload
     | Regenerate
+    | ConfirmRegenerate
+    | CancelRegenerate
+    | ChooseRegenerateMode Bool
     | Regenerated Int (Result Http.Error Draft)
     | Preview
     | PlayFull
@@ -98,7 +103,7 @@ draftDecoder =
     Decode.map4 Draft
         (Decode.field "duration" Decode.float)
         (Decode.field "revision" Decode.int)
-        (Decode.field "breakpoints" (Decode.list (Decode.map3 Breakpoint (Decode.field "id" Decode.string) (Decode.field "time" Decode.float) (Decode.field "kind" Decode.string))))
+        (Decode.field "breakpoints" (Decode.list (Decode.map5 Breakpoint (Decode.field "id" Decode.string) (Decode.field "time" Decode.float) (Decode.field "kind" Decode.string) (Decode.oneOf [ Decode.field "edited" Decode.bool, Decode.succeed False ]) (Decode.maybe (Decode.field "source_time" Decode.float)))))
         (Decode.field "sections" (Decode.list (Decode.map2 Section (Decode.field "id" Decode.string) (Decode.field "keep" Decode.bool))))
 
 
@@ -107,7 +112,7 @@ encodeDraft draft =
     Encode.object
         [ ( "duration", Encode.float draft.duration )
         , ( "revision", Encode.int draft.revision )
-        , ( "breakpoints", Encode.list (\b -> Encode.object [ ( "id", Encode.string b.id ), ( "time", Encode.float b.time ), ( "kind", Encode.string b.kind ) ]) draft.breakpoints )
+        , ( "breakpoints", Encode.list (\b -> Encode.object [ ( "id", Encode.string b.id ), ( "time", Encode.float b.time ), ( "kind", Encode.string b.kind ), ( "edited", Encode.bool b.edited ), ( "source_time", Maybe.map Encode.float b.sourceTime |> Maybe.withDefault Encode.null ) ]) draft.breakpoints )
         , ( "sections", Encode.list (\s -> Encode.object [ ( "id", Encode.string s.id ), ( "keep", Encode.bool s.keep ) ]) draft.sections )
         ]
 
@@ -172,20 +177,29 @@ update msg model =
                         ( { model | error = Just "Could not load editing suggestions. Try again.", pendingApply = Nothing }, Cmd.none, Nothing )
 
         Close ->
-            ( { model | visible = False }, Cmd.none, stop )
+            ( { model | visible = False, confirmingRegenerate = False }, Cmd.none, stop )
 
         Reload ->
             update (Open (Maybe.withDefault "" model.sermonId)) { model | draft = Nothing }
 
         Regenerate ->
+            ( { model | confirmingRegenerate = True, preserveEdited = True }, Cmd.none, stop )
+
+        CancelRegenerate ->
+            ( { model | confirmingRegenerate = False }, Task.attempt Focused (Browser.Dom.focus "regenerate-breakpoints"), Nothing )
+
+        ChooseRegenerateMode preserve ->
+            ( { model | preserveEdited = preserve }, Cmd.none, Nothing )
+
+        ConfirmRegenerate ->
             case model.draft of
                 Just draft ->
                     if model.saving || model.regenerating || model.applying || model.pendingApply /= Nothing || model.draft /= model.saved then
                         ( model, Cmd.none, Nothing )
 
                     else
-                        ( { model | regenerating = True, error = Nothing }
-                        , Http.post { url = endpoint model ++ "/regenerate", body = Http.jsonBody (Encode.object [ ( "revision", Encode.int draft.revision ) ]), expect = Http.expectJson (Regenerated model.generation) draftDecoder }
+                        ( { model | regenerating = True, confirmingRegenerate = False, error = Nothing }
+                        , Http.post { url = endpoint model ++ "/regenerate", body = Http.jsonBody (Encode.object [ ( "revision", Encode.int draft.revision ), ( "preserve_edited", Encode.bool model.preserveEdited ) ]), expect = Http.expectJson (Regenerated model.generation) draftDecoder }
                         , stop
                         )
 
@@ -199,7 +213,7 @@ update msg model =
             else
                 case result of
                     Ok draft ->
-                        ( { model | regenerating = False, draft = Just draft, saved = Just draft, selection = Nothing, undo = [], sequence = model.sequence + 1, audioStatus = "" }, Cmd.none, stop )
+                        ( { model | regenerating = False, draft = Just draft, saved = Just draft, selection = Just (Passage 0), undo = [], sequence = model.sequence + 1, audioStatus = "" }, Cmd.none, stop )
 
                     Err err ->
                         ( { model | regenerating = False, error = Just (saveError err) }, Cmd.none, Nothing )
@@ -242,7 +256,7 @@ update msg model =
                                     clamp (before.time + 0.05) (after.time - 0.05) (toFloat (round ((current.time + delta) * 1000)) / 1000)
 
                                 ( next, cmd, _ ) =
-                                    change (\d -> { d | breakpoints = replaceAt index (\b -> { b | time = time }) d.breakpoints }) model
+                                    change (\d -> { d | breakpoints = replaceAt index (\b -> { b | time = time, edited = b.edited || time /= b.time }) d.breakpoints }) model
                             in
                             ( next, cmd, preview next )
 
@@ -269,7 +283,7 @@ update msg model =
                                         change
                                             (\d ->
                                                 { d
-                                                    | breakpoints = List.take (index + 1) d.breakpoints ++ [ Breakpoint unique model.playhead "manual" ] ++ List.drop (index + 1) d.breakpoints
+                                                    | breakpoints = List.take (index + 1) d.breakpoints ++ [ Breakpoint unique model.playhead "manual" True Nothing ] ++ List.drop (index + 1) d.breakpoints
                                                     , sections = List.take (index + 1) d.sections ++ [ Section (unique ++ "-section") section.keep ] ++ List.drop (index + 1) d.sections
                                                 }
                                             )
@@ -288,15 +302,11 @@ update msg model =
                 ( Just draft, Just (Boundary index) ) ->
                     case ( at (index - 1) draft.sections, at index draft.sections ) of
                         ( Just left, Just right ) ->
-                            if left.keep /= right.keep then
-                                ( { model | error = Just "Choose the same Keep / Delete setting on both sections before joining them." }, Cmd.none, Nothing )
-
-                            else
-                                let
-                                    ( next, cmd, audioEffect ) =
-                                        change (\d -> { d | breakpoints = removeAt index d.breakpoints, sections = removeAt index d.sections }) model
-                                in
-                                ( { next | selection = Just (Passage (index - 1)) }, cmd, audioEffect )
+                            let
+                                ( next, cmd, audioEffect ) =
+                                    change (\d -> { d | breakpoints = removeAt index d.breakpoints, sections = removeAt index (replaceAt (index - 1) (\section -> { section | keep = left.keep || right.keep }) d.sections) }) model
+                            in
+                            ( { next | selection = Just (Passage (index - 1)) }, cmd, audioEffect )
 
                         _ ->
                             ( model, Cmd.none, Nothing )
@@ -576,6 +586,7 @@ view model =
                 (Button.regenerate "Regenerate breakpoints")
                 model.regenerating
                 [ onClick Regenerate
+                , id "regenerate-breakpoints"
                 , disabled (model.draft == Nothing || model.saving || model.regenerating || model.applying || model.pendingApply /= Nothing || model.draft /= model.saved)
                 ]
             , Button.action "ph:arrow-right"
@@ -583,7 +594,12 @@ view model =
                 False
                 [ onClick Close ]
             ]
-            [ case model.error of
+            [ if model.confirmingRegenerate then
+                regenerationDialog model
+
+              else
+                text ""
+            , case model.error of
                 Just error ->
                     div [ Ui.errorPanel, attribute "role" "alert" ]
                         [ p [] [ text error ]
@@ -614,8 +630,36 @@ view model =
                 Just draft ->
                     div []
                         [ waveform model draft
+                        , navigation model draft
                         , selectedCard model draft
                         ]
+            ]
+        ]
+
+
+regenerationDialog : Model -> Html Msg
+regenerationDialog model =
+    Html.node "editing-dialog" []
+        [ Html.node "dialog"
+            [ class "editor__dialog"
+            , attribute "aria-labelledby" "regenerate-title"
+            , preventDefaultOn "cancel" (Decode.succeed ( CancelRegenerate, True ))
+            ]
+            [ h2 [ Ui.panelHeading, id "regenerate-title" ] [ text "Regenerate breakpoints" ]
+            , div [ class "editor__dialog-options", attribute "role" "radiogroup", attribute "aria-label" "Breakpoints to regenerate" ]
+                (List.map
+                    (\( preserve, caption ) ->
+                        label [ class "editor__choice" ]
+                            [ input [ type_ "radio", name "regenerate-mode", checked (model.preserveEdited == preserve), onClick (ChooseRegenerateMode preserve) ] []
+                            , text caption
+                            ]
+                    )
+                    [ ( False, "All breakpoints" ), ( True, "Only unedited breakpoints" ) ]
+                )
+            , div [ Ui.sermonActions ]
+                [ Button.action "ph:check" "Confirm regeneration" False [ onClick ConfirmRegenerate ]
+                , Button.action "ph:x" "Cancel regeneration" False [ onClick CancelRegenerate ]
+                ]
             ]
         ]
 
@@ -678,6 +722,33 @@ keptDuration draft =
         |> List.sum
 
 
+navigation : Model -> Draft -> Html Msg
+navigation model draft =
+    let
+        ( ( previousSection, nextSection ), ( previousBoundary, nextBoundary ) ) =
+            case model.selection of
+                Just (Boundary index) ->
+                    ( ( index - 1, index ), ( index - 1, index + 1 ) )
+
+                Just (Passage index) ->
+                    ( ( index - 1, index + 1 ), ( index, index + 1 ) )
+
+                Nothing ->
+                    ( ( 0, 0 ), ( 1, 1 ) )
+
+        busy =
+            model.regenerating || model.applying || model.pendingApply /= Nothing
+    in
+    div [ class "editor__navigation" ]
+        [ div [ Ui.sermonActions ]
+            [ Button.action "ph:skip-back" "Previous section" False [ onClick (Select (Passage previousSection)), disabled (busy || previousSection < 0) ]
+            , Button.action "ph:skip-forward" "Next section" False [ onClick (Select (Passage nextSection)), disabled (busy || nextSection >= List.length draft.sections) ]
+            , Button.action "ph:caret-left" "Previous breakpoint" False [ onClick (Select (Boundary previousBoundary)), disabled (busy || previousBoundary < 1) ]
+            , Button.action "ph:caret-right" "Next breakpoint" False [ onClick (Select (Boundary nextBoundary)), disabled (busy || nextBoundary >= List.length draft.breakpoints - 1) ]
+            ]
+        ]
+
+
 selectedCard : Model -> Draft -> Html Msg
 selectedCard model draft =
     case model.selection of
@@ -729,9 +800,6 @@ boundaryPanel model draft index b =
         busy =
             model.regenerating || model.applying || model.pendingApply /= Nothing
 
-        removable =
-            Maybe.map2 (\left right -> left.keep == right.keep) (at (index - 1) draft.sections) (at index draft.sections) |> Maybe.withDefault False
-
         keyboard =
             preventDefaultOn "keydown"
                 (Decode.map2
@@ -772,6 +840,6 @@ boundaryPanel model draft index b =
             [ Button.action "ph:headphones" "Listen around breakpoint" False [ onClick Preview, disabled busy ]
             , Button.action "ph:arrow-left" "Earlier" False [ onClick (Nudge -0.1), disabled busy ]
             , Button.action "ph:arrow-right" "Later" False [ onClick (Nudge 0.1), disabled busy ]
-            , Button.action "ph:minus" "Remove breakpoint" False [ onClick RemoveBoundary, disabled (busy || not removable) ]
+            , Button.action "ph:minus" "Remove breakpoint" False [ onClick RemoveBoundary, disabled (busy || index == 0 || index == List.length draft.breakpoints - 1) ]
             ]
         ]

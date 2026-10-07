@@ -42,6 +42,7 @@
   --red-line: #ecd2cf;
   --red-line-strong: #dfb5b0;
   --on-accent: #ffffff;
+  --dialog-backdrop: rgba(43, 40, 32, 0.45);
 
   /* type */
   --font-body: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
@@ -83,6 +84,7 @@
   --editor-border: 1px;
   --focus-width: 3px;
   --waveform-height: 128px;
+  --dialog-width: 440px;
 }
 
 /* ------------------------------------------------------------ base/reset */
@@ -307,6 +309,13 @@ h2::after {
   gap: var(--space-lg);
 }
 
+@media (max-width: 480px) {
+  .editor__choices {
+    flex-direction: column;
+    gap: var(--space-xs);
+  }
+}
+
 .editor__choice {
   align-items: center;
   cursor: pointer;
@@ -315,9 +324,34 @@ h2::after {
   min-height: var(--control-size-small);
 }
 
+.editor__dialog {
+  background: var(--card);
+  border: var(--editor-border) solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  max-width: calc(100% - var(--space-xl) * 2);
+  padding: var(--space-2xl);
+  width: var(--dialog-width);
+}
+
+.editor__dialog::backdrop {
+  background: var(--dialog-backdrop);
+}
+
+.editor__dialog-options {
+  display: grid;
+  gap: var(--space-xs);
+  margin: var(--space-xl) 0;
+}
+
 .editor__list {
   display: grid;
   gap: var(--space-md);
+}
+
+.editor__navigation {
+  margin-bottom: var(--space-xl);
 }
 
 .editor__row {

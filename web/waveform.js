@@ -43,7 +43,7 @@ customElements.define("editing-waveform", class extends HTMLElement {
       this.canvas.releasePointerCapture(event.pointerId);
       if (!moved) {
         const bounds = this.canvas.getBoundingClientRect();
-        this.select(this.selectionAt(event.clientX - bounds.left, bounds.width));
+        this.select(this.selectionAt(event.clientX - bounds.left, bounds.width, event.clientY - bounds.top < 24 ? "boundary" : "section"));
       }
     });
     this.canvas.addEventListener("lostpointercapture", () => {
@@ -82,6 +82,17 @@ customElements.define("editing-waveform", class extends HTMLElement {
   attributeChangedCallback(name) {
     if (!this.canvas) return;
     if (name === "src") this.load();
+    else if (name === "data-selection") this.revealSelection();
+    else this.draw();
+  }
+
+  revealSelection() {
+    const [kind, value] = (this.getAttribute("data-selection") || "").split(":");
+    const index = Number(value), draft = this.draft;
+    const left = draft?.breakpoints[index]?.time;
+    const right = kind === "section" ? draft?.breakpoints[index + 1]?.time : left;
+    const { start, span } = this.view;
+    if (left > start + span || right < start) this.setView((left + right) / 2 - span / 2, span);
     else this.draw();
   }
 
@@ -97,7 +108,7 @@ customElements.define("editing-waveform", class extends HTMLElement {
 
   setView(start, span) {
     const duration = this.draft.duration;
-    this.viewSpan = Math.max(duration / 128, Math.min(duration, span));
+    this.viewSpan = Math.max(Math.min(duration, 0.5), Math.min(duration, span));
     this.viewStart = Math.max(0, Math.min(duration - this.viewSpan, start));
     this.draw();
   }
@@ -105,7 +116,7 @@ customElements.define("editing-waveform", class extends HTMLElement {
   zoom(factor, anchor) {
     const { start, span } = this.view;
     anchor = Math.max(0, Math.min(1, anchor));
-    const next = Math.max(this.draft.duration / 128, Math.min(this.draft.duration, span / factor));
+    const next = Math.max(Math.min(this.draft.duration, 0.5), Math.min(this.draft.duration, span / factor));
     this.setView(start + anchor * (span - next), next);
   }
 
@@ -134,19 +145,30 @@ customElements.define("editing-waveform", class extends HTMLElement {
     }
   }
 
-  selectionAt(x, width) {
+  selectionAt(x, width, target = "auto") {
     const draft = this.draft;
     if (!draft || width <= 0) return null;
     const { start, span } = this.view;
     const time = start + Math.max(0, Math.min(1, x / width)) * span;
-    let closest = null, distance = 8;
+    let closest = null, distance = target === "boundary" ? 12 : 8;
     draft.breakpoints.forEach((boundary, index) => {
       if (index === 0 || index === draft.breakpoints.length - 1) return;
       if (boundary.time < start || boundary.time > start + span) return;
       const delta = Math.abs(boundary.time - time) / span * width;
       if (delta < distance) { closest = { kind: "boundary", index }; distance = delta; }
     });
-    if (closest) return closest;
+    if (target !== "section" && closest) return closest;
+    if (target === "boundary") return null;
+    if (target === "section") {
+      let nearby = null, nearest = 12;
+      draft.sections.forEach((section, index) => {
+        const left = draft.breakpoints[index].time, right = draft.breakpoints[index + 1].time;
+        if (right < start || left > start + span || (right - left) / span * width >= 24) return;
+        const delta = Math.abs(((left + right) / 2 - start) / span * width - x);
+        if (delta < nearest) { nearby = { kind: "section", index }; nearest = delta; }
+      });
+      if (nearby) return nearby;
+    }
     const index = draft.breakpoints.findIndex(boundary => boundary.time > time) - 1;
     return { kind: "section", index: index < 0 ? draft.sections.length - 1 : index };
   }

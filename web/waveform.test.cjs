@@ -91,7 +91,7 @@ test("pan and zoom clamp at both recording edges and reset to the full view", ()
   wave.pan(-100);
   assert.equal(wave.view.start, 0);
   wave.zoom(10000, 0);
-  assert.equal(wave.view.span, 100 / 128);
+  assert.equal(wave.view.span, 0.5);
   wave.setView(0, 100);
   assert.equal(wave.view.start, 0);
   assert.equal(wave.view.span, 100);
@@ -130,5 +130,32 @@ test("wheel zoom is quicker while horizontal and shift-wheel panning are gentler
   assert.equal(wave.view.start, 18.25);
   assert.equal(wave.view.span, 50);
   assert.equal(prevented, 3);
+  assert.equal(wave.events.length, 0);
+});
+
+test("section body clicks beat adjacent markers and widen tiny section targets", () => {
+  const wave = setup();
+  const body = x => JSON.parse(JSON.stringify(wave.selectionAt(x, 1000, "section")));
+  assert.deepEqual(body(105), { kind: "section", index: 1 });
+  assert.deepEqual(body(98), { kind: "section", index: 1 });
+  assert.equal(wave.selectionAt(98, 1000, "boundary").index, 1);
+  assert.equal(wave.selectionAt(700, 1000, "boundary"), null);
+  wave.setView(10, 0.5);
+  assert.equal(wave.view.span, 0.5);
+  assert.deepEqual(body(500), { kind: "section", index: 1 });
+});
+
+test("navigation reveals offscreen selections without moving a visible section", () => {
+  const wave = setup();
+  wave.setView(8, 0.5);
+  wave.setAttribute("data-selection", "boundary:3");
+  wave.revealSelection();
+  assert.equal(wave.view.start, 62.75);
+  wave.setAttribute("data-selection", "section:2");
+  wave.revealSelection();
+  assert.equal(wave.view.start, 62.75);
+  wave.setAttribute("data-selection", "section:1");
+  wave.revealSelection();
+  assert.equal(wave.view.start, 10.25);
   assert.equal(wave.events.length, 0);
 });

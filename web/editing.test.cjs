@@ -29,6 +29,7 @@ function setup() {
   const window = {};
   runInNewContext(readFileSync(__dirname + "/editing.js", "utf8"), {
     window, Audio, AbortController,
+    HTMLElement: class {}, customElements: { define() {} },
     document: { getElementById: () => audio, addEventListener: (event, fn) => { listeners[event] = fn; } }
   });
   window.initializeEditingAudio({ ports: {

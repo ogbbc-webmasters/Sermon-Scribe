@@ -1,3 +1,17 @@
+// Native dialogs supply focus trapping and Escape behavior; Elm owns their state.
+customElements.define("editing-dialog", class extends HTMLElement {
+  connectedCallback() {
+    this.frame = requestAnimationFrame(() => {
+      this.dialog = this.querySelector("dialog");
+      this.dialog.showModal();
+    });
+  }
+  disconnectedCallback() {
+    cancelAnimationFrame(this.frame);
+    this.dialog?.close();
+  }
+});
+
 // Elm owns edit decisions. This bridge owns cancellable audio playback only.
 window.initializeEditingAudio = function (app) {
   let source;
