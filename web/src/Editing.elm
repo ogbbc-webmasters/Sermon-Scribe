@@ -717,10 +717,10 @@ sectionCard model draft index section =
     Card.viewWithSubtitle
         (text ("Section " ++ String.fromInt (index + 1)))
         (Just (text range))
-        [ radios
-        , Button.action "ph:headphones" "Preview start & finish" False [ onClick Preview, disabled busy ]
+        [ radios ]
+        [ div [ Ui.sermonActions ]
+            [ Button.action "ph:headphones" "Preview start & finish" False [ onClick Preview, disabled busy ] ]
         ]
-        []
 
 
 boundaryPanel : Model -> Draft -> Int -> Breakpoint -> Html Msg
