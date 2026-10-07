@@ -302,7 +302,7 @@ viewDetailAudio model sermon =
 
           else
             audio [ class "sermon-detail__audio", controls True, attribute "preload" "metadata", src source ] []
-        , if duration |> Maybe.map (\seconds -> seconds >= 80 * 60) |> Maybe.withDefault False then
+        , if sermon.transcriptionMetadata |> Maybe.andThen .duration |> Maybe.map (\seconds -> seconds >= 80 * 60) |> Maybe.withDefault False then
             p [ Ui.hint ] [ text "Please edit the audio to under 80 minutes." ]
 
           else
