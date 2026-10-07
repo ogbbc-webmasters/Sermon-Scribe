@@ -8,6 +8,7 @@ module Ui exposing
     , confirmBox
     , confirmBoxButtons
     , confirmBoxQuestion
+    , deletedPanel
     , emptyState
     , errorPanel
     , errorText
@@ -47,6 +48,11 @@ import Html.Attributes exposing (class)
 panel : Html.Attribute msg
 panel =
     class "panel"
+
+
+deletedPanel : Html.Attribute msg
+deletedPanel =
+    class "panel panel--deleted"
 
 
 panelHeader : Html.Attribute msg

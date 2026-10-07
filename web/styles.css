@@ -262,18 +262,6 @@ h2::after {
 
 /* editor — audio-first section list and one open adjustment at a time */
 
-.editor__adjustment {
-  background: var(--wash);
-  border: var(--editor-border) solid var(--line);
-  border-radius: var(--radius-sm);
-  color: var(--ink);
-  padding: var(--space-xl);
-}
-
-.editor__adjustment:focus {
-  outline: var(--focus-width) solid var(--focus);
-}
-
 .editor__audio {
   display: block;
   margin-top: var(--space-lg);
@@ -526,6 +514,16 @@ h2::after {
   min-width: 0;
   overflow-wrap: anywhere;
   padding: var(--space-lg);
+}
+
+.panel:focus-visible {
+  outline: var(--focus-width) solid var(--focus);
+}
+
+.panel--deleted {
+  background: var(--red-soft);
+  border-color: var(--red-line);
+  color: var(--red);
 }
 
 .panel--error {

@@ -1,4 +1,4 @@
-module Card exposing (view, viewWithSubtitle)
+module Card exposing (view, viewWithAttributes, viewWithSubtitle)
 
 import Html exposing (Html, div, h2, p)
 import Ui
@@ -13,7 +13,12 @@ view heading actions content =
 
 viewWithSubtitle : Html msg -> Maybe (Html msg) -> List (Html msg) -> List (Html msg) -> Html msg
 viewWithSubtitle heading subtitle actions content =
-    div [ Ui.panel ]
+    viewWithAttributes [] heading subtitle actions content
+
+
+viewWithAttributes : List (Html.Attribute msg) -> Html msg -> Maybe (Html msg) -> List (Html msg) -> List (Html msg) -> Html msg
+viewWithAttributes attributes heading subtitle actions content =
+    div (Ui.panel :: attributes)
         [ div [ Ui.panelHeader ]
             [ case subtitle of
                 Just description ->

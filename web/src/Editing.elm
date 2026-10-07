@@ -3,9 +3,10 @@ module Editing exposing (Model, Msg(..), init, isOpen, keptDuration, update, vie
 import Browser.Dom
 import Button
 import Card
-import Html exposing (Html, div, h2, input, label, p, strong, text)
+import Html exposing (Html, div, h2, input, label, p, text)
 import Html.Attributes exposing (attribute, checked, class, disabled, id, name, type_)
 import Html.Events exposing (on, onClick, preventDefaultOn)
+import Html.Keyed
 import Http
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -824,7 +825,7 @@ selectedCard model draft =
         Just (Boundary index) ->
             case at index draft.breakpoints of
                 Just b ->
-                    Card.view (text (kindLabel b.kind)) [] [ boundaryPanel model draft index b ]
+                    boundaryPanel model draft index b
 
                 Nothing ->
                     text ""
@@ -843,10 +844,16 @@ sectionCard model draft index section =
             model.regenerating || model.applying || model.pendingApply /= Nothing
 
         radios =
-            div [ class "editor__choices", attribute "role" "group", attribute "aria-label" ("Section " ++ String.fromInt (index + 1) ++ " inclusion") ]
-                (List.map (\( keep, caption ) -> label [ class "editor__choice" ] [ input [ type_ "radio", name section.id, checked (section.keep == keep), disabled busy, onClick (Keep index keep) ] [], text caption ]) [ ( True, "Keep" ), ( False, "Delete" ) ])
+            Html.Keyed.node "div" [ class "editor__choices", attribute "role" "group", attribute "aria-label" ("Section " ++ String.fromInt (index + 1) ++ " inclusion") ]
+                (List.map (\( keep, caption ) -> ( section.id ++ caption, label [ class "editor__choice" ] [ input [ type_ "radio", name section.id, checked (section.keep == keep), disabled busy, onClick (Keep index keep) ] [], text caption ] )) [ ( True, "Keep" ), ( False, "Delete" ) ])
     in
-    Card.viewWithSubtitle
+    Card.viewWithAttributes
+        (if section.keep then
+            []
+
+         else
+            [ Ui.deletedPanel ]
+        )
         (text ("Section " ++ String.fromInt (index + 1)))
         (Just (text range))
         [ radios ]
@@ -895,9 +902,12 @@ boundaryPanel model draft index b =
                     (Decode.field "shiftKey" Decode.bool)
                 )
     in
-    div [ class "editor__adjustment", id "breakpoint-adjustment", attribute "tabindex" "-1", attribute "aria-label" "Adjust breakpoint", keyboard ]
-        [ strong [] [ text ("Place breakpoint · " ++ String.fromFloat (toFloat (round (b.time * 10)) / 10) ++ " seconds") ]
-        , div [ Ui.sermonActions ]
+    Card.viewWithAttributes
+        [ id "breakpoint-adjustment", attribute "tabindex" "-1", attribute "aria-label" "Adjust breakpoint", keyboard ]
+        (text (kindLabel b.kind))
+        (Just (text ("Place breakpoint · " ++ String.fromFloat (toFloat (round (b.time * 10)) / 10) ++ " seconds")))
+        []
+        [ div [ Ui.sermonActions ]
             [ Button.action "ph:headphones" "Listen around breakpoint" False [ onClick Preview, disabled busy ]
             , Button.action "ph:arrow-left" "Earlier" False [ onClick (Nudge -0.1), disabled busy ]
             , Button.action "ph:arrow-right" "Later" False [ onClick (Nudge 0.1), disabled busy ]
