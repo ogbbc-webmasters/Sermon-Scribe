@@ -131,7 +131,7 @@ func TestMetadataHandlerSelectsTitleAndPreservesTopics(t *testing.T) {
 							{"title":"Receive wisdom","title_generated":true,"title_reasoning":"Closing exhortation."}
 						]`
 					}
-					metadata := `{"title_candidates":` + candidates + `,"speaker":"John Doe","scriptures":["James 1:5","James 1:6","John 3:16"],"topics":["Assurance","Atonement"],"topics_reasoning":{"Assurance":"Legacy reasoning must be ignored."}}`
+					metadata := `{"title_candidates":` + candidates + `,"speaker":"John Doe","scriptures":["James 1","James 1:5","James 1:6","James 1:5-6","John 3:16"],"topics":["Assurance","Atonement"],"topics_reasoning":{"Assurance":"Legacy reasoning must be ignored."}}`
 					if tt.wrapped {
 						metadata = "[" + metadata + "]"
 					}
@@ -157,7 +157,7 @@ func TestMetadataHandlerSelectsTitleAndPreservesTopics(t *testing.T) {
 						t.Fatal(err)
 					}
 					wantTitles := []string{"The gift of wisdom", "Faith asks", "God gives generously", "Ask without doubting", "Receive wisdom"}
-					if payload.Model != "decision-test" || payload.State.Transcript != transcript || !reflect.DeepEqual(payload.State.Titles, wantTitles) || len(payload.Questions) != 87 {
+					if payload.Model != "decision-test" || payload.State.Transcript != transcript || !reflect.DeepEqual(payload.State.Titles, wantTitles) || len(payload.Questions) != 86 {
 						t.Fatal("incorrect decision model, state, or question count")
 					}
 					for i, title := range wantTitles {
@@ -169,10 +169,13 @@ func TestMetadataHandlerSelectsTitleAndPreservesTopics(t *testing.T) {
 					if payload.Questions["assurance"].Type != "noul" || payload.Questions["atonement"].Type != "noul" {
 						t.Fatal("topic classification questions missing")
 					}
-					for i, reference := range []string{"James 1:5", "James 1:6", "John 3:16"} {
+					for i, reference := range []string{"James 1:5-6", "John 3:16"} {
 						question := payload.Questions[fmt.Sprintf("scripture_%d", i+1)]
 						if question.Type != "choice" || !strings.Contains(question.Instructions, reference) || len(question.Criteria) != 3 || question.Criteria["read"] == "" || question.Criteria["mentioned"] == "" || question.Criteria["absent"] == "" {
 							t.Fatalf("incorrect scripture question for %s", reference)
+						}
+						if !strings.Contains(question.Instructions, "words actually spoken") || !strings.Contains(question.Instructions, "different passage") || !strings.Contains(question.Criteria["read"], "recognizable quotation") || !strings.Contains(question.Criteria["read"], "paraphrase") || !strings.Contains(question.Criteria["mentioned"], "intended reading") || !strings.Contains(question.Criteria["absent"], "shared theme") {
+							t.Fatal("scripture criteria lost quotation evidence or read/mentioned/absent boundaries")
 						}
 					}
 					answers := tt.answers
@@ -190,8 +193,7 @@ func TestMetadataHandlerSelectsTitleAndPreservesTopics(t *testing.T) {
 					scores["assurance"] = map[string]float64{"noul": 0.81}
 					scores["atonement"] = map[string]float64{"noul": 0.23}
 					scores["scripture_1"] = map[string]string{"choice": "read"}
-					scores["scripture_2"] = map[string]string{"choice": "mentioned"}
-					scores["scripture_3"] = map[string]string{"choice": "absent"}
+					scores["scripture_2"] = map[string]string{"choice": "absent"}
 					if tt.scriptureAnswer != "" {
 						var answer any
 						if err := json.Unmarshal([]byte(tt.scriptureAnswer), &answer); err != nil {
@@ -240,7 +242,7 @@ func TestMetadataHandlerSelectsTitleAndPreservesTopics(t *testing.T) {
 			if sm.Title == nil || *sm.Title != tt.wantTitle || sm.TitleGenerated == nil || *sm.TitleGenerated != tt.generated || sm.TitleReasoning == nil || *sm.TitleReasoning != tt.wantReason {
 				t.Fatalf("incorrect winning title metadata: %+v", sm)
 			}
-			if sm.Speaker == nil || *sm.Speaker != "John Doe" || !reflect.DeepEqual(sm.Scriptures, []string{"James 1:5", "James 1:6", "John 3:16"}) || !reflect.DeepEqual(sm.ScriptureClassifications, map[string]string{"James 1:5": "read", "James 1:6": "mentioned", "John 3:16": "absent"}) || !reflect.DeepEqual(sm.Topics, []string{"Assurance", "Atonement"}) || len(sm.TopicScores) != 79 || sm.TopicScores["Assurance"] != 0.81 || sm.TopicScores["Atonement"] != 0.23 {
+			if sm.Speaker == nil || *sm.Speaker != "John Doe" || !reflect.DeepEqual(sm.Scriptures, []string{"James 1:5-6", "John 3:16"}) || !reflect.DeepEqual(sm.ScriptureClassifications, map[string]string{"James 1:5-6": "read", "John 3:16": "absent"}) || !reflect.DeepEqual(sm.Topics, []string{"Assurance", "Atonement"}) || len(sm.TopicScores) != 79 || sm.TopicScores["Assurance"] != 0.81 || sm.TopicScores["Atonement"] != 0.23 {
 				t.Fatalf("incorrect other metadata: %+v", sm)
 			}
 			encoded, err := json.Marshal(sm)
@@ -283,7 +285,7 @@ func TestScriptureRegenerationPreservesOtherFields(t *testing.T) {
 					if !strings.Contains(prompt, "- scriptures:") || strings.Contains(prompt, "title_candidates") || strings.Contains(prompt, "- topics:") || strings.Contains(prompt, "- speaker:") {
 						t.Fatal("scripture regeneration requested unrelated fields")
 					}
-					metadata := `{"scriptures":["Romans 8:28","James 1:5","John 3:16"]}`
+					metadata := `{"scriptures":["Romans 8","Romans 8:28","James 1:5","James 1:5","John 3:16"]}`
 					if empty {
 						metadata = `{"scriptures":[]}`
 					}

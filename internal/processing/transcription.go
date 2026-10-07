@@ -226,6 +226,7 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 	if job.Type == "extract_title" || job.Type == "extract_topics" {
 		result.Scriptures = nil
 	}
+	result.Scriptures = normalizeScriptures(result.Scriptures)
 	title, scores, classifications, err := h.classifyMetadata(ctx, *sermon.Transcript, result.TitleCandidates, job.Type != "extract_title" && job.Type != "extract_scriptures", result.Scriptures)
 	if err != nil {
 		return Result{}, err
@@ -254,11 +255,11 @@ func (h *MetadataHandler) classifyMetadata(ctx context.Context, transcript strin
 	for i, reference := range scriptures {
 		questions[fmt.Sprintf("scripture_%d", i+1)] = map[string]any{
 			"type":         "choice",
-			"instructions": "Classify the Bible reference " + strconv.Quote(reference) + " using only the sermon transcript. Reading takes precedence over mentioning. Account for transcription errors and different Bible translations; do not infer presence just from related themes.",
+			"instructions": "Classify the Bible reference " + strconv.Quote(reference) + " using only words actually spoken in the sermon transcript. Read requires evidence of a recognizable quotation of biblical wording from this specific passage, not merely discussion of it. Distinguish the speaker's commentary from quoted scripture. Announcing a reading or asking listeners to turn to a passage does not establish that it was read. Accept different Bible translations and minor transcription errors. A quotation may be recited from memory, need not name its reference, and may cover only part of a chapter or verse range. Do not borrow quoted words from a different passage or infer presence from related themes. Choose read over mentioned only when the quotation evidence is present.",
 			"criteria": map[string]string{
-				"read":      "The speaker reads or recites identifiable words from this passage aloud, even if only part of the passage is quoted.",
-				"mentioned": "The speaker names or clearly refers to this passage, but does not read or recite its text.",
-				"absent":    "Neither the passage's text nor an identifiable reference to this passage is present in the transcript.",
+				"read":      "The transcript contains an actual, recognizable quotation of biblical wording from this passage: the speaker reads it aloud or recites it. At least some verse text must be spoken. A reference alone, an announced intention to read, a paraphrase, a summary, an allusion, or a generic phrase is not sufficient.",
+				"mentioned": "The speaker names this passage, asks listeners to turn to it, announces an intended reading, or clearly discusses, paraphrases, summarizes, or alludes to this specific passage, but no recognizable quotation of its biblical wording is actually spoken.",
+				"absent":    "The transcript contains neither a recognizable quotation from this passage nor an identifiable reference or specific discussion of it. A shared theme or generic biblical phrase alone does not establish this passage's presence.",
 			},
 		}
 	}
