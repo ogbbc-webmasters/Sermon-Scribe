@@ -46,6 +46,7 @@
   /* type */
   --font-body: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
   --font-display: Georgia, "Times New Roman", serif;
+  --font-size-card-title: 24px;
   --font-size-transcript: 1rem;
 
   /* shape */
@@ -403,10 +404,12 @@ h2::after {
   color: inherit;
   display: block;
   font-family: inherit;
-  font-size: inherit;
+  font-size: var(--font-size-card-title);
   font-weight: 600;
+  line-height: 1;
   margin: 0;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .panel__heading::after {

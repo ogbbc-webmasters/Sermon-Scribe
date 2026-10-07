@@ -32,6 +32,43 @@ func newTestServer(t *testing.T) (*Server, *httptest.Server) {
 	return srv, ts
 }
 
+func TestDetailPageRoutes(t *testing.T) {
+	srv, _ := newTestServer(t)
+	handler := srv.Routes(fstest.MapFS{
+		"index.html": {Data: []byte("<html>sermon app</html>")},
+		"styles.css": {Data: []byte("body { margin: 0; }")},
+	})
+	for _, tc := range []struct {
+		path string
+		code int
+		body string
+	}{
+		{"/", http.StatusOK, "<html>sermon app</html>"},
+		{"/sermons/recording-123", http.StatusOK, "<html>sermon app</html>"},
+		{"/sermons/recording-456?share=1", http.StatusOK, "<html>sermon app</html>"},
+		{"/styles.css", http.StatusOK, "body { margin: 0; }"},
+		{"/missing.js", http.StatusNotFound, ""},
+		{"/sermons/recording-123/unknown", http.StatusNotFound, ""},
+		{"/api/unknown", http.StatusNotFound, ""},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodGet, tc.path, nil)
+			originalPath := r.URL.Path
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, r)
+			if w.Code != tc.code {
+				t.Fatalf("status = %d, want %d", w.Code, tc.code)
+			}
+			if tc.body != "" && w.Body.String() != tc.body {
+				t.Errorf("body = %q, want %q", w.Body.String(), tc.body)
+			}
+			if r.URL.Path != originalPath {
+				t.Errorf("handler changed original request path to %q", r.URL.Path)
+			}
+		})
+	}
+}
+
 func multipartBody(t *testing.T, filename string, content []byte) (io.Reader, string) {
 	t.Helper()
 	var buf bytes.Buffer

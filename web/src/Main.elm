@@ -2,6 +2,7 @@ port module Main exposing (main)
 
 import Api
 import Browser
+import Browser.Navigation as Navigation
 import Dict
 import Http
 import Json.Decode as Decode
@@ -9,6 +10,8 @@ import Set
 import Task
 import Time
 import Types exposing (Model, Msg(..), SermonList(..), UploadState(..))
+import Url exposing (Url)
+import Url.Parser as Parser exposing ((</>), s, string)
 import View
 
 
@@ -26,18 +29,21 @@ port scrollTranscriptMatch : Int -> Cmd msg
 
 main : Program () Model Msg
 main =
-    Browser.element
+    Browser.application
         { init = init
         , update = update
-        , view = View.view
+        , view = \model -> { title = "Sermon Scribe", body = [ View.view model ] }
         , subscriptions = subscriptions
+        , onUrlRequest = UrlRequested
+        , onUrlChange = UrlChanged
         }
 
 
-init : () -> ( Model, Cmd Msg )
-init _ =
+init : () -> Url -> Navigation.Key -> ( Model, Cmd Msg )
+init _ url key =
     ( { sermons = Loading
-      , selectedSermon = Nothing
+      , selectedSermon = sermonIdFromUrl url
+      , navigationKey = key
       , transcriptSearch = ""
       , transcriptMatch = 0
       , transcriptCopyStatus = Nothing
@@ -63,11 +69,37 @@ init _ =
 -- UPDATE
 
 
+sermonIdFromUrl : Url -> Maybe String
+sermonIdFromUrl url =
+    Parser.parse (s "sermons" </> string) url
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
         NoOp ->
             ( model, Cmd.none )
+
+        UrlRequested request ->
+            case request of
+                Browser.Internal url ->
+                    ( model, Navigation.pushUrl model.navigationKey (Url.toString url) )
+
+                Browser.External url ->
+                    ( model, Navigation.load url )
+
+        UrlChanged url ->
+            ( { model
+                | selectedSermon = sermonIdFromUrl url
+                , transcriptSearch = ""
+                , transcriptMatch = 0
+                , transcriptCopyStatus = Nothing
+                , confirmingDelete = Nothing
+                , retryError = Nothing
+                , deleteError = Nothing
+              }
+            , Cmd.none
+            )
 
         GotZone zone ->
             ( { model | zone = zone }, Cmd.none )
@@ -245,10 +277,7 @@ update msg model =
             )
 
         OpenSermon sermon ->
-            ( { model | selectedSermon = Just sermon, transcriptSearch = "", transcriptMatch = 0, transcriptCopyStatus = Nothing }, Cmd.none )
-
-        CloseSermon ->
-            ( { model | selectedSermon = Nothing }, Cmd.none )
+            ( model, Navigation.pushUrl model.navigationKey ("/sermons/" ++ Url.percentEncode sermon.id) )
 
         SearchTranscript query ->
             ( { model | transcriptSearch = query, transcriptMatch = 0 }, scrollTranscriptMatch 0 )

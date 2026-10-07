@@ -1,12 +1,15 @@
 module Types exposing (Model, Msg(..), SermonList(..), UploadState(..))
 
 import Api exposing (Sermon)
+import Browser
+import Browser.Navigation as Navigation
 import Dict exposing (Dict)
 import File exposing (File)
 import Http
 import Json.Decode as Decode
 import Set exposing (Set)
 import Time
+import Url exposing (Url)
 
 
 type SermonList
@@ -23,7 +26,8 @@ type UploadState
 
 type alias Model =
     { sermons : SermonList
-    , selectedSermon : Maybe Sermon
+    , selectedSermon : Maybe String
+    , navigationKey : Navigation.Key
     , transcriptSearch : String
     , transcriptMatch : Int
     , transcriptCopyStatus : Maybe Bool
@@ -45,6 +49,8 @@ type alias Model =
 
 type Msg
     = NoOp
+    | UrlRequested Browser.UrlRequest
+    | UrlChanged Url
     | GotZone Time.Zone
     | GotSermons (Result Http.Error (List Sermon))
     | PipelineEventReceived Decode.Value
@@ -58,7 +64,6 @@ type Msg
     | ReviewNormalization Sermon
     | NormalizationReviewed Sermon (Result Http.Error Sermon)
     | OpenSermon Sermon
-    | CloseSermon
     | SearchTranscript String
     | SelectTranscriptMatch Int
     | CopyTranscript String

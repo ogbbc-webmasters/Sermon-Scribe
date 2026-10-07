@@ -5,7 +5,7 @@ import Card
 import DateFormat exposing (formatDate)
 import Dict
 import File
-import Html exposing (Html, a, audio, button, details, div, h1, h2, input, label, mark, p, span, strong, summary, text)
+import Html exposing (Html, a, audio, button, details, div, h2, input, label, mark, p, span, strong, summary, text)
 import Html.Attributes exposing (accept, attribute, class, controls, disabled, download, hidden, href, id, placeholder, src, style, title, type_, value)
 import Html.Events exposing (on, onClick, onInput, stopPropagationOn)
 import Icon
@@ -18,30 +18,38 @@ import Ui
 view : Model -> Html Msg
 view model =
     case model.selectedSermon of
-        Just sermon ->
-            let
-                current =
-                    case model.sermons of
-                        Loaded sermons ->
-                            List.filter (\candidate -> candidate.id == sermon.id) sermons
-                                |> List.head
-                                |> Maybe.withDefault sermon
+        Just sermonId ->
+            case model.sermons of
+                Loaded sermons ->
+                    case List.filter (\sermon -> sermon.id == sermonId) sermons |> List.head of
+                        Just sermon ->
+                            viewSermonDetail model sermon
 
-                        _ ->
-                            sermon
-            in
-            viewSermonDetail model current
+                        Nothing ->
+                            viewDetailMessage "Sermon not found."
+
+                Loading ->
+                    viewDetailMessage "Loading sermon…"
+
+                LoadFailed ->
+                    viewDetailMessage "Could not load the sermon. Please reload the page."
 
         Nothing ->
             div [ class "page" ]
-                [ div [ class "masthead" ]
-                    [ h1 [] [ text "Sermon Scribe" ] ]
-                , viewUpload model.upload
+                [ viewUpload model.upload
                 , h2 [] [ text "Sermons" ]
                 , viewOptionalError model.deleteError
                 , viewOptionalError model.normalizationError
                 , viewSermons model
                 ]
+
+
+viewDetailMessage : String -> Html Msg
+viewDetailMessage message =
+    div [ class "page page--detail" ]
+        [ Icon.view "a" Icon.back False [ href "/" ]
+        , p [] [ text message ]
+        ]
 
 
 viewSermonDetail : Model -> Sermon -> Html Msg
@@ -58,12 +66,10 @@ viewSermonDetail model sermon =
                 || not (List.isEmpty (highConfidenceTopics sermon.topicScores))
     in
     div [ class "page page--detail" ]
-        [ div [ class "masthead" ]
-            [ h1 [] [ text "Sermon Scribe" ] ]
-        , div [ class "sermon-detail" ]
+        [ div [ class "sermon-detail" ]
             [ div [ class "sermon-detail__header" ]
                 [ div [ class "sermon-detail__navigation" ]
-                    [ Icon.view "button" Icon.back False [ onClick CloseSermon ]
+                    [ Icon.view "a" Icon.back False [ href "/" ]
                     , viewAIWarning
                     ]
                 , Card.view
@@ -477,11 +483,11 @@ viewSermon model sermon =
                 , text (formatDate model.zone sermon.uploadedAt)
                 ]
             ]
-        , Icon.view "button"
+        , Icon.view "a"
             Icon.openSermon
             False
-            [ stopPropagationOn "click" (Decode.succeed ( OpenSermon sermon, True ))
-            , disabled (model.confirmingDelete /= Nothing || Set.member sermon.id model.deleting)
+            [ href ("/sermons/" ++ sermon.id)
+            , stopPropagationOn "click" (Decode.succeed ( NoOp, True ))
             ]
         , viewNormalizedAudio model sermon
         ]
