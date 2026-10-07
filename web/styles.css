@@ -266,7 +266,6 @@ h2::after {
 }
 
 .dialog__actions {
-  border-top: var(--editor-border) solid var(--line);
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-sm);
