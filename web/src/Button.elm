@@ -1,4 +1,4 @@
-module Button exposing (Config, action, back, button, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSermon, disclosure, downloadAudio, editAudio, icon, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, titleInfo, view, warning)
+module Button exposing (Config, action, back, button, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSermon, disclosure, downloadAudio, editAudio, icon, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, textAction, titleInfo, view, warning)
 
 import Html exposing (Html, details, div, p, strong, text)
 import Html.Attributes exposing (attribute, class, title, type_)
@@ -125,6 +125,11 @@ dangerAction iconName caption busy attributes =
     view "button" (Config iconName caption "var(--red)") busy attributes
 
 
+textAction : String -> String -> Bool -> List (Html.Attribute msg) -> Html msg
+textAction caption description busy attributes =
+    viewContent "button" (Config "" description "var(--ink-soft)") busy (class "icon-control icon-control--text" :: attributes) (text caption)
+
+
 disclosure : Config -> String -> Html msg
 disclosure config body =
     details [ class "icon-disclosure" ]
@@ -143,6 +148,11 @@ definition owns its icon, accessible label, tooltip, color, and busy state.
 -}
 view : String -> Config -> Bool -> List (Html.Attribute msg) -> Html msg
 view tag config busy attributes =
+    viewContent tag config busy attributes (icon config.icon)
+
+
+viewContent : String -> Config -> Bool -> List (Html.Attribute msg) -> Html msg -> Html msg
+viewContent tag config busy attributes body =
     Html.node tag
         ([ class "icon-control"
          , title config.label
@@ -168,5 +178,5 @@ view tag config busy attributes =
             spinner
 
           else
-            icon config.icon
+            body
         ]

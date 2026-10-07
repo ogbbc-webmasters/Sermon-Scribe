@@ -49,6 +49,7 @@
   --font-display: Georgia, "Times New Roman", serif;
   --font-size-card-title: 24px;
   --font-size-transcript: 1rem;
+  --font-size-compact-action: 0.85rem;
 
   /* shape */
   --radius-sm: 10px;
@@ -77,6 +78,7 @@
   --transcript-height: 360px;
   --control-size: 48px;
   --control-size-small: 40px;
+  --compact-action-width: 56px;
   --icon-size: 24px;
   --focus: #1769aa;
   --layer-popover: 10;
@@ -292,14 +294,15 @@ h2::after {
 }
 
 .editor__breakpoint-actions {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: var(--control-size-small) repeat(2, var(--compact-action-width)) var(--control-size-small);
+  justify-items: center;
   gap: var(--space-xs);
 }
 
 @media (max-width: 480px) {
   .editor__breakpoint-actions {
-    max-width: calc(var(--control-size-small) * 2 + var(--space-xs));
+    grid-template-columns: repeat(2, var(--compact-action-width));
   }
 }
 
@@ -458,6 +461,13 @@ h2::after {
   padding: 0;
   place-items: center;
   width: var(--control-size-small);
+}
+
+.icon-control--text {
+  font-family: var(--font-body);
+  font-size: var(--font-size-compact-action);
+  font-weight: 600;
+  width: var(--compact-action-width);
 }
 
 .icon-control:hover {
