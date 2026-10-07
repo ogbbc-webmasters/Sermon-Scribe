@@ -432,6 +432,7 @@ h2::after {
   height: var(--waveform-height);
   margin-bottom: var(--space-xl);
   overflow: hidden;
+  position: relative;
 }
 
 .editor__waveform:focus-within {
@@ -456,6 +457,20 @@ h2::after {
 
 .editor__waveform-canvas--selecting {
   cursor: pointer;
+}
+
+.editor__waveform-status {
+  align-items: center;
+  background: var(--paper);
+  color: var(--ink-soft);
+  display: flex;
+  gap: var(--space-sm);
+  inset: 0;
+  justify-content: center;
+  padding: var(--space-md);
+  pointer-events: none;
+  position: absolute;
+  text-align: center;
 }
 
 /* empty-state — placeholder shown when a list has no items */

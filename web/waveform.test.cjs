@@ -3,21 +3,26 @@ const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
 const { runInNewContext } = require("node:vm");
 
-function setup() {
+function setup(fetch = () => {}) {
   let Waveform;
   class HTMLElement {
     attrs = {};
     events = [];
     getAttribute(name) { return this.attrs[name] ?? null; }
     setAttribute(name, value) { this.attrs[name] = value; }
+    removeAttribute(name) { delete this.attrs[name]; }
     dispatchEvent(event) { this.events.push(event); }
     append() {}
   }
   runInNewContext(readFileSync(__dirname + "/waveform.js", "utf8"), {
-    HTMLElement,
+    HTMLElement, fetch, AbortController,
+    window: { devicePixelRatio: 1 },
     ResizeObserver: class { observe() {} },
     document: { createElement: () => ({
-      listeners: {}, setAttribute() {},
+      listeners: {}, attrs: {}, children: [],
+      setAttribute(name, value) { this.attrs[name] = value; },
+      append(...children) { this.children.push(...children); },
+      remove() { this.removed = true; },
       clientWidth: 1000, focus() {}, setPointerCapture() {}, releasePointerCapture() {},
       classList: { add() {}, remove() {}, toggle() {} },
       addEventListener(name, handler) { this.listeners[name] = handler; },
@@ -365,4 +370,49 @@ test("zoomed waveform uses signed high-resolution peaks while overview keeps its
   const overview = wave.waveformRangeAt(10, 10.3, 0.9);
   assert.equal(overview.min, -0.9);
   assert.equal(overview.max, 0.9);
+});
+
+test("spinner lasts until overview arrives, not until high-resolution data arrives", async () => {
+  const requests = [];
+  const wave = setup(() => new Promise(resolve => requests.push(resolve)));
+  const pending = wave.load();
+  assert.equal(wave.getAttribute("aria-busy"), "true");
+  assert.equal(wave.status.attrs.role, "status");
+  assert.equal(wave.status.children[0].attrs.icon, "ph:spinner-gap");
+  assert.equal(wave.status.children[1], "Loading waveform…");
+  requests[0]({ ok: true, json: async () => ({ peaks: [0.2, 0.8] }) });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(wave.status.removed, true);
+  assert.equal(wave.getAttribute("aria-busy"), "false");
+  assert.deepEqual(wave.peaks, [0.2, 0.8]);
+  requests[1]({ ok: false });
+  await pending;
+});
+
+test("failed and superseded loads cannot leave a spinner or overwrite the new status", async () => {
+  const requests = [];
+  const wave = setup(() => new Promise((resolve, reject) => requests.push({ resolve, reject })));
+  const old = wave.load();
+  const previous = wave.status;
+  const latest = wave.load();
+  assert.equal(previous.removed, true);
+  requests[0].reject(new Error("Old request failed"));
+  await old;
+  assert.equal(wave.getAttribute("aria-busy"), "true");
+  assert.equal(wave.status.textContent, undefined);
+  requests[1].resolve({ ok: false });
+  await latest;
+  assert.match(wave.status.textContent, /Waveform unavailable/);
+  assert.equal(wave.getAttribute("aria-busy"), "false");
+});
+
+test("missing peaks clear the canvas without drawing a false silence line", () => {
+  const wave = setup();
+  wave.clientWidth = 1000;
+  wave.clientHeight = 128;
+  wave.canvas = { getContext() { assert.fail("must not draw without peaks"); } };
+  wave.peaks = [];
+  wave.draw();
+  assert.equal(wave.canvas.width, 1000);
+  assert.equal(wave.canvas.height, 128);
 });

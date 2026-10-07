@@ -139,6 +139,7 @@ customElements.define("editing-waveform", class extends HTMLElement {
     this.resize?.disconnect();
     this.request?.abort();
     this.canvas?.remove();
+    this.status?.remove();
   }
 
   attributeChangedCallback(name) {
@@ -197,6 +198,16 @@ customElements.define("editing-waveform", class extends HTMLElement {
     this.request?.abort();
     const request = this.request = new AbortController();
     this.setAttribute("aria-busy", "true");
+    this.status?.remove();
+    this.status = document.createElement("div");
+    this.status.className = "editor__waveform-status";
+    this.status.setAttribute("role", "status");
+    const spinner = document.createElement("iconify-icon");
+    spinner.className = "spinner";
+    spinner.setAttribute("icon", "ph:spinner-gap");
+    spinner.setAttribute("aria-hidden", "true");
+    this.status.append(spinner, "Loading waveform…");
+    this.append(this.status);
     this.peaks = [];
     this.hires = null;
     this.draw();
@@ -206,6 +217,8 @@ customElements.define("editing-waveform", class extends HTMLElement {
       const wave = await response.json();
       if (request.signal.aborted) return;
       this.peaks = wave.peaks;
+      this.status.remove();
+      this.setAttribute("aria-busy", "false");
       this.removeAttribute("title");
       this.draw();
       try {
@@ -222,7 +235,9 @@ customElements.define("editing-waveform", class extends HTMLElement {
         if (error.name !== "AbortError") this.hires = null;
       }
     } catch (error) {
-      if (error.name !== "AbortError") this.setAttribute("title", "Waveform unavailable. You can still select sections with the arrow keys.");
+      if (!request.signal.aborted) {
+        this.status.textContent = "Waveform unavailable. You can still select sections with the arrow keys.";
+      }
     } finally {
       if (this.request === request) this.setAttribute("aria-busy", "false");
     }
@@ -320,6 +335,7 @@ customElements.define("editing-waveform", class extends HTMLElement {
     const ratio = window.devicePixelRatio || 1;
     this.canvas.width = Math.round(width * ratio);
     this.canvas.height = Math.round(height * ratio);
+    if (!this.peaks?.length) return;
     const ctx = this.canvas.getContext("2d");
     ctx.scale(ratio, ratio);
     const styles = getComputedStyle(this);
