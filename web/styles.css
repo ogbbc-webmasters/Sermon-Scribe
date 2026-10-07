@@ -320,8 +320,10 @@ h2::after {
 }
 
 .editor__footer {
-  display: grid;
+  align-items: center;
+  display: flex;
   gap: var(--space-lg);
+  justify-content: space-between;
   margin-top: var(--space-2xl);
 }
 
@@ -332,6 +334,7 @@ h2::after {
 
 .editor__row {
   align-items: center;
+  cursor: pointer;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-md);
@@ -353,21 +356,23 @@ h2::after {
 }
 
 .editor__section-title {
-  align-items: flex-start;
+  align-items: center;
   background: transparent;
   border: 0;
   border-radius: var(--radius-sm);
   color: inherit;
   cursor: pointer;
-  display: grid;
+  display: flex;
+  flex: 1;
   font: inherit;
-  gap: var(--space-xs);
+  gap: var(--space-md);
   padding: var(--space-sm);
   text-align: left;
 }
 
-.editor__section-title:hover {
-  text-decoration: underline;
+.editor__section-label {
+  display: grid;
+  gap: var(--space-xs);
 }
 
 .editor__section-title:focus-visible {
