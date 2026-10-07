@@ -788,8 +788,6 @@ boundaryPanel model draft index b =
             , Button.action "ph:arrow-left" "Earlier" False [ onClick (Nudge -0.1), disabled busy ]
             , Button.action "ph:arrow-right" "Later" False [ onClick (Nudge 0.1), disabled busy ]
             ]
-        , p [ Ui.hint ] [ text "← / → 0.1s · Shift 1s" ]
-        , p [ attribute "role" "status", Ui.hint ] [ text model.audioStatus ]
         , Button.action "ph:minus" "Remove breakpoint" False [ onClick RemoveBoundary, disabled (busy || not removable) ]
         ]
 
