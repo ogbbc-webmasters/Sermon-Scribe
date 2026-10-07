@@ -47,8 +47,15 @@ view model =
 viewDetailMessage : String -> Html Msg
 viewDetailMessage message =
     div [ class "page page--detail" ]
-        [ Button.view "a" Button.back False [ href "/" ]
-        , p [] [ text message ]
+        [ div [ class "sermon-detail" ]
+            [ div [ class "sermon-detail__header" ]
+                [ div [ class "sermon-detail__navigation" ]
+                    [ Button.view "a" Button.back False [ href "/" ]
+                    , viewAIWarning
+                    ]
+                , Card.view (text "Sermon") [] [ p [] [ text message ] ]
+                ]
+            ]
         ]
 
 
