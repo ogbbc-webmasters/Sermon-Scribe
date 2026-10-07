@@ -25,7 +25,7 @@ func TestRetryProcessingParts(t *testing.T) {
 			if err := srv.Store.SaveTranscript("ready", "Existing transcript"); err != nil {
 				t.Fatal(err)
 			}
-			if err := srv.Store.SaveMetadata("ready", "Existing title", true, "Existing reason", "Existing speaker", []string{"James 1:1"}, []string{"Assurance"}, map[string]float64{"Assurance": 0.9}, nil); err != nil {
+			if err := srv.Store.SaveMetadata("ready", "Existing title", true, "Existing reason", "Existing speaker", []string{"James 1:1"}, []string{"Assurance"}, map[string]float64{"Assurance": 0.9}); err != nil {
 				t.Fatal(err)
 			}
 			dir := filepath.Join(srv.UploadsDir, "ready")

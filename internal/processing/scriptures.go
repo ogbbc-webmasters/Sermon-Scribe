@@ -107,6 +107,16 @@ func normalizeScriptures(references []string) []string {
 	return result
 }
 
+func validateScriptureVerseReferences(references []string) error {
+	for _, reference := range references {
+		_, _, verses, ok := parseScripture(reference)
+		if ok && len(verses) == 0 {
+			return fmt.Errorf("scripture reference %q must include verse numbers; use the full verse range for a whole chapter", reference)
+		}
+	}
+	return nil
+}
+
 func parseScripture(reference string) (string, int, []scriptureRange, bool) {
 	match := scriptureReference.FindStringSubmatch(reference)
 	if match == nil {

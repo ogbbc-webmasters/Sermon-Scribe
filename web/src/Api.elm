@@ -50,7 +50,6 @@ type alias Sermon =
     , titleReasoning : Maybe String
     , speaker : Maybe String
     , scriptures : List String
-    , scriptureClassifications : Dict.Dict String String
     , topics : List String
     , topicScores : List ( String, Float )
     }
@@ -100,14 +99,13 @@ sermonDecoder =
                 , titleReasoning = Nothing
                 , speaker = Nothing
                 , scriptures = []
-                , scriptureClassifications = Dict.empty
                 , topics = []
                 , topicScores = []
             }
         )
         (Decode.map8
             (\id originalFilename uploadedAt uploadedBy stage status progress error ->
-                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0 False Nothing False Nothing Nothing Nothing Nothing Nothing [] Dict.empty [] []
+                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0 False Nothing False Nothing Nothing Nothing Nothing Nothing [] [] []
             )
             (Decode.field "id" Decode.string)
             (Decode.field "original_filename" Decode.string)
@@ -149,10 +147,9 @@ decodeMetadata sermon =
         (Decode.oneOf [ Decode.field "topics" (Decode.list Decode.string), Decode.succeed [] ])
         |> Decode.andThen
             (\decodedSermon ->
-                Decode.map2
-                    (\scores classifications -> { decodedSermon | topicScores = Dict.toList scores, scriptureClassifications = classifications })
+                Decode.map
+                    (\scores -> { decodedSermon | topicScores = Dict.toList scores })
                     (Decode.oneOf [ Decode.field "topic_scores" (Decode.dict Decode.float), Decode.succeed Dict.empty ])
-                    (Decode.oneOf [ Decode.field "scripture_classifications" (Decode.dict Decode.string), Decode.succeed Dict.empty ])
             )
 
 

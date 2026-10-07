@@ -35,3 +35,24 @@ func TestNormalizeScriptures(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateScriptureVerseReferences(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		references []string
+		wantError  bool
+	}{
+		{name: "single verse", references: []string{"Romans 8:28"}},
+		{name: "full chapter range", references: []string{"Romans 8:1-39"}},
+		{name: "chapter only", references: []string{"Romans 8"}, wantError: true},
+		{name: "chapter only is not hidden by a verse citation", references: []string{"Romans 8", "Romans 8:28"}, wantError: true},
+		{name: "empty", references: []string{}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateScriptureVerseReferences(tt.references)
+			if (err != nil) != tt.wantError {
+				t.Fatalf("validateScriptureVerseReferences(%v) error = %v, wantError %v", tt.references, err, tt.wantError)
+			}
+		})
+	}
+}

@@ -226,8 +226,11 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 	if job.Type == "extract_title" || job.Type == "extract_topics" {
 		result.Scriptures = nil
 	}
+	if err := validateScriptureVerseReferences(result.Scriptures); err != nil {
+		return Result{}, err
+	}
 	result.Scriptures = normalizeScriptures(result.Scriptures)
-	title, scores, classifications, err := h.classifyMetadata(ctx, *sermon.Transcript, result.TitleCandidates, job.Type != "extract_title" && job.Type != "extract_scriptures", result.Scriptures)
+	title, scores, err := h.classifyMetadata(ctx, *sermon.Transcript, result.TitleCandidates, job.Type != "extract_title" && job.Type != "extract_scriptures")
 	if err != nil {
 		return Result{}, err
 	}
@@ -237,9 +240,9 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 	case "extract_topics":
 		err = h.store.SaveTopics(job.SermonID, result.Topics, scores)
 	case "extract_scriptures":
-		err = h.store.SaveScriptures(job.SermonID, result.Scriptures, classifications)
+		err = h.store.SaveScriptures(job.SermonID, result.Scriptures)
 	default:
-		err = h.store.SaveMetadata(job.SermonID, title.Title, title.TitleGenerated, title.TitleReasoning, result.Speaker, result.Scriptures, result.Topics, scores, classifications)
+		err = h.store.SaveMetadata(job.SermonID, title.Title, title.TitleGenerated, title.TitleReasoning, result.Speaker, result.Scriptures, result.Topics, scores)
 	}
 	if err != nil {
 		return Result{}, err
@@ -247,21 +250,10 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 	return Result{}, reporter.Progress(100, nil)
 }
 
-func (h *MetadataHandler) classifyMetadata(ctx context.Context, transcript string, candidates []titleCandidate, includeTopics bool, scriptures []string) (titleCandidate, map[string]float64, map[string]string, error) {
+func (h *MetadataHandler) classifyMetadata(ctx context.Context, transcript string, candidates []titleCandidate, includeTopics bool) (titleCandidate, map[string]float64, error) {
 	questions := make(map[string]any)
-	if len(candidates) == 0 && !includeTopics && len(scriptures) == 0 {
-		return titleCandidate{}, nil, map[string]string{}, nil
-	}
-	for i, reference := range scriptures {
-		questions[fmt.Sprintf("scripture_%d", i+1)] = map[string]any{
-			"type":         "choice",
-			"instructions": "Classify the Bible reference " + strconv.Quote(reference) + " using only words actually spoken in the sermon transcript. Read requires evidence of a recognizable quotation of biblical wording from this specific passage, not merely discussion of it. Distinguish the speaker's commentary from quoted scripture. Announcing a reading or asking listeners to turn to a passage does not establish that it was read. Accept different Bible translations and minor transcription errors. A quotation may be recited from memory, need not name its reference, and may cover only part of a chapter or verse range. Do not borrow quoted words from a different passage or infer presence from related themes. Choose read over mentioned only when the quotation evidence is present.",
-			"criteria": map[string]string{
-				"read":      "The transcript contains an actual, recognizable quotation of biblical wording from this passage: the speaker reads it aloud or recites it. At least some verse text must be spoken. A reference alone, an announced intention to read, a paraphrase, a summary, an allusion, or a generic phrase is not sufficient.",
-				"mentioned": "The speaker names this passage, asks listeners to turn to it, announces an intended reading, or clearly discusses, paraphrases, summarizes, or alludes to this specific passage, but no recognizable quotation of its biblical wording is actually spoken.",
-				"absent":    "The transcript contains neither a recognizable quotation from this passage nor an identifiable reference or specific discussion of it. A shared theme or generic biblical phrase alone does not establish this passage's presence.",
-			},
-		}
+	if len(candidates) == 0 && !includeTopics {
+		return titleCandidate{}, nil, nil
 	}
 	titles := make([]string, len(candidates))
 	for i, candidate := range candidates {
@@ -294,48 +286,37 @@ func (h *MetadataHandler) classifyMetadata(ctx context.Context, transcript strin
 		"questions": questions,
 	})
 	if err != nil {
-		return titleCandidate{}, nil, nil, err
+		return titleCandidate{}, nil, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openRouterDecisionsURL, bytes.NewReader(body))
 	if err != nil {
-		return titleCandidate{}, nil, nil, err
+		return titleCandidate{}, nil, err
 	}
 	setAIHeaders(req, h.config.APIKey, "application/json")
 	resp, err := h.client.Do(req)
 	if err != nil {
-		return titleCandidate{}, nil, nil, err
+		return titleCandidate{}, nil, err
 	}
 	defer resp.Body.Close()
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return titleCandidate{}, nil, nil, err
+		return titleCandidate{}, nil, err
 	}
 	if resp.StatusCode/100 != 2 {
-		return titleCandidate{}, nil, nil, apiError(resp.StatusCode, data)
+		return titleCandidate{}, nil, apiError(resp.StatusCode, data)
 	}
 	var response struct {
 		Answers map[string]struct {
-			Noul   *float64 `json:"noul"`
-			Choice string   `json:"choice"`
+			Noul *float64 `json:"noul"`
 		} `json:"answers"`
 	}
 	if err := json.Unmarshal(data, &response); err != nil {
-		return titleCandidate{}, nil, nil, fmt.Errorf("decode decision response: %w", err)
-	}
-	classifications := make(map[string]string, len(scriptures))
-	for i, reference := range scriptures {
-		key := fmt.Sprintf("scripture_%d", i+1)
-		choice := response.Answers[key].Choice
-		if choice != "read" && choice != "mentioned" && choice != "absent" {
-			return titleCandidate{}, nil, nil, fmt.Errorf("decision response missing or invalid classification for %s", key)
-		}
-		classifications[reference] = choice
-		delete(questions, key)
+		return titleCandidate{}, nil, fmt.Errorf("decode decision response: %w", err)
 	}
 	for key := range questions {
 		answer := response.Answers[key]
 		if answer.Noul == nil || *answer.Noul < 0 || *answer.Noul > 1 {
-			return titleCandidate{}, nil, nil, fmt.Errorf("decision response missing or invalid score for %s", key)
+			return titleCandidate{}, nil, fmt.Errorf("decision response missing or invalid score for %s", key)
 		}
 	}
 	best, bestScore := 0, -1.0
@@ -355,9 +336,9 @@ func (h *MetadataHandler) classifyMetadata(ctx context.Context, transcript strin
 		}
 	}
 	if len(candidates) == 0 {
-		return titleCandidate{}, scores, classifications, nil
+		return titleCandidate{}, scores, nil
 	}
-	return candidates[best], scores, classifications, nil
+	return candidates[best], scores, nil
 }
 
 func setAIHeaders(req *http.Request, key, contentType string) {
@@ -385,7 +366,7 @@ var topicsTaxonomy string
 func metadataPrompt(transcript, jobType string) string {
 	prompt := "You are analyzing a sermon transcript. Return only valid JSON.\n\nExtract:\n"
 	if jobType == "extract_scriptures" {
-		return prompt + "- scriptures: normalized Bible references, deduplicated and kept in first-mention order; return an empty array if none are present\n\nTranscript:\n" + transcript
+		return prompt + scriptureExtractionInstructions() + "\n\nTranscript:\n" + transcript
 	}
 	if jobType != "extract_topics" {
 		prompt += `- title_candidates: exactly five distinct candidate titles, each an object with:
@@ -398,13 +379,22 @@ func metadataPrompt(transcript, jobType string) string {
 	}
 	if jobType != "extract_title" && jobType != "extract_topics" {
 		prompt += `- speaker: the preacher's name, or an empty string
-- scriptures: normalized Bible references, deduplicated and kept in first-mention order
 `
+		prompt += scriptureExtractionInstructions()
 	}
 	if jobType != "extract_title" {
 		prompt += "- topics: 2-5 labels from the taxonomy below\n\nTopic taxonomy:\n" + topicsTaxonomy
 	}
 	return prompt + "\n\nTranscript:\n" + transcript
+}
+
+func scriptureExtractionInstructions() string {
+	return `- scriptures: only the primary Scripture passages that provide this sermon's biblical foundation; use full Bible book names and always include verse numbers. Use standard Book C:V or Book C:V1-V2 references; never return a bare chapter.
+  This is a selective list, not a catalog of every citation or allusion. Include a passage if it is a central text or formal reading, is developed enough to advance the main message, establishes a major doctrinal point/argument/application/structural movement/conclusion, or directly supports the stated burden or governing theme.
+  Prioritize the passages carrying the sermon's structure, reasoning, and application. Omit passing mentions, brief quotations, rapid supporting citations, incidental allusions, and uncertain references. Do not include a passage merely because it is cited or shares a theme. Do not impose a hard count; a few primary passages are typical, but include more or fewer when the transcript warrants it.
+  Include identifiable formal Old Testament and New Testament readings when present, including readings introduced at the beginning of the sermon; do not assume that both are present. If the sermon treats a whole chapter as a primary passage, give its full verse range from verse 1 through the chapter's last verse (for example, Romans 8:1-39); do not shorten it to just the book and chapter. Do not invent a narrower verse range when the transcript does not support it.
+  Deduplicate and keep first-mention order. Combine overlapping or contiguous verses when they form one passage. Return normalized references as strings.
+`
 }
 
 func topicDetails() map[string]string {

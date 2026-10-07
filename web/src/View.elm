@@ -171,13 +171,13 @@ viewDetailMetadata model sermon =
     div [ class "sermon-detail__sections" ]
         [ Card.view (text "Scripture References")
             [ viewProcessingRetry model sermon "scriptures" "Regenerate Scripture References" ]
-            [ if List.isEmpty (visibleScriptures sermon) then
+            [ if List.isEmpty sermon.scriptures then
                 p [ Ui.panelText ] [ text "No scripture references yet." ]
 
               else
                 text ""
             , div [ class "sermon-detail__pills" ]
-                (List.map (viewScripture sermon) (visibleScriptures sermon))
+                (List.map viewScripture sermon.scriptures)
             ]
         , Card.view (text "Topics")
             [ viewProcessingRetry model sermon "topics" "Regenerate Topics" ]
@@ -325,44 +325,10 @@ highConfidenceTopics scores =
         |> List.sortBy (\( _, score ) -> -score)
 
 
-visibleScriptures : Sermon -> List String
-visibleScriptures sermon =
-    let
-        classification reference =
-            Dict.get reference sermon.scriptureClassifications
-    in
-    List.filter (\reference -> classification reference == Just "read") sermon.scriptures
-        ++ List.filter (\reference -> classification reference == Just "mentioned") sermon.scriptures
-        ++ List.filter (\reference -> classification reference == Nothing) sermon.scriptures
-
-
-viewScripture : Sermon -> String -> Html Msg
-viewScripture sermon reference =
-    let
-        isRead =
-            Dict.get reference sermon.scriptureClassifications == Just "read"
-
-        label =
-            case Dict.get reference sermon.scriptureClassifications of
-                Just "read" ->
-                    "Read"
-
-                Just "mentioned" ->
-                    "Mentioned"
-
-                _ ->
-                    "Not classified yet"
-    in
+viewScripture : String -> Html Msg
+viewScripture reference =
     span
-        [ class
-            (if isRead then
-                "sermon-detail__pill sermon-detail__pill--read"
-
-             else
-                "sermon-detail__pill sermon-detail__pill--scripture"
-            )
-        , title label
-        ]
+        [ class "sermon-detail__pill sermon-detail__pill--scripture" ]
         [ text reference ]
 
 
