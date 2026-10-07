@@ -596,8 +596,8 @@ viewSermons model =
 
 viewSermon : Model -> Sermon -> Html Msg
 viewSermon model sermon =
-    div
-        [ Ui.card
+    Card.viewWithAttributes
+        [ Ui.interactivePanel
         , on "click"
             (if model.confirmingDelete /= Nothing || Set.member sermon.id model.deleting then
                 Decode.fail "Card navigation is disabled"
@@ -606,18 +606,18 @@ viewSermon model sermon =
                 Decode.succeed (OpenSermon sermon)
             )
         ]
-        [ div [ Ui.cardInfo ]
-            [ p [ Ui.cardName ] [ text (Maybe.withDefault "Title Unknown" sermon.title) ]
-            , p [ Ui.cardMeta ]
-                [ span [ badgeAttribute sermon ] [ text (describeStage sermon) ]
-                , text (formatDate model.zone sermon.uploadedAt)
-                ]
-            ]
-        , Button.view "a"
+        (text (Maybe.withDefault "Title Unknown" sermon.title))
+        Nothing
+        [ Button.view "a"
             Button.openSermon
             False
             [ href ("/sermons/" ++ sermon.id)
             , stopPropagationOn "click" (Decode.succeed ( NoOp, True ))
+            ]
+        ]
+        [ p [ Ui.cardMeta ]
+            [ span [ badgeAttribute sermon ] [ text (describeStage sermon) ]
+            , text (formatDate model.zone sermon.uploadedAt)
             ]
         ]
 

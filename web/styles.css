@@ -600,6 +600,10 @@ h2::after {
   color: var(--red);
 }
 
+.panel--interactive {
+  cursor: pointer;
+}
+
 .panel__actions {
   align-items: flex-start;
   display: flex;
@@ -673,32 +677,6 @@ h2::after {
 }
 
 /* sermon-card — one sermon in the list */
-
-.sermon-card {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: 20px 24px;
-  margin-bottom: var(--space-lg);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--control-size);
-  align-items: center;
-  gap: var(--space-md);
-  box-shadow: var(--shadow);
-  cursor: pointer;
-}
-
-.sermon-card__info {
-  min-width: 0;
-}
-
-.sermon-card__name {
-  font-family: var(--font-display);
-  font-size: 1.2rem;
-  font-weight: 700;
-  margin: 0;
-  overflow-wrap: anywhere;
-}
 
 .sermon-card__meta {
   margin: var(--space-xs) 0 0;
@@ -999,9 +977,5 @@ h2::after {
 
   .sermon-detail__search-input {
     flex-basis: 100%;
-  }
-
-  .sermon-card {
-    padding: 16px 18px;
   }
 }

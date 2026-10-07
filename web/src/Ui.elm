@@ -1,10 +1,7 @@
 module Ui exposing
     ( badge
     , badgeFailed
-    , card
-    , cardInfo
     , cardMeta
-    , cardName
     , confirmBox
     , confirmBoxButtons
     , confirmBoxQuestion
@@ -14,6 +11,7 @@ module Ui exposing
     , errorPanel
     , errorText
     , hint
+    , interactivePanel
     , panel
     , panelActions
     , panelHeader
@@ -81,6 +79,11 @@ errorPanel =
     class "panel panel--error"
 
 
+interactivePanel : Html.Attribute msg
+interactivePanel =
+    class "panel panel--interactive"
+
+
 panelTitle : Html.Attribute msg
 panelTitle =
     class "panel__title"
@@ -111,23 +114,6 @@ badgeFailed =
 
 
 -- CARDS
-
-
-{-| List-item card (currently the sermon card).
--}
-card : Html.Attribute msg
-card =
-    class "sermon-card"
-
-
-cardInfo : Html.Attribute msg
-cardInfo =
-    class "sermon-card__info"
-
-
-cardName : Html.Attribute msg
-cardName =
-    class "sermon-card__name"
 
 
 cardMeta : Html.Attribute msg
