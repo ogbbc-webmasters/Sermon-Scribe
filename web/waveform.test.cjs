@@ -18,10 +18,12 @@ function setup() {
     ResizeObserver: class { observe() {} },
     document: { createElement: () => ({
       listeners: {}, setAttribute() {},
+      clientWidth: 1000, focus() {}, setPointerCapture() {}, releasePointerCapture() {},
+      classList: { add() {}, remove() {}, toggle() {} },
       addEventListener(name, handler) { this.listeners[name] = handler; },
-      getBoundingClientRect() { return { left: 10, width: 1000 }; }
+      getBoundingClientRect() { return { left: 10, top: 20, width: 1000 }; }
     }) },
-    CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
+    CustomEvent: class { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },
     customElements: { define: (_, cls) => { Waveform = cls; } }
   });
   const wave = new Waveform();
@@ -158,4 +160,26 @@ test("navigation reveals offscreen selections without moving a visible section",
   wave.revealSelection();
   assert.equal(wave.view.start, 10.25);
   assert.equal(wave.events.length, 0);
+});
+
+test("manual placement uses the zoomed click time; dragging and disabled clicks do not add", () => {
+  const wave = setup();
+  wave.load = () => {};
+  wave.connectedCallback();
+  wave.setView(7, 20);
+  wave.setAttribute("data-placing", "true");
+  const pointer = x => ({ button: 0, pointerId: 1, clientX: x, clientY: 50 });
+  wave.canvas.listeners.pointerdown(pointer(260));
+  wave.canvas.listeners.pointerup(pointer(260));
+  assert.equal(wave.events[0].type, "waveformadd");
+  assert.equal(wave.events[0].detail.time, 12);
+  wave.canvas.listeners.pointerdown(pointer(260));
+  wave.canvas.listeners.pointermove(pointer(310));
+  wave.canvas.listeners.pointerup(pointer(310));
+  assert.equal(wave.events.length, 1);
+  wave.setAttribute("data-disabled", "true");
+  wave.addAt(600, 1000);
+  assert.equal(wave.events.length, 1);
+  wave.canvas.listeners.keydown({ key: "Escape", preventDefault() {} });
+  assert.equal(wave.events[1].type, "waveformcancel");
 });

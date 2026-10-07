@@ -50,12 +50,13 @@ type alias Model =
     , sequence : Int
     , confirmingRegenerate : Bool
     , preserveEdited : Bool
+    , addingBreakpoint : Bool
     }
 
 
 init : Model
 init =
-    Model Nothing False Nothing Nothing Nothing False False False Nothing Nothing "" 0 [] 0 0 False True
+    Model Nothing False Nothing Nothing Nothing False False False Nothing Nothing "" 0 [] 0 0 False True False
 
 
 type Msg
@@ -66,6 +67,8 @@ type Msg
     | Select Selection
     | Keep Int Bool
     | Nudge Float
+    | ToggleAddingBoundary
+    | PlaceBoundary Float
     | AddBoundary
     | RemoveBoundary
     | Undo
@@ -177,13 +180,13 @@ update msg model =
                         ( { model | error = Just "Could not load editing suggestions. Try again.", pendingApply = Nothing }, Cmd.none, Nothing )
 
         Close ->
-            ( { model | visible = False, confirmingRegenerate = False }, Cmd.none, stop )
+            ( { model | visible = False, confirmingRegenerate = False, addingBreakpoint = False }, Cmd.none, stop )
 
         Reload ->
             update (Open (Maybe.withDefault "" model.sermonId)) { model | draft = Nothing }
 
         Regenerate ->
-            ( { model | confirmingRegenerate = True, preserveEdited = True }, Cmd.none, stop )
+            ( { model | confirmingRegenerate = True, preserveEdited = True, addingBreakpoint = False }, Cmd.none, stop )
 
         CancelRegenerate ->
             ( { model | confirmingRegenerate = False }, Task.attempt Focused (Browser.Dom.focus "regenerate-breakpoints"), Nothing )
@@ -221,6 +224,7 @@ update msg model =
         Select selection ->
             ( { model
                 | selection = Just selection
+                , addingBreakpoint = False
                 , audioStatus = ""
                 , playhead = sectionStart selection model
               }
@@ -266,13 +270,46 @@ update msg model =
                 _ ->
                     ( model, Cmd.none, Nothing )
 
+        ToggleAddingBoundary ->
+            ( { model | addingBreakpoint = not model.addingBreakpoint }
+            , if model.addingBreakpoint then
+                Cmd.none
+
+              else
+                Task.attempt Focused (Browser.Dom.focus "editing-waveform-canvas")
+            , stop
+            )
+
+        PlaceBoundary time ->
+            case model.draft of
+                Just draft ->
+                    if model.addingBreakpoint then
+                        let
+                            index =
+                                draft.breakpoints
+                                    |> List.indexedMap Tuple.pair
+                                    |> List.filter (\( _, boundary ) -> boundary.time <= time)
+                                    |> List.reverse
+                                    |> List.head
+                                    |> Maybe.map Tuple.first
+                                    |> Maybe.withDefault 0
+                                    |> min (List.length draft.sections - 1)
+                        in
+                        update AddBoundary { model | selection = Just (Passage index), playhead = toFloat (round (time * 1000)) / 1000 }
+
+                    else
+                        ( model, Cmd.none, Nothing )
+
+                Nothing ->
+                    ( model, Cmd.none, Nothing )
+
         AddBoundary ->
             case ( model.draft, model.selection ) of
                 ( Just draft, Just (Passage index) ) ->
                     case ( at index draft.breakpoints, at (index + 1) draft.breakpoints, at index draft.sections ) of
                         ( Just before, Just after, Just section ) ->
-                            if model.playhead - before.time < 0.05 || after.time - model.playhead < 0.05 then
-                                ( { model | error = Just "Play or seek inside the section before adding a breakpoint." }, Cmd.none, Nothing )
+                            if model.playhead - before.time < 0.05 - 0.000000001 || after.time - model.playhead < 0.05 - 0.000000001 then
+                                ( { model | error = Just "Breakpoints must be at least 0.05 seconds apart." }, Cmd.none, Nothing )
 
                             else
                                 let
@@ -289,7 +326,7 @@ update msg model =
                                             )
                                             model
                                 in
-                                ( { next | selection = Just (Boundary (index + 1)) }, Cmd.batch [ cmd, Task.attempt Focused (Browser.Dom.focus "breakpoint-adjustment") ], audioEffect )
+                                ( { next | selection = Just (Boundary (index + 1)), addingBreakpoint = False }, Cmd.batch [ cmd, Task.attempt Focused (Browser.Dom.focus "breakpoint-adjustment") ], audioEffect )
 
                         _ ->
                             ( model, Cmd.none, Nothing )
@@ -688,6 +725,15 @@ waveform model draft =
              else
                 "false"
             )
+        , attribute "data-placing"
+            (if model.addingBreakpoint then
+                "true"
+
+             else
+                "false"
+            )
+        , on "waveformadd" (Decode.at [ "detail", "time" ] Decode.float |> Decode.map PlaceBoundary)
+        , on "waveformcancel" (Decode.succeed ToggleAddingBoundary)
         , on "waveformselect"
             (Decode.at [ "detail" ]
                 (Decode.map2
@@ -745,6 +791,21 @@ navigation model draft =
             , Button.action "ph:caret-right" "Next section" False [ onClick (Select (Passage nextSection)), disabled (busy || nextSection >= List.length draft.sections) ]
             , Button.action "ph:skip-back" "Previous breakpoint" False [ onClick (Select (Boundary previousBoundary)), disabled (busy || previousBoundary < 1) ]
             , Button.action "ph:skip-forward" "Next breakpoint" False [ onClick (Select (Boundary nextBoundary)), disabled (busy || nextBoundary >= List.length draft.breakpoints - 1) ]
+            , Button.action
+                (if model.addingBreakpoint then
+                    "ph:x"
+
+                 else
+                    "ph:plus"
+                )
+                (if model.addingBreakpoint then
+                    "Cancel adding breakpoint"
+
+                 else
+                    "Add breakpoint"
+                )
+                False
+                [ onClick ToggleAddingBoundary, disabled busy ]
             ]
         ]
 

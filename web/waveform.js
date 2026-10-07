@@ -1,9 +1,10 @@
 // Elm owns selections and edit decisions; this element draws their audio overview.
 customElements.define("editing-waveform", class extends HTMLElement {
-  static observedAttributes = ["src", "data-draft", "data-selection", "data-disabled"];
+  static observedAttributes = ["src", "data-draft", "data-selection", "data-disabled", "data-placing"];
 
   connectedCallback() {
     this.canvas = document.createElement("canvas");
+    this.canvas.id = "editing-waveform-canvas";
     this.canvas.className = "editor__waveform-canvas";
     this.canvas.tabIndex = 0;
     this.canvas.setAttribute("role", "button");
@@ -43,7 +44,8 @@ customElements.define("editing-waveform", class extends HTMLElement {
       this.canvas.releasePointerCapture(event.pointerId);
       if (!moved) {
         const bounds = this.canvas.getBoundingClientRect();
-        this.select(this.selectionAt(event.clientX - bounds.left, bounds.width, event.clientY - bounds.top < 24 ? "boundary" : "section"));
+        if (this.getAttribute("data-placing") === "true") this.addAt(event.clientX - bounds.left, bounds.width);
+        else this.select(this.selectionAt(event.clientX - bounds.left, bounds.width, event.clientY - bounds.top < 24 ? "boundary" : "section"));
       }
     });
     this.canvas.addEventListener("lostpointercapture", () => {
@@ -56,6 +58,11 @@ customElements.define("editing-waveform", class extends HTMLElement {
     this.canvas.addEventListener("keydown", event => {
       const draft = this.draft;
       if (!draft) return;
+      if (event.key === "Escape" && this.getAttribute("data-placing") === "true") {
+        event.preventDefault();
+        this.dispatchEvent(new CustomEvent("waveformcancel"));
+        return;
+      }
       const [kind, index] = (this.getAttribute("data-selection") || "section:0").split(":");
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         event.preventDefault();
@@ -82,6 +89,7 @@ customElements.define("editing-waveform", class extends HTMLElement {
   attributeChangedCallback(name) {
     if (!this.canvas) return;
     if (name === "src") this.load();
+    else if (name === "data-placing") this.canvas.classList.toggle("editor__waveform-canvas--placing", this.getAttribute("data-placing") === "true");
     else if (name === "data-selection") this.revealSelection();
     else this.draw();
   }
@@ -171,6 +179,13 @@ customElements.define("editing-waveform", class extends HTMLElement {
     }
     const index = draft.breakpoints.findIndex(boundary => boundary.time > time) - 1;
     return { kind: "section", index: index < 0 ? draft.sections.length - 1 : index };
+  }
+
+  addAt(x, width) {
+    if (width <= 0 || this.getAttribute("data-disabled") === "true") return;
+    const { start, span } = this.view;
+    const time = start + Math.max(0, Math.min(1, x / width)) * span;
+    this.dispatchEvent(new CustomEvent("waveformadd", { detail: { time } }));
   }
 
   select(selection) {

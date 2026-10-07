@@ -426,6 +426,10 @@ h2::after {
   cursor: grabbing;
 }
 
+.editor__waveform-canvas--placing {
+  cursor: crosshair;
+}
+
 /* empty-state — placeholder shown when a list has no items */
 
 .empty-state {
