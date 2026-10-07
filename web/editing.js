@@ -1,6 +1,5 @@
 // Elm owns edit decisions. This bridge owns cancellable audio playback only.
 window.initializeEditingAudio = function (app) {
-  let context;
   let source;
   let request;
   let generation = 0;
@@ -12,7 +11,9 @@ window.initializeEditingAudio = function (app) {
     request = null;
     if (source) {
       source.onended = null;
-      source.stop();
+      source.pause();
+      source.removeAttribute("src");
+      source.load();
       source = null;
     }
   }
@@ -29,23 +30,14 @@ window.initializeEditingAudio = function (app) {
     try {
       if (command.action === "preview") {
         status("Loading preview…");
-        context ??= new AudioContext();
-        await context.resume();
-        if (current !== generation) return;
-        request = new AbortController();
-        const response = await fetch(command.url, { signal: request.signal });
-        if (!response.ok) throw new Error("Preview unavailable");
-        const buffer = await context.decodeAudioData(await response.arrayBuffer());
-        if (current !== generation) return;
-        source = context.createBufferSource();
-        source.buffer = buffer;
-        source.connect(context.destination);
+        source = new Audio(command.url);
         source.onended = () => {
+          if (current !== generation) return;
           source = null;
           status("Preview finished");
         };
-        source.start();
-        status("Playing preview");
+        await source.play();
+        if (current === generation) status("Playing preview");
       } else if (command.action === "full") {
         const audio = document.getElementById("editing-source");
         if (!audio) return;

@@ -4,7 +4,7 @@ const { readFileSync } = require("node:fs");
 const { runInNewContext } = require("node:vm");
 
 function setup() {
-  const listeners = {}, statuses = [], requests = [], sources = [];
+  const listeners = {}, statuses = [], sources = [];
   let command;
   const audio = {
     id: "editing-source", dataset: { start: "12", end: "19" },
@@ -12,48 +12,52 @@ function setup() {
     pause() { this.paused = true; },
     async play() { this.paused = false; listeners.play({ target: this }); }
   };
-  class AudioContext {
-    async resume() {}
-    async decodeAudioData(buffer) { return buffer; }
-    createBufferSource() {
-      const source = { started: false, stopped: false, connect() {}, start() { this.started = true; }, stop() { this.stopped = true; } };
-      sources.push(source);
-      return source;
+  class Audio {
+    constructor(url) {
+      this.src = url;
+      this.paused = true;
+      sources.push(this);
     }
+    play() {
+      this.paused = false;
+      return new Promise((resolve, reject) => { this.resolve = resolve; this.reject = reject; });
+    }
+    pause() { this.paused = true; }
+    removeAttribute(name) { if (name === "src") this.src = ""; }
+    load() { this.released = true; }
   }
   const window = {};
   runInNewContext(readFileSync(__dirname + "/editing.js", "utf8"), {
-    window, AudioContext, AbortController,
-    document: { getElementById: () => audio, addEventListener: (event, fn) => { listeners[event] = fn; } },
-    fetch: (url, options) => new Promise(resolve => requests.push({ url, options, resolve }))
+    window, Audio, AbortController,
+    document: { getElementById: () => audio, addEventListener: (event, fn) => { listeners[event] = fn; } }
   });
   window.initializeEditingAudio({ ports: {
     editingAudio: { subscribe: fn => { command = fn; } },
     editingAudioStatus: { send: value => statuses.push(value) }
   } });
-  return { command, audio, listeners, statuses, requests, sources };
+  return { command, audio, listeners, statuses, sources };
 }
-
-const tick = () => new Promise(resolve => setImmediate(resolve));
-const response = { ok: true, arrayBuffer: async () => new ArrayBuffer(8) };
 
 test("a superseded audition cannot play or replace the latest status", async () => {
   const s = setup();
   const old = s.command({ action: "preview", url: "first" });
-  await tick();
+  const ended = s.sources[0].onended;
   const latest = s.command({ action: "preview", url: "second" });
-  await tick();
-  assert.equal(s.requests[0].options.signal.aborted, true);
-  s.requests[1].resolve(response);
+  assert.equal(s.sources[0].paused, true);
+  assert.equal(s.sources[0].src, "");
+  assert.equal(s.sources[0].released, true);
+  assert.equal(s.sources[1].src, "second");
+  s.sources[1].resolve();
   await latest;
-  s.requests[0].resolve(response);
+  s.sources[0].resolve();
   await old;
-  assert.equal(s.sources.length, 1);
-  assert.equal(s.sources[0].started, true);
+  ended();
+  assert.equal(s.sources[1].paused, false);
   assert.equal(s.statuses.at(-1), "Playing preview");
   await s.command({ action: "stop" });
-  assert.equal(s.sources[0].stopped, true);
-  assert.equal(s.sources[0].onended, null);
+  assert.equal(s.sources[1].paused, true);
+  assert.equal(s.sources[1].released, true);
+  assert.equal(s.sources[1].onended, null);
 });
 
 test("full-section playback seeks to its start and stops at its finish", async () => {
@@ -73,14 +77,27 @@ test("full-section playback seeks to its start and stops at its finish", async (
   assert.equal(s.statuses.at(-1), "Section finished");
 });
 
-test("native playback cancels an audition still being decoded", async () => {
+test("native playback cancels an audition still loading", async () => {
   const s = setup();
   const pending = s.command({ action: "preview", url: "pending" });
-  await tick();
   await s.audio.play();
-  s.requests[0].resolve(response);
+  s.sources[0].reject(new Error("Interrupted playback"));
   await pending;
-  assert.equal(s.sources.length, 0);
+  assert.equal(s.sources[0].paused, true);
+  assert.equal(s.sources[0].released, true);
   assert.equal(s.audio.currentTime, 12);
   assert.equal(s.statuses.at(-1), "Playing full section");
+});
+
+test("preview completion and playback failures report their actual outcome", async () => {
+  const s = setup();
+  const playing = s.command({ action: "preview", url: "clip" });
+  s.sources[0].resolve();
+  await playing;
+  s.sources[0].onended();
+  assert.equal(s.statuses.at(-1), "Preview finished");
+  const failed = s.command({ action: "preview", url: "unavailable" });
+  s.sources[1].reject(new Error("Unavailable"));
+  await failed;
+  assert.equal(s.statuses.at(-1), "Could not play audio. Try listening again.");
 });
