@@ -351,3 +351,18 @@ test("quiet snapping stays at the requested position when there is no quieter ne
 
   assert.equal(wave.snapToQuiet(1), 1);
 });
+
+test("zoomed waveform uses signed high-resolution peaks while overview keeps its envelope", () => {
+  const wave = setup();
+  wave.hires = new Int16Array(10000);
+  wave.hires.fill(0);
+  wave.hires[1000] = -16384;
+  wave.hires[1001] = 24576;
+
+  const detail = wave.waveformRangeAt(10, 10.1, 0.9);
+  assert.equal(detail.min, -0.5);
+  assert.equal(detail.max, 0.75);
+  const overview = wave.waveformRangeAt(10, 10.3, 0.9);
+  assert.equal(overview.min, -0.9);
+  assert.equal(overview.max, 0.9);
+});

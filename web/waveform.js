@@ -280,6 +280,25 @@ customElements.define("editing-waveform", class extends HTMLElement {
     return Math.max(0, Math.min(this.draft.duration, (bestPair + 0.5) / hiresRate));
   }
 
+  waveformRangeAt(start, end, overviewPeak) {
+    const pairs = this.hires?.length / 2;
+    if (!pairs || (end - start) * hiresRate > 12) {
+      return { min: -overviewPeak, max: overviewPeak };
+    }
+
+    const from = Math.max(0, Math.floor(start * hiresRate));
+    const to = Math.min(pairs, Math.max(from + 1, Math.ceil(end * hiresRate)));
+    if (from >= to) return { min: -overviewPeak, max: overviewPeak };
+
+    let min = 32767;
+    let max = -32768;
+    for (let pair = from; pair < to; pair++) {
+      min = Math.min(min, this.hires[pair * 2]);
+      max = Math.max(max, this.hires[pair * 2 + 1]);
+    }
+    return { min: min / 32768, max: max / 32768 };
+  }
+
   addAt(x, width) {
     if (width <= 0 || this.getAttribute("data-disabled") === "true") return;
     const { start, span } = this.view;
@@ -325,15 +344,20 @@ customElements.define("editing-waveform", class extends HTMLElement {
     for (let x = 0; x < width; x++) {
       while (section < draft.sections.length - 1 && x >= position(draft.breakpoints[section + 1].time)) section++;
       let peak = 0;
-      const from = Math.floor((viewStart + x / width * span) / draft.duration * peaks.length);
-      const to = Math.max(from + 1, Math.ceil((viewStart + (x + 1) / width * span) / draft.duration * peaks.length));
+      const sampleStart = viewStart + x / width * span;
+      const sampleEnd = viewStart + (x + 1) / width * span;
+      const from = Math.floor(sampleStart / draft.duration * peaks.length);
+      const to = Math.max(from + 1, Math.ceil(sampleEnd / draft.duration * peaks.length));
       for (let i = from; i < Math.min(to, peaks.length); i++) peak = Math.max(peak, peaks[i]);
-      const amplitude = Math.max(0.5, peak * (waveHeight / 2 - 10));
+      const range = this.waveformRangeAt(sampleStart, sampleEnd, peak);
+      const scale = waveHeight / 2 - 10;
+      const top = waveHeight / 2 - range.max * scale;
+      const bottom = waveHeight / 2 - range.min * scale;
       ctx.strokeStyle = color(draft.sections[section].keep ? "--green" : "--red");
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(x + 0.5, waveHeight / 2 - amplitude);
-      ctx.lineTo(x + 0.5, waveHeight / 2 + amplitude);
+      ctx.moveTo(x + 0.5, Math.min(top, bottom, waveHeight / 2 - 0.5));
+      ctx.lineTo(x + 0.5, Math.max(top, bottom, waveHeight / 2 + 0.5));
       ctx.stroke();
     }
     draft.breakpoints.forEach((boundary, index) => {
