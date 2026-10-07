@@ -1,4 +1,4 @@
-module Button exposing (Config, action, back, button, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSection, deleteSermon, disclosure, downloadAudio, editAudio, icon, keepSection, labeled, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, textAction, titleInfo, view, warning)
+module Button exposing (Config, action, applyEdits, back, button, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSection, deleteSermon, disclosure, downloadAudio, editAudio, icon, keepSection, labeled, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, textAction, titleInfo, view, warning)
 
 import Html exposing (Html, details, div, p, strong, text)
 import Html.Attributes exposing (attribute, class, title, type_)
@@ -77,6 +77,11 @@ downloadAudio =
 editAudio : Config
 editAudio =
     Config "ph:scissors" "Edit recording" "var(--green)"
+
+
+applyEdits : Config
+applyEdits =
+    Config "ph:check" "Apply edits" "var(--green)"
 
 
 copyTranscript : Config

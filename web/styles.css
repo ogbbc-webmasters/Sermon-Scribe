@@ -581,7 +581,7 @@ h2::after {
   align-items: start;
   display: grid;
   gap: var(--space-sm);
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: var(--panel-header-columns, minmax(0, 1fr) auto);
   margin-bottom: var(--space-sm);
 }
 
@@ -694,6 +694,12 @@ h2::after {
   display: block;
   margin-bottom: var(--space-sm);
   width: 100%;
+}
+
+@media (max-width: 480px) {
+  .sermon-detail__audio-card {
+    --panel-header-columns: minmax(0, 1fr);
+  }
 }
 
 .sermon-detail__audio-loading {

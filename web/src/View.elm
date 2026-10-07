@@ -273,10 +273,10 @@ viewDetailAudio model sermon =
                 Nothing ->
                     sermon.editingDuration
     in
-    Card.view (text "Audio")
+    Card.viewWithAttributes [ class "sermon-detail__audio-card" ] (text "Audio") Nothing
         [ if duration |> Maybe.map (\seconds -> seconds > 0 && seconds < 90 * 60) |> Maybe.withDefault False then
-            Button.primaryAction "ph:check"
-                "Apply edits"
+            Button.labeled "Apply"
+                Button.applyEdits
                 busy
                 [ onClick (EditingMsg (Editing.ApplyRecording sermon.id))
                 , disabled (not editable || busy)
@@ -284,7 +284,7 @@ viewDetailAudio model sermon =
 
           else
             text ""
-        , Button.view "button"
+        , Button.labeled "Edit"
             Button.editAudio
             False
             [ onClick (EditingMsg (Editing.Open sermon.id))
