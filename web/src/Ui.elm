@@ -31,6 +31,7 @@ module Ui exposing
     , progressFill
     , quietIconButton
     , smallQuietIconButton
+    , spinner
     , sermonActions
     )
 
@@ -132,6 +133,11 @@ icon iconName =
         , attribute "aria-hidden" "true"
         ]
         []
+
+
+spinner : Html.Html msg
+spinner =
+    Html.span [ class "spinner", attribute "aria-hidden" "true" ] [ icon "ph:spinner-gap" ]
 
 
 -- PANELS

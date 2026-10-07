@@ -2,6 +2,7 @@ port module Main exposing (main)
 
 import Api
 import Browser
+import Dict
 import Editor
 import Http
 import Json.Decode as Decode
@@ -80,6 +81,7 @@ init _ =
       , deletedSermons = Set.empty
       , deleteError = Nothing
       , retrying = Set.empty
+      , regenerating = Dict.empty
       , retryError = Nothing
       , rerunning = Set.empty
       , reviewingNormalization = Set.empty
@@ -251,6 +253,7 @@ update msg model =
         RetryProcessing sermon part ->
             ( { model
                 | retrying = Set.insert sermon.id model.retrying
+                , regenerating = Dict.insert sermon.id part model.regenerating
                 , retryError = Nothing
               }
             , Api.retryProcessing (RetryFinished sermon) sermon.id part
@@ -259,6 +262,7 @@ update msg model =
         RetryFinished original (Ok sermon) ->
             ( { model
                 | retrying = Set.remove original.id model.retrying
+                , regenerating = Dict.remove original.id model.regenerating
                 , retryError = Nothing
                 , sermons =
                     if Set.member original.id model.deletedSermons then
@@ -273,6 +277,7 @@ update msg model =
         RetryFinished original (Err _) ->
             ( { model
                 | retrying = Set.remove original.id model.retrying
+                , regenerating = Dict.remove original.id model.regenerating
                 , retryError = Just "Could not regenerate. Please try again."
               }
             , Cmd.none

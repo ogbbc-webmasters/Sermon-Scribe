@@ -30,7 +30,7 @@ func TestTitleCaseAtStorageBoundary(t *testing.T) {
 	if err := st.CreateSermon(Sermon{ID: "title", OriginalFilename: "source.mp3", UploadedAt: "2026-10-06T00:00:00Z", Stage: "metadata", Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.SaveMetadata("title", "receiving wisdom", true, "Reason", "Speaker", nil, nil, nil); err != nil {
+	if err := st.SaveMetadata("title", "receiving wisdom", true, "Reason", "Speaker", nil, nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	var persisted string

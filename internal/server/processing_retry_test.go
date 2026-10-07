@@ -14,7 +14,7 @@ import (
 )
 
 func TestRetryProcessingParts(t *testing.T) {
-	for _, part := range []string{"title", "topics", "transcription"} {
+	for _, part := range []string{"title", "topics", "transcription", "scriptures"} {
 		t.Run(part, func(t *testing.T) {
 			srv, ts := newTestServer(t)
 			notifier := &countingNotifier{}
@@ -25,7 +25,7 @@ func TestRetryProcessingParts(t *testing.T) {
 			if err := srv.Store.SaveTranscript("ready", "Existing transcript"); err != nil {
 				t.Fatal(err)
 			}
-			if err := srv.Store.SaveMetadata("ready", "Existing title", true, "Existing reason", "Existing speaker", []string{"James 1:1"}, []string{"Assurance"}, map[string]float64{"Assurance": 0.9}); err != nil {
+			if err := srv.Store.SaveMetadata("ready", "Existing title", true, "Existing reason", "Existing speaker", []string{"James 1:1"}, []string{"Assurance"}, map[string]float64{"Assurance": 0.9}, nil); err != nil {
 				t.Fatal(err)
 			}
 			dir := filepath.Join(srv.UploadsDir, "ready")
@@ -59,7 +59,7 @@ func TestRetryProcessingParts(t *testing.T) {
 			if duplicate.StatusCode != http.StatusConflict || notifier.calls.Load() != 1 {
 				t.Fatal("duplicate retry was not rejected")
 			}
-			jobType := map[string]string{"title": "extract_title", "topics": "extract_topics", "transcription": "transcribe"}[part]
+			jobType := map[string]string{"title": "extract_title", "topics": "extract_topics", "transcription": "transcribe", "scriptures": "extract_scriptures"}[part]
 			job, err := srv.Store.ClaimNextJob(context.Background(), []string{jobType}, time.Now())
 			if err != nil {
 				t.Fatal(err)
@@ -112,6 +112,7 @@ func TestRetryProcessingValidation(t *testing.T) {
 		{"missing sermon", "missing", "title", "done", 404},
 		{"missing transcription sermon", "missing", "transcription", "done", 404},
 		{"missing transcript", "ready", "topics", "done", 409},
+		{"missing scripture transcript", "ready", "scriptures", "done", 409},
 		{"missing original audio", "ready", "transcription", "done", 409},
 		{"running sermon", "ready", "transcription", "running", 409},
 	} {
@@ -137,7 +138,7 @@ func TestRetryProcessingValidation(t *testing.T) {
 			if resp.StatusCode != tt.want {
 				t.Fatalf("status = %d, want %d", resp.StatusCode, tt.want)
 			}
-			if _, err := srv.Store.ClaimNextJob(context.Background(), []string{"extract_title", "extract_topics", "transcribe"}, time.Now()); !errors.Is(err, store.ErrNoJob) {
+			if _, err := srv.Store.ClaimNextJob(context.Background(), []string{"extract_title", "extract_topics", "transcribe", "extract_scriptures"}, time.Now()); !errors.Is(err, store.ErrNoJob) {
 				t.Fatalf("invalid request queued work: %v", err)
 			}
 		})

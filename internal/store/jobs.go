@@ -128,7 +128,7 @@ type processingReturnState struct {
 // EnqueueProcessingRerun queues one requested part without discarding the
 // existing output. The original pipeline state is restored on success.
 func (s *Store) EnqueueProcessingRerun(sermonID, jobID, part string, now time.Time) (Sermon, error) {
-	jobType := map[string]string{"title": "extract_title", "topics": "extract_topics", "transcription": "transcribe"}[part]
+	jobType := map[string]string{"title": "extract_title", "topics": "extract_topics", "transcription": "transcribe", "scriptures": "extract_scriptures"}[part]
 	if jobType == "" {
 		return Sermon{}, ErrNotRetryable
 	}
@@ -146,7 +146,7 @@ func (s *Store) EnqueueProcessingRerun(sermonID, jobID, part string, now time.Ti
 		return Sermon{}, ErrNotRetryable
 	}
 	resume := processingReturnState{Stage: sm.Stage, Status: sm.Status}
-	if sm.Stage == "metadata" || sm.Stage == "transcription" || sm.Stage == "title" || sm.Stage == "topics" {
+	if sm.Stage == "metadata" || sm.Stage == "transcription" || sm.Stage == "title" || sm.Stage == "topics" || sm.Stage == "scriptures" {
 		resume = processingReturnState{Stage: "metadata", Status: "done"}
 	}
 	// A failed rerun retains the state it was originally meant to restore.

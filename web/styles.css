@@ -59,6 +59,8 @@
   --shadow: 0 1px 2px rgba(43, 40, 32, 0.06), 0 4px 16px rgba(43, 40, 32, 0.07);
   --shadow-accent: 0 2px 6px rgba(36, 83, 50, 0.3);
   --shadow-inset: inset 0 1px 3px rgba(43, 40, 32, 0.12);
+  --shadow-scripture-outline: inset 0 0 0 1px var(--green);
+  --spinner-duration: 900ms;
 
   /* spacing rhythm */
   --space-xs: 6px;
@@ -861,6 +863,12 @@ h2::after {
   color: var(--ink);
 }
 
+.sermon-detail__pill--read {
+  background: var(--clear);
+  box-shadow: var(--shadow-scripture-outline);
+  color: var(--green);
+}
+
 .sermon-detail__pill--topic {
   background: var(--green);
   color: var(--on-accent);
@@ -937,6 +945,21 @@ h2::after {
   top: calc(100% + var(--space-xs));
   width: var(--warning-width);
   z-index: var(--layer-popover);
+}
+
+/* spinner — progress indicator for in-flight actions */
+
+.spinner {
+  animation: spinner-turn var(--spinner-duration) linear infinite;
+  display: inline-flex;
+}
+
+@keyframes spinner-turn {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
 }
 
 /* upload-box — drop-zone-styled upload panel */

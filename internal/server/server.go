@@ -289,7 +289,7 @@ func (s *Server) handleRetrySermon(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRetryProcessing(w http.ResponseWriter, r *http.Request) {
 	id, part := r.PathValue("id"), r.PathValue("part")
-	if part != "title" && part != "topics" && part != "transcription" {
+	if part != "title" && part != "topics" && part != "transcription" && part != "scriptures" {
 		writeError(w, http.StatusBadRequest, "unknown processing part")
 		return
 	}

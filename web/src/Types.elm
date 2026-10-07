@@ -1,6 +1,7 @@
 module Types exposing (Model, Msg(..), SermonList(..), UploadState(..))
 
 import Api exposing (Sermon)
+import Dict exposing (Dict)
 import Editor
 import File exposing (File)
 import Http
@@ -35,6 +36,7 @@ type alias Model =
     , deletedSermons : Set String
     , deleteError : Maybe String
     , retrying : Set String
+    , regenerating : Dict String String
     , retryError : Maybe String
     , rerunning : Set String
     , reviewingNormalization : Set String

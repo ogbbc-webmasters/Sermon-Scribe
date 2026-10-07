@@ -2,6 +2,7 @@ module View exposing (view)
 
 import Api exposing (Sermon)
 import DateFormat exposing (formatDate)
+import Dict
 import Editor
 import File
 import Html exposing (Html, a, audio, button, details, div, h1, h2, input, label, mark, p, span, strong, summary, text)
@@ -167,17 +168,20 @@ viewDetailMetadata : Model -> Sermon -> Html Msg
 viewDetailMetadata model sermon =
     div [ class "sermon-detail__sections" ]
         (List.concat
-            [ case sermon.scriptures of
-                [] ->
-                    []
-
-                scriptures ->
-                    [ div [ Ui.panel ]
-                        [ strong [ Ui.panelTitle ] [ text "Scripture References" ]
-                        , div [ class "sermon-detail__pills" ]
-                            (List.map (\scripture -> span [ class "sermon-detail__pill sermon-detail__pill--scripture" ] [ text scripture ]) scriptures)
+            [ [ div [ Ui.panel ]
+                    [ div [ Ui.headingRow ]
+                        [ strong [ Ui.inlinePanelTitle ] [ text "Scripture References" ]
+                        , viewProcessingRetry model sermon "scriptures" "Regenerate Scripture References"
                         ]
+                    , if List.isEmpty (visibleScriptures sermon) then
+                        p [ Ui.panelText ] [ text "No scripture references yet." ]
+
+                      else
+                        text ""
+                    , div [ class "sermon-detail__pills" ]
+                        (List.map (viewScripture sermon) (visibleScriptures sermon))
                     ]
+                ]
             , [ div [ Ui.panel ]
                     [ div [ Ui.headingRow ]
                         [ strong [ Ui.inlinePanelTitle ] [ text "Topics" ]
@@ -332,12 +336,69 @@ highConfidenceTopics scores =
         |> List.sortBy (\( _, score ) -> -score)
 
 
+visibleScriptures : Sermon -> List String
+visibleScriptures sermon =
+    let
+        classification reference =
+            Dict.get reference sermon.scriptureClassifications
+    in
+    List.filter (\reference -> classification reference == Just "read") sermon.scriptures
+        ++ List.filter (\reference -> classification reference == Just "mentioned") sermon.scriptures
+        ++ List.filter (\reference -> classification reference == Nothing) sermon.scriptures
+
+
+viewScripture : Sermon -> String -> Html Msg
+viewScripture sermon reference =
+    let
+        isRead =
+            Dict.get reference sermon.scriptureClassifications == Just "read"
+
+        label =
+            case Dict.get reference sermon.scriptureClassifications of
+                Just "read" ->
+                    "Read"
+
+                Just "mentioned" ->
+                    "Mentioned"
+
+                _ ->
+                    "Not classified yet"
+    in
+    span
+        [ class
+            (if isRead then
+                "sermon-detail__pill sermon-detail__pill--read"
+
+             else
+                "sermon-detail__pill sermon-detail__pill--scripture"
+            )
+        , title label
+        ]
+        [ text reference ]
+
+
 viewProcessingRetry : Model -> Sermon -> String -> String -> Html Msg
 viewProcessingRetry model sermon part label =
+    let
+        processing =
+            Dict.get sermon.id model.regenerating == Just part
+                || ((sermon.status == "pending" || sermon.status == "running")
+                        && (sermon.stage == part
+                                || (sermon.stage == "metadata" && part /= "transcription")
+                           )
+                   )
+    in
     button
         [ Ui.smallQuietIconButton
         , title label
         , attribute "aria-label" label
+        , attribute "aria-busy"
+            (if processing then
+                "true"
+
+             else
+                "false"
+            )
         , onClick (RetryProcessing sermon part)
         , disabled
             (Set.member sermon.id model.retrying
@@ -351,7 +412,12 @@ viewProcessingRetry model sermon part label =
                 || (part == "transcription" && sermon.editApproved)
             )
         ]
-        [ Ui.icon "ph:arrow-clockwise" ]
+        [ if processing then
+            Ui.spinner
+
+          else
+            Ui.icon "ph:arrow-clockwise"
+        ]
 
 
 viewDetailActions : Model -> Sermon -> Html Msg
