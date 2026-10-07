@@ -22,6 +22,7 @@
   --ink-soft: #6b6455;
   --paper: #f4f1ea;
   --paper-bright: #fdfbf5;
+  --detail-background: #ffffff;
   --card: #fffdf8;
   --wash: #f6f2e8; /* neutral hover fill */
   --track: #ece7da;
@@ -104,6 +105,10 @@ body {
   background:
     radial-gradient(1200px 400px at 50% -100px, var(--paper-bright) 0%, var(--paper) 70%);
   min-height: 100vh;
+}
+
+body:has(.page--detail) {
+  background: var(--detail-background);
 }
 
 h1 {
@@ -707,14 +712,6 @@ h2::after {
 
 /* sermon-detail — full sermon metadata and transcript view */
 
-.sermon-detail {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: var(--space-2xl);
-  box-shadow: var(--shadow);
-}
-
 .sermon-detail__audio {
   display: block;
   margin-bottom: var(--space-sm);
@@ -1006,9 +1003,5 @@ h2::after {
 
   .sermon-card {
     padding: 16px 18px;
-  }
-
-  .sermon-detail {
-    padding: var(--space-lg);
   }
 }
