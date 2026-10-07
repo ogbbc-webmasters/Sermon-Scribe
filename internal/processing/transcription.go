@@ -22,7 +22,7 @@ import (
 
 const openRouterURL = "https://openrouter.ai/api/v1"
 const openRouterDecisionsURL = "https://openrouter.ai/api/alpha/decisions"
-const maxTranscriptionRequestBytes = 50 << 20
+const maxTranscriptionRequestBytes = 25_000_000
 
 type AIConfig struct {
 	APIKey             string
@@ -65,61 +65,37 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 	} else if err != nil {
 		return Result{}, err
 	}
-	file, err := os.Open(input)
+	info, err := os.Stat(input)
 	if err != nil {
 		return Result{}, err
 	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return Result{}, err
-	}
+	reducedInput := ""
 	if info.Size() > maxTranscriptionRequestBytes {
-		return Result{}, fmt.Errorf("transcription audio exceeds the 50 MiB request limit; normalize at 32 kbps or split the recording")
+		reducedInput, err = makeTranscriptionAudio(ctx, dir, input)
+		if err != nil {
+			return Result{}, err
+		}
+		defer os.Remove(reducedInput)
+		input = reducedInput
 	}
 
-	var body bytes.Buffer
-	form := multipart.NewWriter(&body)
-	part, err := form.CreateFormFile("file", filepath.Base(input))
+	body, contentType, err := buildTranscriptionMultipart(input, h.config.TranscriptionModel)
 	if err != nil {
 		return Result{}, err
 	}
-	if _, err := io.Copy(part, io.LimitReader(file, maxTranscriptionRequestBytes+1)); err != nil {
-		return Result{}, err
-	}
-	if err := form.WriteField("model", h.config.TranscriptionModel); err != nil {
-		return Result{}, err
-	}
-	if err := form.WriteField("response_format", "verbose_json"); err != nil {
-		return Result{}, err
-	}
-	for _, granularity := range []string{"segment", "word"} {
-		if err := form.WriteField("timestamp_granularities[]", granularity); err != nil {
+	if body.Len() > maxTranscriptionRequestBytes && reducedInput == "" {
+		reducedInput, err = makeTranscriptionAudio(ctx, dir, input)
+		if err != nil {
+			return Result{}, err
+		}
+		defer os.Remove(reducedInput)
+		body, contentType, err = buildTranscriptionMultipart(reducedInput, h.config.TranscriptionModel)
+		if err != nil {
 			return Result{}, err
 		}
 	}
-	providerOptions, err := json.Marshal(map[string]any{
-		"options": map[string]any{
-			"azure": map[string]any{
-				"diarization": map[string]bool{"enabled": true},
-				"enhancedMode": map[string]any{
-					"modelOptions": map[string]string{"transcribeStyle": "verbatim"},
-				},
-			},
-		},
-	})
-	if err != nil {
-		return Result{}, fmt.Errorf("encode transcription provider options: %w", err)
-	}
-	if err := form.WriteField("provider", string(providerOptions)); err != nil {
-		return Result{}, err
-	}
-	contentType := form.FormDataContentType()
-	if err := form.Close(); err != nil {
-		return Result{}, err
-	}
 	if body.Len() > maxTranscriptionRequestBytes {
-		return Result{}, fmt.Errorf("transcription request exceeds the 50 MiB limit including multipart headers; split the recording")
+		return Result{}, fmt.Errorf("transcription request exceeds the 25 MB limit after reduced-rate encoding; split the recording")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openRouterURL+"/audio/transcriptions", &body)
@@ -192,6 +168,81 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 			Parameters: job.Parameters,
 		},
 	}, reporter.Progress(100, nil)
+}
+
+func makeTranscriptionAudio(ctx context.Context, dir, fallbackInput string) (string, error) {
+	source := fallbackInput
+	flac := filepath.Join(dir, "normalized.flac")
+	if _, err := os.Stat(flac); err == nil {
+		source = flac
+	} else if !os.IsNotExist(err) {
+		return "", err
+	}
+
+	file, err := os.CreateTemp(dir, ".transcription-*.mp3")
+	if err != nil {
+		return "", err
+	}
+	path := file.Name()
+	if err := file.Close(); err != nil {
+		os.Remove(path)
+		return "", err
+	}
+	if err := encodeTranscriptionAudio(ctx, source, path); err != nil {
+		os.Remove(path)
+		return "", fmt.Errorf("encode reduced-rate transcription audio: %w", err)
+	}
+	return path, nil
+}
+
+func buildTranscriptionMultipart(input, model string) (bytes.Buffer, string, error) {
+	file, err := os.Open(input)
+	if err != nil {
+		return bytes.Buffer{}, "", err
+	}
+	defer file.Close()
+
+	var body bytes.Buffer
+	form := multipart.NewWriter(&body)
+	part, err := form.CreateFormFile("file", filepath.Base(input))
+	if err != nil {
+		return bytes.Buffer{}, "", err
+	}
+	if _, err := io.Copy(part, file); err != nil {
+		return bytes.Buffer{}, "", err
+	}
+	if err := form.WriteField("model", model); err != nil {
+		return bytes.Buffer{}, "", err
+	}
+	if err := form.WriteField("response_format", "verbose_json"); err != nil {
+		return bytes.Buffer{}, "", err
+	}
+	for _, granularity := range []string{"segment", "word"} {
+		if err := form.WriteField("timestamp_granularities[]", granularity); err != nil {
+			return bytes.Buffer{}, "", err
+		}
+	}
+	providerOptions, err := json.Marshal(map[string]any{
+		"options": map[string]any{
+			"azure": map[string]any{
+				"diarization": map[string]bool{"enabled": true},
+				"enhancedMode": map[string]any{
+					"modelOptions": map[string]string{"transcribeStyle": "verbatim"},
+				},
+			},
+		},
+	})
+	if err != nil {
+		return bytes.Buffer{}, "", fmt.Errorf("encode transcription provider options: %w", err)
+	}
+	if err := form.WriteField("provider", string(providerOptions)); err != nil {
+		return bytes.Buffer{}, "", err
+	}
+	contentType := form.FormDataContentType()
+	if err := form.Close(); err != nil {
+		return bytes.Buffer{}, "", err
+	}
+	return body, contentType, nil
 }
 
 type MetadataHandler struct {

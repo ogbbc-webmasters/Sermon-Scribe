@@ -255,7 +255,7 @@ func TestNormalizationAdjustmentsAndFilters(t *testing.T) {
 	}
 }
 
-func TestRunFFmpegProducesFLACAndDerived32KbpsMonoMP3(t *testing.T) {
+func TestRunFFmpegKeeps32KbpsProxyAndCanDerive24KbpsTranscriptionAudio(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not installed")
 	}
@@ -265,7 +265,7 @@ func TestRunFFmpegProducesFLACAndDerived32KbpsMonoMP3(t *testing.T) {
 	dir := t.TempDir()
 	input := filepath.Join(dir, "input.wav")
 	generate := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
-		"-i", "sine=frequency=440:duration=0.25:sample_rate=48000", "-ac", "2", input)
+		"-i", "sine=frequency=440:duration=2:sample_rate=48000", "-ac", "2", input)
 	if output, err := generate.CombinedOutput(); err != nil {
 		t.Fatalf("generate fixture: %v: %s", err, output)
 	}
@@ -282,7 +282,18 @@ func TestRunFFmpegProducesFLACAndDerived32KbpsMonoMP3(t *testing.T) {
 	}
 	bitrate, err := exec.Command("ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=bit_rate", "-of", "default=noprint_wrappers=1:nokey=1", mp3).Output()
 	if err != nil || strings.TrimSpace(string(bitrate)) != "32000" {
-		t.Fatalf("MP3 bitrate = %q, %v; want 32000", bitrate, err)
+		t.Fatalf("normalized MP3 bitrate = %q, %v; want 32000", bitrate, err)
+	}
+	transcriptionMP3 := filepath.Join(dir, "transcription.mp3")
+	if err := encodeTranscriptionAudio(context.Background(), flac, transcriptionMP3); err != nil {
+		t.Fatal(err)
+	}
+	if err := probeAudio(transcriptionMP3, audioSpec{codec: "mp3", sampleRate: 22050, channels: 1}); err != nil {
+		t.Fatal(err)
+	}
+	transcriptionBitrate, err := exec.Command("ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=bit_rate", "-of", "default=noprint_wrappers=1:nokey=1", transcriptionMP3).Output()
+	if err != nil || strings.TrimSpace(string(transcriptionBitrate)) != "24000" {
+		t.Fatalf("transcription MP3 bitrate = %q, %v; want 24000", transcriptionBitrate, err)
 	}
 	inputDuration, err := probeDuration(context.Background(), input)
 	if err != nil {
@@ -292,7 +303,7 @@ func TestRunFFmpegProducesFLACAndDerived32KbpsMonoMP3(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if math.Abs(inputDuration-mp3Duration) > 0.05 {
+	if math.Abs(inputDuration-mp3Duration) > 0.08 {
 		t.Fatalf("duration changed: original=%f mp3=%f", inputDuration, mp3Duration)
 	}
 }

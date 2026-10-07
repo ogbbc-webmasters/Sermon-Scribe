@@ -271,6 +271,12 @@ func runFFmpeg(ctx context.Context, input, flacOutput, mp3Output, filter string,
 	})
 }
 
+func encodeTranscriptionAudio(ctx context.Context, input, output string) error {
+	return encodeAudio(ctx, input, output, []string{"-ar", "22050", "-c:a", "libmp3lame", "-b:a", "24k"}, func(int) error {
+		return nil
+	})
+}
+
 func encodeAudio(ctx context.Context, input, output string, options []string, onProgress func(int) error) error {
 	duration, durationErr := probeDuration(ctx, input)
 	initialProgress := 0

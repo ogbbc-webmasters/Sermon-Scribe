@@ -123,15 +123,32 @@ func TestTranscriptionRetryChainsMetadataAndRetainsReturnState(t *testing.T) {
 	}
 }
 
-func TestTranscriptionRejectsOversizedRequestsBeforeSending(t *testing.T) {
-	for _, size := range []int64{50 << 20, (50 << 20) + 1} {
+func TestTranscriptionReducesOversizedProxyBeforeSending(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	if _, err := exec.LookPath("ffprobe"); err != nil {
+		t.Skip("ffprobe not installed")
+	}
+	for _, size := range []int64{25_000_000, 25_000_001} {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			st := processingTestStore(t)
+			sermonID := "oversized"
+			if err := st.CreateSermon(store.Sermon{ID: sermonID, OriginalFilename: "source.mp3", UploadedAt: "2026-10-06T00:00:00Z", Stage: "transcription", Status: "running"}); err != nil {
+				t.Fatal(err)
+			}
 			uploads := t.TempDir()
-			dir := filepath.Join(uploads, "oversized")
+			dir := filepath.Join(uploads, sermonID)
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			file, err := os.Create(filepath.Join(dir, "normalized.mp3"))
+			flac := filepath.Join(dir, "normalized.flac")
+			generate := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=440:duration=0.5:sample_rate=44100", "-ac", "1", "-c:a", "flac", flac)
+			if output, err := generate.CombinedOutput(); err != nil {
+				t.Fatalf("generate FLAC fixture: %v: %s", err, output)
+			}
+			proxy := filepath.Join(dir, "normalized.mp3")
+			file, err := os.Create(proxy)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -139,13 +156,44 @@ func TestTranscriptionRejectsOversizedRequestsBeforeSending(t *testing.T) {
 				t.Fatal(err)
 			}
 			file.Close()
-			h := NewTranscriptionHandler(nil, uploads, AIConfig{APIKey: "test-key"})
-			h.client.Transport = metadataTransport(func(*http.Request) (*http.Response, error) {
-				t.Fatal("oversized request was sent to OpenRouter")
-				return nil, nil
+			h := NewTranscriptionHandler(st, uploads, AIConfig{APIKey: "test-key"})
+			h.client.Transport = metadataTransport(func(req *http.Request) (*http.Response, error) {
+				if req.ContentLength > maxTranscriptionRequestBytes {
+					t.Fatalf("multipart request size = %d; limit %d", req.ContentLength, maxTranscriptionRequestBytes)
+				}
+				if err := req.ParseMultipartForm(1 << 20); err != nil {
+					t.Fatal(err)
+				}
+				defer req.MultipartForm.RemoveAll()
+				transcriptionFile, header, err := req.FormFile("file")
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer transcriptionFile.Close()
+				encoded := filepath.Join(t.TempDir(), "transcription.mp3")
+				output, err := os.Create(encoded)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := io.Copy(output, transcriptionFile); err != nil {
+					t.Fatal(err)
+				}
+				if err := output.Close(); err != nil {
+					t.Fatal(err)
+				}
+				if !strings.HasPrefix(header.Filename, ".transcription-") {
+					t.Fatalf("uploaded filename = %q; want temporary reduced-rate audio", header.Filename)
+				}
+				if err := probeAudio(encoded, audioSpec{codec: "mp3", sampleRate: 22050, channels: 1}); err != nil {
+					t.Fatalf("uploaded audio format: %v", err)
+				}
+				return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"text":"Reduced transcript"}`)), Header: make(http.Header)}, nil
 			})
-			if _, err := h.Run(context.Background(), store.Job{SermonID: "oversized"}, &recordingReporter{}); err == nil || !strings.Contains(err.Error(), "50 MiB") {
-				t.Fatalf("oversized request error = %v", err)
+			if _, err := h.Run(context.Background(), store.Job{SermonID: sermonID}, &recordingReporter{}); err != nil {
+				t.Fatalf("transcription of oversized proxy: %v", err)
+			}
+			if info, err := os.Stat(proxy); err != nil || info.Size() != size {
+				t.Fatalf("normalized proxy changed: info=%v err=%v", info, err)
 			}
 		})
 	}
