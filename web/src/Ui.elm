@@ -22,6 +22,8 @@ module Ui exposing
     , headingRow
     , icon
     , iconButton
+    , iconDisclosure
+    , iconDisclosureContent
     , panel
     , panelText
     , panelTitle
@@ -138,6 +140,19 @@ icon iconName =
 spinner : Html.Html msg
 spinner =
     Html.span [ class "spinner", attribute "aria-hidden" "true" ] [ icon "ph:spinner-gap" ]
+
+
+-- ICON DISCLOSURE
+
+
+iconDisclosure : Html.Attribute msg
+iconDisclosure =
+    class "icon-disclosure"
+
+
+iconDisclosureContent : Html.Attribute msg
+iconDisclosureContent =
+    class "icon-disclosure__content"
 
 
 -- PANELS

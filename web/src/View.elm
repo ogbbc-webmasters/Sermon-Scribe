@@ -71,6 +71,12 @@ viewSermonDetail model sermon =
                     [ div [ Ui.headingRow ]
                         [ h2 [ class "sermon-detail__title" ] [ text (Maybe.withDefault "Title Unknown" sermon.title) ]
                         , viewProcessingRetry model sermon "title" "Regenerate Title"
+                        , case sermon.titleReasoning of
+                            Just reasoning ->
+                                viewIconDisclosure "ph:info" "Why this title?" reasoning
+
+                            Nothing ->
+                                text ""
                         ]
                     , p [ class "sermon-detail__filename" ] [ text sermon.originalFilename ]
                     , case sermon.speaker of
@@ -100,14 +106,7 @@ viewSermonDetail model sermon =
                     )
                 ]
                 [ div [ class "sermon-detail__column", hidden (not hasMetadata) ]
-                    [ case sermon.titleReasoning of
-                        Just reasoning ->
-                            div [ Ui.panel ] [ viewReasoning "Why this title?" [ p [ Ui.panelText ] [ text reasoning ] ] ]
-
-                        Nothing ->
-                            text ""
-                    , viewDetailMetadata model sermon
-                    ]
+                    [ viewDetailMetadata model sermon ]
                 , div [ class "sermon-detail__column" ]
                     [ viewDetailAudio sermon
                     , viewDetailTranscript model sermon
@@ -124,17 +123,22 @@ viewSermonDetail model sermon =
 
 viewAIWarning : Html Msg
 viewAIWarning =
-    details [ class "sermon-detail__warning" ]
+    viewIconDisclosure "ph:warning" "Verify AI-generated content" "This page includes AI-generated content to save you time. Please carefully verify the metadata before publishing."
+
+
+viewIconDisclosure : String -> String -> String -> Html Msg
+viewIconDisclosure iconName heading body =
+    details [ Ui.iconDisclosure ]
         [ summary
             [ Ui.smallQuietIconButton
-            , title "Verify AI-generated content"
-            , attribute "aria-label" "Verify AI-generated content"
+            , title heading
+            , attribute "aria-label" heading
             ]
-            [ Ui.icon "ph:warning" ]
-        , div [ class "sermon-detail__warning-content" ]
+            [ Ui.icon iconName ]
+        , div [ Ui.iconDisclosureContent ]
             [ div [ Ui.panel ]
-                [ strong [ Ui.panelTitle ] [ text "Verify AI-generated content" ]
-                , p [ Ui.panelText ] [ text "AI-generated to save you time. Please carefully verify the transcript and metadata before publishing." ]
+                [ strong [ Ui.panelTitle ] [ text heading ]
+                , p [ Ui.panelText ] [ text body ]
                 ]
             ]
         ]
@@ -206,12 +210,6 @@ viewDetailMetadata model sermon =
                 ]
             ]
         )
-
-
-viewReasoning : String -> List (Html Msg) -> Html Msg
-viewReasoning heading body =
-    details [ class "sermon-detail__reasoning" ]
-        (summary [ class "sermon-detail__reasoning-summary focusable" ] [ text heading ] :: body)
 
 
 viewDetailAudio : Sermon -> Html Msg

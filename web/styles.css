@@ -75,7 +75,7 @@
   --editor-width: 820px;
   --detail-width: 1120px;
   --modal-width: 480px;
-  --warning-width: 320px;
+  --popover-width: 320px;
   --transcript-height: 360px;
   --control-size: 48px;
   --control-size-small: 40px;
@@ -647,6 +647,22 @@ h2::after {
   min-width: 0;
 }
 
+/* icon-disclosure — compact warning and information popovers */
+
+.icon-disclosure {
+  flex-shrink: 0;
+  position: relative;
+}
+
+.icon-disclosure__content {
+  max-width: calc(100vw - var(--space-2xl) * 2);
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--space-xs));
+  width: var(--popover-width);
+  z-index: var(--layer-popover);
+}
+
 /* masthead — page title banner */
 
 .masthead {
@@ -874,12 +890,6 @@ h2::after {
   color: var(--on-accent);
 }
 
-.sermon-detail__reasoning-summary {
-  cursor: pointer;
-  font-weight: 600;
-  margin-bottom: var(--space-sm);
-}
-
 .sermon-detail__search {
   align-items: center;
   display: flex;
@@ -931,20 +941,6 @@ h2::after {
   flex-wrap: wrap;
   gap: var(--space-sm);
   justify-content: space-between;
-}
-
-.sermon-detail__warning {
-  flex-shrink: 0;
-  position: relative;
-}
-
-.sermon-detail__warning-content {
-  max-width: calc(100vw - var(--space-2xl) * 2);
-  position: absolute;
-  right: 0;
-  top: calc(100% + var(--space-xs));
-  width: var(--warning-width);
-  z-index: var(--layer-popover);
 }
 
 /* spinner — progress indicator for in-flight actions */
