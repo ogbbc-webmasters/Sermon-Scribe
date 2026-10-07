@@ -1,11 +1,14 @@
 module Api exposing
     ( AICost
+    , ExportJob
     , PipelineEvent(..)
     , Sermon
     , TranscriptSegment
     , TranscriptWord
     , TranscriptionMetadata
     , deleteSermon
+    , exportAudio
+    , exportStatus
     , fetchSermons
     , pipelineEventDecoder
     , retryProcessing
@@ -64,6 +67,40 @@ type alias AICost =
     , costUsd : Float
     , unknownCosts : Int
     }
+
+
+type alias ExportJob =
+    { jobId : String
+    , state : String
+    , progress : Int
+    , error : Maybe String
+    }
+
+
+exportJobDecoder : Decoder ExportJob
+exportJobDecoder =
+    Decode.map4 ExportJob
+        (Decode.field "job_id" Decode.string)
+        (Decode.field "state" Decode.string)
+        (Decode.field "progress" Decode.int)
+        (Decode.field "error" (Decode.nullable Decode.string))
+
+
+exportAudio : (Result Http.Error ExportJob -> msg) -> String -> Cmd msg
+exportAudio toMsg id =
+    Http.post
+        { url = "/api/sermons/" ++ id ++ "/export"
+        , body = Http.emptyBody
+        , expect = Http.expectJson toMsg exportJobDecoder
+        }
+
+
+exportStatus : (Result Http.Error ExportJob -> msg) -> String -> String -> Cmd msg
+exportStatus toMsg id jobId =
+    Http.get
+        { url = "/api/sermons/" ++ id ++ "/exports/" ++ jobId
+        , expect = Http.expectJson toMsg exportJobDecoder
+        }
 
 
 type alias TranscriptionMetadata =

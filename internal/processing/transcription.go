@@ -60,7 +60,7 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 		normalize := NewNormalizeHandler(h.store, h.uploadsDir)
 		_, err := normalize.Run(ctx, store.Job{
 			ID: "normalize-" + job.ID, SermonID: job.SermonID,
-			Parameters: `{"gate_adjustment":0,"volume_adjustment":0}`,
+			Parameters: `{"gate_adjustment":0,"volume_adjustment":0,"prepare_only":true}`,
 		}, reporter)
 		if err != nil {
 			return Result{}, err

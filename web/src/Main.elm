@@ -36,6 +36,9 @@ port editingAudio : Encode.Value -> Cmd msg
 port editingAudioStatus : (String -> msg) -> Sub msg
 
 
+port downloadExport : String -> Cmd msg
+
+
 main : Program () Model Msg
 main =
     Browser.application
@@ -66,6 +69,8 @@ init _ url key =
       , retrying = Set.empty
       , regenerating = Dict.empty
       , retryError = Nothing
+      , exporting = Dict.empty
+      , exportErrors = Dict.empty
       , scriptureDrafts = Dict.empty
       , scriptureSaving = Set.empty
       , scriptureSaveErrors = Set.empty
@@ -170,6 +175,7 @@ update msg model =
                 Ok (Api.PipelineDeleted id) ->
                     ( { model
                         | deleting = Set.remove id model.deleting
+                        , exporting = Dict.remove id model.exporting
                         , deletedSermons = Set.insert id model.deletedSermons
                         , sermons = removeSermon id model.sermons
                       }
@@ -243,6 +249,55 @@ update msg model =
               }
             , Cmd.none
             )
+
+        ExportAudio sermon ->
+            ( { model
+                | exporting = Dict.insert sermon.id (Api.ExportJob "" "queued" 0 Nothing) model.exporting
+                , exportErrors = Dict.remove sermon.id model.exportErrors
+              }
+            , Api.exportAudio (ExportQueued sermon.id) sermon.id
+            )
+
+        ExportQueued id (Ok job) ->
+            if Set.member id model.deletedSermons then
+                ( model, Cmd.none )
+
+            else
+                ( { model | exporting = Dict.insert id job model.exporting }, Cmd.none )
+
+        ExportQueued id (Err _) ->
+            ( { model | exporting = Dict.remove id model.exporting, exportErrors = Dict.insert id "Could not start export. Please try again when processing finishes." model.exportErrors }, Cmd.none )
+
+        CheckExports _ ->
+            ( model
+            , model.exporting
+                |> Dict.toList
+                |> List.filter (\( _, job ) -> job.jobId /= "")
+                |> List.map (\( id, job ) -> Api.exportStatus (ExportChecked id) id job.jobId)
+                |> Cmd.batch
+            )
+
+        ExportChecked id (Ok job) ->
+            if (Dict.get id model.exporting |> Maybe.map .jobId) /= Just job.jobId then
+                ( model, Cmd.none )
+
+            else if job.state == "done" then
+                ( { model | exporting = Dict.remove id model.exporting }
+                , downloadExport ("/api/sermons/" ++ id ++ "/exports/" ++ job.jobId ++ "?download=1")
+                )
+
+            else if job.state == "failed" then
+                ( { model | exporting = Dict.remove id model.exporting, exportErrors = Dict.insert id "Export failed. Click Export to retry." model.exportErrors }, Cmd.none )
+
+            else
+                ( { model | exporting = Dict.insert id job model.exporting }, Cmd.none )
+
+        ExportChecked id (Err (Http.BadStatus 404)) ->
+            ( { model | exporting = Dict.remove id model.exporting, exportErrors = Dict.insert id "Export is no longer available. Please try again." model.exportErrors }, Cmd.none )
+
+        ExportChecked _ (Err _) ->
+            -- Keep the durable job tracked through temporary connection errors.
+            ( model, Cmd.none )
 
         ToggleScripture id reference ->
             case findSermon id model.sermons of
@@ -391,6 +446,11 @@ subscriptions model =
         [ pipelineEvents PipelineEventReceived
         , transcriptCopied TranscriptCopied
         , editingAudioStatus (Editing.AudioStatus >> EditingMsg)
+        , if Dict.isEmpty model.exporting then
+            Sub.none
+
+          else
+            Time.every 1000 CheckExports
         , case model.upload of
             Uploading _ ->
                 Http.track Api.uploadTracker UploadProgress

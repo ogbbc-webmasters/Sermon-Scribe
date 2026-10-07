@@ -42,6 +42,8 @@ type alias Model =
     , retrying : Set String
     , regenerating : Dict String String
     , retryError : Maybe String
+    , exporting : Dict String Api.ExportJob
+    , exportErrors : Dict String String
     , scriptureDrafts : Dict String (Set String)
     , scriptureSaving : Set String
     , scriptureSaveErrors : Set String
@@ -64,6 +66,10 @@ type Msg
     | UploadFinished (Result Http.Error Sermon)
     | RetryProcessing Sermon String
     | RetryFinished Sermon (Result Http.Error Sermon)
+    | ExportAudio Sermon
+    | ExportQueued String (Result Http.Error Api.ExportJob)
+    | CheckExports Time.Posix
+    | ExportChecked String (Result Http.Error Api.ExportJob)
     | ToggleScripture String String
     | ScriptureSaveFinished String (List String) (Result Http.Error Sermon)
     | RetryScriptureSave Sermon

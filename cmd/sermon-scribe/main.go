@@ -68,6 +68,7 @@ func main() {
 		"extract_topics":     metadata,
 		"extract_scriptures": metadata,
 		"normalize":          normalize,
+		"export":             processing.NewExportHandler(*uploadsDir),
 	}, processing.Config{Events: events})
 	queue.Start(ctx)
 	defer queue.Stop()

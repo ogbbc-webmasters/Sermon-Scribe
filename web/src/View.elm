@@ -8,7 +8,7 @@ import Dialog
 import Dict
 import Editing
 import Html exposing (Html, a, audio, button, div, h2, input, label, mark, p, span, strong, text)
-import Html.Attributes exposing (attribute, autofocus, checked, class, classList, controls, disabled, download, hidden, href, id, placeholder, src, style, title, type_, value)
+import Html.Attributes exposing (attribute, autofocus, checked, class, classList, controls, disabled, hidden, href, id, placeholder, src, style, title, type_, value)
 import Html.Events exposing (on, onCheck, onClick, onInput, stopPropagationOn)
 import Json.Decode as Decode
 import Set
@@ -372,6 +372,10 @@ viewDetailAudio model sermon =
         applying =
             (ownsDraft && (model.editor.applying || model.editor.pendingApply /= Nothing))
                 || (sermon.stage == "editing" && (sermon.status == "pending" || sermon.status == "running"))
+
+        exporting =
+            Dict.member sermon.id model.exporting
+                || (sermon.stage == "export" && (sermon.status == "pending" || sermon.status == "running"))
     in
     Card.viewWithAttributes [ class "sermon-detail__audio-card" ]
         (text "Audio")
@@ -386,11 +390,11 @@ viewDetailAudio model sermon =
             text ""
 
           else
-            Button.view "a"
-                Button.downloadAudio
-                False
-                [ href (source ++ "&download=1")
-                , download ""
+            Button.labeled "Export"
+                Button.exportAudio
+                exporting
+                [ onClick (ExportAudio sermon)
+                , disabled (exporting || busy || not (editable || (sermon.stage == "export" && sermon.status == "failed")))
                 ]
         ]
         [ if applying then
@@ -398,6 +402,27 @@ viewDetailAudio model sermon =
 
           else
             audio [ class "sermon-detail__audio", controls True, attribute "preload" "metadata", src source ] []
+        , if exporting then
+            p [ Ui.hint, attribute "role" "status" ]
+                [ text
+                    ("Normalizing export…"
+                        ++ (Dict.get sermon.id model.exporting
+                                |> Maybe.map
+                                    (\job ->
+                                        if job.progress < 0 then
+                                            ""
+
+                                        else
+                                            " " ++ String.fromInt job.progress ++ "%"
+                                    )
+                                |> Maybe.withDefault ""
+                           )
+                    )
+                ]
+
+          else
+            text ""
+        , viewOptionalError (Dict.get sermon.id model.exportErrors)
         , if sermon.transcriptionMetadata |> Maybe.andThen .duration |> Maybe.map (\seconds -> seconds >= 90 * 60) |> Maybe.withDefault False then
             p [ Ui.hint ] [ text "Please edit the audio to under 90 minutes." ]
 
@@ -754,20 +779,20 @@ describeStage sermon =
             "Uploaded"
 
         ( "normalization", "pending" ) ->
-            "Waiting to normalize"
+            "Waiting to prepare audio"
 
         ( "normalization", "running" ) ->
             if sermon.progress < 0 then
-                "Normalizing…"
+                "Preparing audio…"
 
             else
-                "Normalizing… " ++ String.fromInt sermon.progress ++ "%"
+                "Preparing audio… " ++ String.fromInt sermon.progress ++ "%"
 
         ( "normalization", "done" ) ->
-            "Normalization finished"
+            "Audio prepared"
 
         ( "normalization", "failed" ) ->
-            "Normalization failed"
+            "Audio preparation failed"
 
         ( "editing", "done" ) ->
             "Awaiting editing"

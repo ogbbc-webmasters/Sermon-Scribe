@@ -21,8 +21,9 @@ const normalizationPipelineVersion = 2
 
 // NormalizationSettings are relative adjustments from the default treatment.
 type NormalizationSettings struct {
-	GateAdjustment   int `json:"gate_adjustment"`
-	VolumeAdjustment int `json:"volume_adjustment"`
+	GateAdjustment   int  `json:"gate_adjustment"`
+	VolumeAdjustment int  `json:"volume_adjustment"`
+	PrepareOnly      bool `json:"prepare_only,omitempty"`
 }
 
 // NormalizationAdjustment identifies one relative user-requested change.
@@ -140,6 +141,11 @@ func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Repo
 	flacTemp := filepath.Join(dir, ".normalize-"+job.ID+".flac")
 	mp3Temp := filepath.Join(dir, ".normalize-"+job.ID+".mp3")
 	markerPath := filepath.Join(dir, ".normalization-complete.json")
+	if settings.PrepareOnly {
+		// Retain historical filenames for playback/editor compatibility, but
+		// distinguish untreated sources from older normalized recordings.
+		markerPath = filepath.Join(dir, ".source-prepared.json")
+	}
 	defer os.Remove(flacTemp)
 	defer os.Remove(mp3Temp)
 
@@ -165,6 +171,9 @@ func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Repo
 			return Result{}, err
 		}
 		filter := normalizationFilter(settings)
+		if settings.PrepareOnly {
+			filter = "aformat=channel_layouts=mono,aresample=44100"
+		}
 		if err := h.runFFmpeg(ctx, input, flacTemp, mp3Temp, filter, func(percent int) error {
 			return reporter.Progress(percent, nil)
 		}); err != nil {

@@ -1,4 +1,4 @@
-module Button exposing (Config, action, applyEdits, back, button, cancelDialog, confirmRegeneration, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSection, deleteSermon, disclosure, downloadAudio, editAudio, icon, keepSection, labeled, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, textAction, titleInfo, uploadSermon, view, warning)
+module Button exposing (Config, action, applyEdits, back, button, cancelDialog, confirmRegeneration, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSection, deleteSermon, disclosure, editAudio, exportAudio, icon, keepSection, labeled, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, textAction, titleInfo, uploadSermon, view, warning)
 
 import Html exposing (Html, details, div, p, strong, text)
 import Html.Attributes exposing (attribute, class, title, type_)
@@ -84,9 +84,9 @@ keepSection =
     Config "ph:check" "Keep section" "var(--green)"
 
 
-downloadAudio : Config
-downloadAudio =
-    Config "ph:download-simple" "Download audio" "var(--ink-soft)"
+exportAudio : Config
+exportAudio =
+    Config "ph:export" "Export normalized audio" "var(--ink-soft)"
 
 
 editAudio : Config
