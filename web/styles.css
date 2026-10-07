@@ -22,8 +22,7 @@
   --ink-soft: #6b6455;
   --paper: #f4f1ea;
   --paper-bright: #fdfbf5;
-  --detail-background: #ffffff;
-  --card: #fffdf8;
+  --card: #ffffff;
   --wash: #f6f2e8; /* neutral hover fill */
   --track: #ece7da;
   --line: #e2dccd;
@@ -102,13 +101,8 @@ body {
   font-size: 19px;
   line-height: 1.55;
   color: var(--ink);
-  background:
-    radial-gradient(1200px 400px at 50% -100px, var(--paper-bright) 0%, var(--paper) 70%);
+  background: var(--paper);
   min-height: 100vh;
-}
-
-body:has(.page--detail) {
-  background: var(--detail-background);
 }
 
 h1 {
@@ -574,7 +568,7 @@ h2::after {
 /* panel — shared content and status surface */
 
 .panel {
-  background: var(--wash);
+  background: var(--card);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   color: var(--ink);
