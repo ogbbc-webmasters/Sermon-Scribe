@@ -34,6 +34,15 @@ func CommitArtifacts(markerPath string, marker CompletionMarker, artifacts []Art
 		}
 	}
 	for _, artifact := range artifacts {
+		file, err := os.Open(artifact.TemporaryPath)
+		if err != nil {
+			return fmt.Errorf("open artifact for sync: %w", err)
+		}
+		syncErr := file.Sync()
+		closeErr := file.Close()
+		if err := errors.Join(syncErr, closeErr); err != nil {
+			return fmt.Errorf("sync %s: %w", artifact.TemporaryPath, err)
+		}
 		if err := os.Rename(artifact.TemporaryPath, artifact.FinalPath); err != nil {
 			return fmt.Errorf("publish %s: %w", artifact.FinalPath, err)
 		}

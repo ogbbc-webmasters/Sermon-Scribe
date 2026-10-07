@@ -6,7 +6,6 @@ module Ui exposing
     , badge
     , badgeFailed
     , button
-    , buttonWithIcon
     , card
     , cardInfo
     , cardMeta
@@ -20,7 +19,6 @@ module Ui exposing
     , errorPanel
     , hint
     , icon
-    , iconButton
     , iconControl
     , iconDisclosure
     , iconDisclosureContent
@@ -33,9 +31,6 @@ module Ui exposing
     , primaryButton
     , progress
     , progressFill
-    , quietIconButton
-    , smallDangerIconButton
-    , smallQuietIconButton
     , spinner
     , sermonActions
     )
@@ -91,11 +86,6 @@ button =
     class "button"
 
 
-buttonWithIcon : Html.Attribute msg
-buttonWithIcon =
-    class "button button--with-icon"
-
-
 {-| Prominent call-to-action button (green).
 -}
 primaryButton : Html.Attribute msg
@@ -110,31 +100,9 @@ dangerButton =
     class "button button--danger"
 
 
-{-| Compact circular button whose accessible name is supplied by the caller.
--}
-iconButton : Html.Attribute msg
-iconButton =
-    class "button button--icon"
-
-
 iconControl : Html.Attribute msg
 iconControl =
     class "icon-control"
-
-
-quietIconButton : Html.Attribute msg
-quietIconButton =
-    class "button button--icon button--quiet"
-
-
-smallQuietIconButton : Html.Attribute msg
-smallQuietIconButton =
-    class "button button--icon button--quiet button--small"
-
-
-smallDangerIconButton : Html.Attribute msg
-smallDangerIconButton =
-    class "button button--icon button--quiet-danger button--small"
 
 
 {-| Decorative icon; its button supplies the accessible name.

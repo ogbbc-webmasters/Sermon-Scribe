@@ -32,7 +32,12 @@ func TestRetryProcessingParts(t *testing.T) {
 			if err := os.MkdirAll(dir, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(dir, "original.mp3"), []byte("audio"), 0o644); err != nil {
+			audioName := "original.mp3"
+			if part == "transcription" {
+				// Successful normalization deletes the original upload.
+				audioName = "normalized.mp3"
+			}
+			if err := os.WriteFile(filepath.Join(dir, audioName), []byte("audio"), 0o644); err != nil {
 				t.Fatal(err)
 			}
 			url := ts.URL + "/api/sermons/ready/retry/" + part

@@ -2,7 +2,6 @@ module Types exposing (Model, Msg(..), SermonList(..), UploadState(..))
 
 import Api exposing (Sermon)
 import Dict exposing (Dict)
-import Editor
 import File exposing (File)
 import Http
 import Json.Decode as Decode
@@ -24,7 +23,6 @@ type UploadState
 
 type alias Model =
     { sermons : SermonList
-    , editing : Maybe Editor.Model
     , selectedSermon : Maybe Sermon
     , transcriptSearch : String
     , transcriptMatch : Int
@@ -60,14 +58,12 @@ type Msg
     | RerunNormalizationFinished Sermon (Result Http.Error Sermon)
     | ReviewNormalization Sermon
     | NormalizationReviewed Sermon (Result Http.Error Sermon)
-    | OpenEditor Sermon
     | OpenSermon Sermon
     | CloseSermon
     | SearchTranscript String
     | SelectTranscriptMatch Int
     | CopyTranscript String
     | TranscriptCopied Bool
-    | EditorMsg Editor.Msg
     | AskDelete Sermon
     | CancelDelete
     | ConfirmDelete Sermon

@@ -21,6 +21,7 @@ import (
 
 const openRouterURL = "https://openrouter.ai/api/v1"
 const openRouterDecisionsURL = "https://openrouter.ai/api/alpha/decisions"
+const maxTranscriptionRequestBytes = 50 << 20
 
 type AIConfig struct {
 	APIKey             string
@@ -47,8 +48,20 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 	if h.config.APIKey == "" {
 		return Result{}, fmt.Errorf("OPENROUTER_API_KEY is not configured")
 	}
-	input, err := findOriginal(filepath.Join(h.uploadsDir, job.SermonID))
-	if err != nil {
+	dir := filepath.Join(h.uploadsDir, job.SermonID)
+	input := filepath.Join(dir, "normalized.mp3")
+	if _, err := os.Stat(input); os.IsNotExist(err) {
+		// Prepare legacy uploads on their first regeneration too. Never send
+		// the original upload to OpenRouter, regardless of its size or format.
+		normalize := NewNormalizeHandler(h.store, h.uploadsDir)
+		_, err := normalize.Run(ctx, store.Job{
+			ID: "normalize-" + job.ID, SermonID: job.SermonID,
+			Parameters: `{"gate_adjustment":0,"volume_adjustment":0}`,
+		}, reporter)
+		if err != nil {
+			return Result{}, err
+		}
+	} else if err != nil {
 		return Result{}, err
 	}
 	file, err := os.Open(input)
@@ -56,6 +69,13 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 		return Result{}, err
 	}
 	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return Result{}, err
+	}
+	if info.Size() > maxTranscriptionRequestBytes {
+		return Result{}, fmt.Errorf("transcription audio exceeds the 50 MiB request limit; normalize at 32 kbps or split the recording")
+	}
 
 	var body bytes.Buffer
 	form := multipart.NewWriter(&body)
@@ -63,7 +83,7 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 	if err != nil {
 		return Result{}, err
 	}
-	if _, err := io.Copy(part, file); err != nil {
+	if _, err := io.Copy(part, io.LimitReader(file, maxTranscriptionRequestBytes+1)); err != nil {
 		return Result{}, err
 	}
 	if err := form.WriteField("model", h.config.TranscriptionModel); err != nil {
@@ -72,6 +92,9 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 	contentType := form.FormDataContentType()
 	if err := form.Close(); err != nil {
 		return Result{}, err
+	}
+	if body.Len() > maxTranscriptionRequestBytes {
+		return Result{}, fmt.Errorf("transcription request exceeds the 50 MiB limit including multipart headers; split the recording")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openRouterURL+"/audio/transcriptions", &body)

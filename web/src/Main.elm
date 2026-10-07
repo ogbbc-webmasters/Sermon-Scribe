@@ -3,10 +3,8 @@ port module Main exposing (main)
 import Api
 import Browser
 import Dict
-import Editor
 import Http
 import Json.Decode as Decode
-import Json.Encode as Encode
 import Set
 import Task
 import Time
@@ -26,36 +24,6 @@ port transcriptCopied : (Bool -> msg) -> Sub msg
 port scrollTranscriptMatch : Int -> Cmd msg
 
 
-port loadTimelineDraft : String -> Cmd msg
-
-
-port timelineDraftLoaded : (Decode.Value -> msg) -> Sub msg
-
-
-port saveTimelineDraft : Decode.Value -> Cmd msg
-
-
-port clearTimelineDraft : String -> Cmd msg
-
-
-port renderTimeline : Decode.Value -> Cmd msg
-
-
-port timelineRegionSelected : (Decode.Value -> msg) -> Sub msg
-
-
-port configurePreview : Decode.Value -> Cmd msg
-
-
-port previewPlayhead : (Decode.Value -> msg) -> Sub msg
-
-
-port auditionBoundary : Decode.Value -> Cmd msg
-
-
-port boundaryAuditionEnded : (Decode.Value -> msg) -> Sub msg
-
-
 main : Program () Model Msg
 main =
     Browser.element
@@ -69,7 +37,6 @@ main =
 init : () -> ( Model, Cmd Msg )
 init _ =
     ( { sermons = Loading
-      , editing = Nothing
       , selectedSermon = Nothing
       , transcriptSearch = ""
       , transcriptMatch = 0
@@ -128,86 +95,29 @@ update msg model =
                         visible =
                             List.filter (\sermon -> not (Set.member sermon.id model.deletedSermons)) sermons
 
-                        ( editing, effect ) =
-                            case model.editing of
-                                Just editor ->
-                                    case List.filter (\sermon -> sermon.id == editor.sermon.id) visible |> List.head of
-                                        Just sermon ->
-                                            let
-                                                ( next, editorEffect ) =
-                                                    Editor.pipeline sermon editor
-                                            in
-                                            ( Just next, editorEffect )
-
-                                        Nothing ->
-                                            ( Just editor, Editor.Close )
-
-                                Nothing ->
-                                    ( Nothing, Editor.None )
-
                         updated =
                             { model
                                 | sermons =
                                     Loaded visible
                                 , hasPipelineSnapshot = True
-                                , editing = editing
                             }
                     in
-                    performEditor effect updated Cmd.none
+                    ( updated, Cmd.none )
 
                 Ok (Api.PipelineUpdate sermon) ->
                     if Set.member sermon.id model.deletedSermons then
                         ( model, Cmd.none )
 
                     else
-                        let
-                            ( editing, effect ) =
-                                case model.editing of
-                                    Just editor ->
-                                        let
-                                            ( next, editorEffect ) =
-                                                Editor.pipeline sermon editor
-                                        in
-                                        ( Just next, editorEffect )
-
-                                    Nothing ->
-                                        ( Nothing, Editor.None )
-
-                            updated =
-                                { model | sermons = upsertSermon sermon model.sermons, editing = editing }
-                        in
-                        performEditor effect updated Cmd.none
+                        ( { model | sermons = upsertSermon sermon model.sermons }, Cmd.none )
 
                 Ok (Api.PipelineDeleted id) ->
-                    let
-                        closesEditor =
-                            model.editing
-                                |> Maybe.map (\editor -> editor.sermon.id == id)
-                                |> Maybe.withDefault False
-
-                        remainingEditor =
-                            case model.editing of
-                                Just editor ->
-                                    if editor.sermon.id == id then
-                                        Nothing
-
-                                    else
-                                        model.editing
-
-                                Nothing ->
-                                    Nothing
-                    in
                     ( { model
                         | deleting = Set.remove id model.deleting
                         , deletedSermons = Set.insert id model.deletedSermons
                         , sermons = removeSermon id model.sermons
-                        , editing = remainingEditor
                       }
-                    , if closesEditor then
-                        Cmd.batch [ configurePreview Encode.null, clearTimelineDraft id ]
-
-                      else
-                        Cmd.none
+                    , Cmd.none
                     )
 
                 Err _ ->
@@ -322,18 +232,17 @@ update msg model =
             )
 
         NormalizationReviewed _ (Ok sermon) ->
-            let
-                ( editor, command, effect ) =
-                    Editor.init sermon
+            ( { model
+                | sermons =
+                    if Set.member sermon.id model.deletedSermons then
+                        model.sermons
 
-                updated =
-                    { model
-                        | sermons = upsertSermon sermon model.sermons
-                        , editing = Just editor
-                        , reviewingNormalization = Set.remove sermon.id model.reviewingNormalization
-                    }
-            in
-            performEditor effect updated (Cmd.map EditorMsg command)
+                    else
+                        upsertSermon sermon model.sermons
+                , reviewingNormalization = Set.remove sermon.id model.reviewingNormalization
+              }
+            , Cmd.none
+            )
 
         NormalizationReviewed original (Err _) ->
             ( { model
@@ -342,13 +251,6 @@ update msg model =
               }
             , Cmd.none
             )
-
-        OpenEditor sermon ->
-            let
-                ( editor, command, effect ) =
-                    Editor.init sermon
-            in
-            performEditor effect { model | editing = Just editor } (Cmd.map EditorMsg command)
 
         OpenSermon sermon ->
             ( { model | selectedSermon = Just sermon, transcriptSearch = "", transcriptMatch = 0, transcriptCopyStatus = Nothing }, Cmd.none )
@@ -367,18 +269,6 @@ update msg model =
 
         TranscriptCopied succeeded ->
             ( { model | transcriptCopyStatus = Just succeeded }, Cmd.none )
-
-        EditorMsg editorMsg ->
-            case model.editing of
-                Just editor ->
-                    let
-                        ( next, command, effect ) =
-                            Editor.update editorMsg editor
-                    in
-                    performEditor effect { model | editing = Just next } (Cmd.map EditorMsg command)
-
-                Nothing ->
-                    ( model, Cmd.none )
 
         AskDelete sermon ->
             ( { model | confirmingDelete = Just sermon }, Cmd.none )
@@ -419,10 +309,6 @@ subscriptions model =
     Sub.batch
         [ pipelineEvents PipelineEventReceived
         , transcriptCopied TranscriptCopied
-        , timelineDraftLoaded (EditorMsg << Editor.GotDraft)
-        , timelineRegionSelected (EditorMsg << Editor.CanvasSelect)
-        , previewPlayhead (EditorMsg << Editor.Playhead)
-        , boundaryAuditionEnded (EditorMsg << Editor.AuditionEnded)
         , case model.upload of
             Uploading _ ->
                 Http.track Api.uploadTracker UploadProgress
@@ -430,40 +316,6 @@ subscriptions model =
             _ ->
                 Sub.none
         ]
-
-
-performEditor : Editor.Effect -> Model -> Cmd Msg -> ( Model, Cmd Msg )
-performEditor effect model command =
-    case effect of
-        Editor.None ->
-            ( model, command )
-
-        Editor.LoadDraft id ->
-            ( model, Cmd.batch [ command, loadTimelineDraft id ] )
-
-        Editor.SaveDraft id value render preview ->
-            ( model, Cmd.batch [ command, saveTimelineDraft (Encode.object [ ( "id", Encode.string id ), ( "draft", value ) ]), renderTimeline render, configurePreview preview ] )
-
-        Editor.ClearDraft id ->
-            ( model, Cmd.batch [ command, clearTimelineDraft id ] )
-
-        Editor.Render value preview ->
-            ( model, Cmd.batch [ command, renderTimeline value, configurePreview preview ] )
-
-        Editor.Complete id value preview ->
-            ( model, Cmd.batch [ command, renderTimeline value, configurePreview preview, clearTimelineDraft id ] )
-
-        Editor.Preview value ->
-            ( model, Cmd.batch [ command, configurePreview value, clearTimelineDraft (model.editing |> Maybe.map (.sermon >> .id) |> Maybe.withDefault "") ] )
-
-        Editor.Audition value ->
-            ( model, Cmd.batch [ command, auditionBoundary value ] )
-
-        Editor.Close ->
-            ( { model | editing = Nothing }, Cmd.batch [ command, configurePreview Encode.null, auditionBoundary Encode.null ] )
-
-        Editor.ApprovedSermon sermon ->
-            ( { model | editing = Nothing, sermons = upsertSermon sermon model.sermons }, Cmd.batch [ command, clearTimelineDraft sermon.id, configurePreview Encode.null, auditionBoundary Encode.null ] )
 
 
 mergeFetchedSermons : Set.Set String -> List Api.Sermon -> SermonList -> SermonList

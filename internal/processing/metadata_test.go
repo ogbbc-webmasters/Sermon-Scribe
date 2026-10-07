@@ -3,10 +3,12 @@ package processing
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -45,6 +47,10 @@ func TestTranscriptionRetryChainsMetadataAndRetainsReturnState(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "original.mp3"), []byte("source audio"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	wantFile, wantAudio := "normalized.mp3", "normalized audio"
+	if err := os.WriteFile(filepath.Join(dir, wantFile), []byte(wantAudio), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	h := NewTranscriptionHandler(st, uploads, AIConfig{APIKey: "test-key"})
 	h.client.Transport = metadataTransport(func(req *http.Request) (*http.Response, error) {
 		if req.URL.String() != openRouterURL+"/audio/transcriptions" {
@@ -56,6 +62,15 @@ func TestTranscriptionRetryChainsMetadataAndRetainsReturnState(t *testing.T) {
 		defer req.MultipartForm.RemoveAll()
 		if got := req.FormValue("model"); got != "microsoft/mai-transcribe-2" {
 			t.Fatalf("unexpected transcription model %q", got)
+		}
+		file, header, err := req.FormFile("file")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer file.Close()
+		audio, err := io.ReadAll(file)
+		if err != nil || header.Filename != wantFile || string(audio) != wantAudio {
+			t.Fatalf("transcription source = %q %q, %v; want %q %q", header.Filename, audio, err, wantFile, wantAudio)
 		}
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"text":"New transcript"}`)), Header: make(http.Header)}, nil
 	})
@@ -70,6 +85,78 @@ func TestTranscriptionRetryChainsMetadataAndRetainsReturnState(t *testing.T) {
 	}
 	if sm.Transcript == nil || *sm.Transcript != "New transcript" || result.Next == nil || result.Next.Type != "extract_metadata" || result.Next.Stage != "metadata" || result.Next.Parameters != parameters {
 		t.Fatalf("incorrect transcription retry result: %+v, %+v", sm, result)
+	}
+}
+
+func TestTranscriptionRejectsOversizedRequestsBeforeSending(t *testing.T) {
+	for _, size := range []int64{50 << 20, (50 << 20) + 1} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			uploads := t.TempDir()
+			dir := filepath.Join(uploads, "oversized")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			file, err := os.Create(filepath.Join(dir, "normalized.mp3"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := file.Truncate(size); err != nil {
+				t.Fatal(err)
+			}
+			file.Close()
+			h := NewTranscriptionHandler(nil, uploads, AIConfig{APIKey: "test-key"})
+			h.client.Transport = metadataTransport(func(*http.Request) (*http.Response, error) {
+				t.Fatal("oversized request was sent to OpenRouter")
+				return nil, nil
+			})
+			if _, err := h.Run(context.Background(), store.Job{SermonID: "oversized"}, &recordingReporter{}); err == nil || !strings.Contains(err.Error(), "50 MiB") {
+				t.Fatalf("oversized request error = %v", err)
+			}
+		})
+	}
+}
+
+func TestTranscriptionNormalizesLegacyUploadBeforeSending(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	st := processingTestStore(t)
+	if err := st.CreateSermon(store.Sermon{ID: "legacy", OriginalFilename: "source.wav", UploadedAt: "2026-10-06T00:00:00Z", Stage: "transcription", Status: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	uploads := t.TempDir()
+	dir := filepath.Join(uploads, "legacy")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original := filepath.Join(dir, "original.wav")
+	if output, err := exec.Command("ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "sine=frequency=600:duration=0.3:sample_rate=48000", "-ac", "2", original).CombinedOutput(); err != nil {
+		t.Fatalf("fixture: %v %s", err, output)
+	}
+	h := NewTranscriptionHandler(st, uploads, AIConfig{APIKey: "test-key"})
+	h.client.Transport = metadataTransport(func(req *http.Request) (*http.Response, error) {
+		if err := req.ParseMultipartForm(1 << 20); err != nil {
+			t.Fatal(err)
+		}
+		defer req.MultipartForm.RemoveAll()
+		file, header, err := req.FormFile("file")
+		if err != nil {
+			t.Fatal(err)
+		}
+		file.Close()
+		if header.Filename != "normalized.mp3" {
+			t.Fatalf("legacy upload sent directly: %q", header.Filename)
+		}
+		if _, err := os.Stat(original); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("original still exists after successful normalization: %v", err)
+		}
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{"text":"Legacy transcript"}`)), Header: make(http.Header)}, nil
+	})
+	if _, err := h.Run(context.Background(), store.Job{ID: "legacy-transcribe", SermonID: "legacy"}, &recordingReporter{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := probeAudio(filepath.Join(dir, "normalized.flac"), audioSpec{codec: "flac", sampleRate: 44100, channels: 1}); err != nil {
+		t.Fatal(err)
 	}
 }
 

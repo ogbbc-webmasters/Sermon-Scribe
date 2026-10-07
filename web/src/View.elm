@@ -4,7 +4,6 @@ import Api exposing (Sermon)
 import Card
 import DateFormat exposing (formatDate)
 import Dict
-import Editor
 import File
 import Html exposing (Html, a, audio, button, details, div, h1, h2, input, label, mark, p, span, strong, summary, text)
 import Html.Attributes exposing (accept, attribute, class, controls, disabled, download, hidden, href, id, placeholder, src, style, title, type_, value)
@@ -18,36 +17,31 @@ import Ui
 
 view : Model -> Html Msg
 view model =
-    case model.editing of
-        Just editor ->
-            Html.map EditorMsg (Editor.view editor)
+    case model.selectedSermon of
+        Just sermon ->
+            let
+                current =
+                    case model.sermons of
+                        Loaded sermons ->
+                            List.filter (\candidate -> candidate.id == sermon.id) sermons
+                                |> List.head
+                                |> Maybe.withDefault sermon
+
+                        _ ->
+                            sermon
+            in
+            viewSermonDetail model current
 
         Nothing ->
-            case model.selectedSermon of
-                Just sermon ->
-                    let
-                        current =
-                            case model.sermons of
-                                Loaded sermons ->
-                                    List.filter (\candidate -> candidate.id == sermon.id) sermons
-                                        |> List.head
-                                        |> Maybe.withDefault sermon
-
-                                _ ->
-                                    sermon
-                    in
-                    viewSermonDetail model current
-
-                Nothing ->
-                    div [ class "page" ]
-                        [ div [ class "masthead" ]
-                            [ h1 [] [ text "Sermon Scribe" ] ]
-                        , viewUpload model.upload
-                        , h2 [] [ text "Sermons" ]
-                        , viewOptionalError model.deleteError
-                        , viewOptionalError model.normalizationError
-                        , viewSermons model
-                        ]
+            div [ class "page" ]
+                [ div [ class "masthead" ]
+                    [ h1 [] [ text "Sermon Scribe" ] ]
+                , viewUpload model.upload
+                , h2 [] [ text "Sermons" ]
+                , viewOptionalError model.deleteError
+                , viewOptionalError model.normalizationError
+                , viewSermons model
+                ]
 
 
 viewSermonDetail : Model -> Sermon -> Html Msg
@@ -202,13 +196,7 @@ viewDetailAudio : Sermon -> Html Msg
 viewDetailAudio sermon =
     let
         source =
-            audioUrl sermon.id
-                (if sermon.editApproved || (sermon.stage == "edit" && sermon.status == "done") then
-                    "final"
-
-                 else
-                    "original"
-                )
+            audioUrl sermon.id "playback"
     in
     Card.view (text "Audio")
         [ Icon.view "a"
@@ -360,7 +348,6 @@ viewProcessingRetry model sermon part label =
                 || sermon.stage
                 == "upload"
                 || (part /= "transcription" && sermon.transcript == Nothing)
-                || (part == "transcription" && sermon.editApproved)
             )
         ]
 
@@ -518,7 +505,6 @@ viewSermon model sermon =
                 [ span [ badgeAttribute sermon ] [ text (describeStage sermon) ]
                 , text (formatDate model.zone sermon.uploadedAt)
                 ]
-            , div [ stopPropagationOn "click" (Decode.succeed ( NoOp, True )) ] [ viewSermonActions model sermon ]
             ]
         , Icon.view "button"
             Icon.openSermon
@@ -569,10 +555,10 @@ viewNormalizedAudio model sermon =
                     ]
                     [ text
                         (if Set.member sermon.id model.reviewingNormalization then
-                            "Continuing…"
+                            "Saving review…"
 
                          else
-                            "Continue"
+                            "Complete Normalization Review"
                         )
                     ]
                     :: adjustmentButtons
@@ -637,57 +623,6 @@ normalizedAudioUrl sermon audioType =
         ++ String.fromInt sermon.normalizationGateAdjustment
         ++ "&volume="
         ++ String.fromInt sermon.normalizationVolumeAdjustment
-
-
-viewSermonActions : Model -> Sermon -> Html Msg
-viewSermonActions model sermon =
-    case model.confirmingDelete of
-        Just pending ->
-            if pending.id == sermon.id then
-                div [ Ui.confirmBox ]
-                    [ p [ Ui.confirmBoxQuestion ]
-                        [ strong [] [ text "Delete this sermon and its audio files?" ] ]
-                    , div [ Ui.confirmBoxButtons ]
-                        [ button
-                            [ Ui.dangerButton, onClick (ConfirmDelete sermon) ]
-                            [ text "Yes, Delete" ]
-                        , button
-                            [ Ui.button, onClick CancelDelete ]
-                            [ text "Cancel" ]
-                        ]
-                    ]
-
-            else
-                viewActionButtons model sermon True
-
-        Nothing ->
-            viewActionButtons model sermon False
-
-
-viewActionButtons : Model -> Sermon -> Bool -> Html Msg
-viewActionButtons model sermon confirmationOpen =
-    let
-        isDeleting =
-            Set.member sermon.id model.deleting
-    in
-    div [ Ui.sermonActions ]
-        (List.concat
-            [ if (sermon.stage == "edit" || (sermon.stage == "normalization" && sermon.status == "done" && sermon.normalizationReviewed)) && not sermon.editApproved then
-                [ button [ Ui.primaryButton, onClick (OpenEditor sermon), disabled (confirmationOpen || isDeleting) ]
-                    [ text
-                        (if sermon.stage == "edit" && sermon.status == "done" then
-                            "Review Final"
-
-                         else
-                            "Open Editor"
-                        )
-                    ]
-                ]
-
-              else
-                []
-            ]
-        )
 
 
 {-| Render a stage/status pair in plain language. Later specs add more

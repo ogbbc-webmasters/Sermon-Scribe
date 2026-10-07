@@ -58,7 +58,7 @@ func TestNormalizeHandlerCommitsArtifactsAndAdjustments(t *testing.T) {
 		if input != filepath.Join(dir, "original.wav") {
 			t.Fatalf("input = %q", input)
 		}
-		if !strings.Contains(filter, "asplit=2") {
+		if !strings.Contains(filter, "aformat=channel_layouts=mono") {
 			t.Fatalf("normalization filter = %q", filter)
 		}
 		if err := os.WriteFile(flac, []byte("flac"), 0o644); err != nil {
@@ -82,20 +82,31 @@ func TestNormalizeHandlerCommitsArtifactsAndAdjustments(t *testing.T) {
 		}
 		return nil
 	}
-	handler.waveform = func(context.Context, string) (Waveform, error) {
-		return Waveform{Duration: 1, SamplesPerSecond: 20, Samples: make([]float64, 20)}, nil
-	}
 	reporter := &recordingReporter{}
-	if _, err := handler.Run(context.Background(), job, reporter); err != nil {
+	result, err := handler.Run(context.Background(), job, reporter)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if result.Next == nil || result.Next.Type != "transcribe" || result.Next.Stage != "transcription" {
+		t.Fatalf("normalization did not chain transcription: %+v", result)
 	}
 	if runs != 1 || !strings.Contains(lastFilter, "threshold=0.030") || !strings.Contains(lastFilter, "loudnorm=I=-14") {
 		t.Fatalf("ffmpeg runs/filter = %d %q", runs, lastFilter)
 	}
-	for _, name := range []string{"normalized.flac", "normalized.mp3", "waveform.json", ".normalization-complete.json"} {
+	for _, name := range []string{"normalized.flac", "normalized.mp3", ".normalization-complete.json"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Fatalf("missing %s: %v", name, err)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "waveform.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("normalization generated a waveform: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "original.wav")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("original upload was not removed: %v", err)
+	}
+	// Legacy artifacts are neither required nor overwritten by normalization.
+	if err := os.WriteFile(filepath.Join(dir, "waveform.json"), []byte("legacy waveform"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 	sm, err := st.GetSermon(sermonID)
 	if err != nil {
@@ -116,7 +127,8 @@ func TestNormalizeHandlerCommitsArtifactsAndAdjustments(t *testing.T) {
 		t.Fatalf("ffmpeg runs after committed retry = %d, want 1", runs)
 	}
 
-	// A relative rerun has a new job ID and adjusted settings, forcing a new render.
+	// Changing normalization cannot silently reapply the filters to an already
+	// normalized FLAC after the original has been deleted.
 	settings, err = AdjustNormalization(settings, string(AdjustmentLessGate))
 	if err != nil {
 		t.Fatal(err)
@@ -126,11 +138,14 @@ func TestNormalizeHandlerCommitsArtifactsAndAdjustments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := handler.Run(context.Background(), job, &recordingReporter{}); err != nil {
-		t.Fatal(err)
+	if _, err := handler.Run(context.Background(), job, &recordingReporter{}); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("rerun without original = %v", err)
 	}
-	if runs != 2 || !strings.Contains(lastFilter, "threshold=0.020") {
+	if runs != 1 {
 		t.Fatalf("rerun runs/filter = %d %q", runs, lastFilter)
+	}
+	if data, err := os.ReadFile(filepath.Join(dir, "waveform.json")); err != nil || string(data) != "legacy waveform" {
+		t.Fatalf("legacy waveform changed: %q, %v", data, err)
 	}
 }
 
@@ -152,6 +167,50 @@ func TestNormalizeHandlerRejectsBadParametersAndMissingOriginal(t *testing.T) {
 	job.Parameters = `{"gate_adjustment":0,"volume_adjustment":0}`
 	if _, err := handler.Run(context.Background(), job, &recordingReporter{}); err == nil || !strings.Contains(err.Error(), "read sermon uploads") {
 		t.Fatalf("missing original error = %v", err)
+	}
+}
+
+func TestNormalizationFailurePreservesOriginal(t *testing.T) {
+	for _, failure := range []string{"encode", "flac", "mp3"} {
+		t.Run(failure, func(t *testing.T) {
+			st := processingTestStore(t)
+			uploads := t.TempDir()
+			dir := filepath.Join(uploads, "failure")
+			if err := os.MkdirAll(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			original := filepath.Join(dir, "original.wav")
+			if err := os.WriteFile(original, []byte("irreplaceable source"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			h := NewNormalizeHandler(st, uploads)
+			h.runFFmpeg = func(_ context.Context, _, flac, mp3, _ string, _ func(int) error) error {
+				if err := os.WriteFile(flac, []byte("flac"), 0o644); err != nil {
+					return err
+				}
+				if failure == "encode" {
+					return errors.New("MP3 encoding failed")
+				}
+				return os.WriteFile(mp3, []byte("mp3"), 0o644)
+			}
+			h.probe = func(_ string, expected audioSpec) error {
+				if expected.codec == failure {
+					return errors.New("invalid audio")
+				}
+				return nil
+			}
+			if _, err := h.Run(context.Background(), store.Job{ID: "failed", SermonID: "failure"}, &recordingReporter{}); err == nil {
+				t.Fatal("failed normalization succeeded")
+			}
+			if data, err := os.ReadFile(original); err != nil || string(data) != "irreplaceable source" {
+				t.Fatalf("original changed after %s failure: %q, %v", failure, data, err)
+			}
+			for _, name := range []string{"normalized.flac", "normalized.mp3", ".normalization-complete.json"} {
+				if _, err := os.Stat(filepath.Join(dir, name)); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("failed normalization published %s: %v", name, err)
+				}
+			}
+		})
 	}
 }
 
@@ -196,7 +255,7 @@ func TestNormalizationAdjustmentsAndFilters(t *testing.T) {
 	}
 }
 
-func TestRunFFmpegProducesMatchingMonoOutputs(t *testing.T) {
+func TestRunFFmpegProducesFLACAndDerived32KbpsMonoMP3(t *testing.T) {
 	if _, err := exec.LookPath("ffmpeg"); err != nil {
 		t.Skip("ffmpeg not installed")
 	}
@@ -221,7 +280,11 @@ func TestRunFFmpegProducesMatchingMonoOutputs(t *testing.T) {
 	if err := probeAudio(mp3, audioSpec{codec: "mp3", sampleRate: 44100, channels: 1}); err != nil {
 		t.Fatal(err)
 	}
-	flacDuration, err := probeDuration(context.Background(), flac)
+	bitrate, err := exec.Command("ffprobe", "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=bit_rate", "-of", "default=noprint_wrappers=1:nokey=1", mp3).Output()
+	if err != nil || strings.TrimSpace(string(bitrate)) != "32000" {
+		t.Fatalf("MP3 bitrate = %q, %v; want 32000", bitrate, err)
+	}
+	inputDuration, err := probeDuration(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +292,7 @@ func TestRunFFmpegProducesMatchingMonoOutputs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if math.Abs(flacDuration-mp3Duration) > 0.05 {
-		t.Fatalf("output durations differ: flac=%f mp3=%f", flacDuration, mp3Duration)
+	if math.Abs(inputDuration-mp3Duration) > 0.05 {
+		t.Fatalf("duration changed: original=%f mp3=%f", inputDuration, mp3Duration)
 	}
 }

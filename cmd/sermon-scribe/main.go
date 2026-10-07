@@ -58,7 +58,6 @@ func main() {
 	transcribe := processing.NewTranscriptionHandler(st, *uploadsDir, aiConfig)
 	metadata := processing.NewMetadataHandler(st, aiConfig)
 	normalize := processing.NewNormalizeHandler(st, *uploadsDir)
-	applyEdits := processing.NewApplyEditsHandler(st, *uploadsDir)
 	queue := processing.NewQueue(st, map[string]processing.Handler{
 		"transcribe":         transcribe,
 		"extract_metadata":   metadata,
@@ -66,7 +65,6 @@ func main() {
 		"extract_topics":     metadata,
 		"extract_scriptures": metadata,
 		"normalize":          normalize,
-		"apply_edits":        applyEdits,
 	}, processing.Config{Events: events})
 	queue.Start(ctx)
 	defer queue.Stop()

@@ -74,8 +74,8 @@ func (s *Store) StartUpload(id string) error {
 	return nil
 }
 
-// CompleteUpload atomically advances a stored upload to transcription/pending
-// and enqueues its transcription job.
+// CompleteUpload atomically advances a stored upload to normalization/pending
+// and enqueues its normalization job.
 func (s *Store) CompleteUpload(sermonID, jobID string, now time.Time) (Sermon, error) {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -84,7 +84,7 @@ func (s *Store) CompleteUpload(sermonID, jobID string, now time.Time) (Sermon, e
 	defer tx.Rollback()
 
 	res, err := tx.Exec(
-		`UPDATE sermons SET stage = 'transcription', status = 'pending'
+		`UPDATE sermons SET stage = 'normalization', status = 'pending'
 		 WHERE id = ? AND stage = 'upload' AND status = 'running'`, sermonID)
 	if err != nil {
 		return Sermon{}, err
@@ -98,8 +98,8 @@ func (s *Store) CompleteUpload(sermonID, jobID string, now time.Time) (Sermon, e
 	}
 
 	job := NewJob{
-		ID: jobID, SermonID: sermonID, Type: "transcribe", Stage: "transcription",
-		Parameters: `{}`,
+		ID: jobID, SermonID: sermonID, Type: "normalize", Stage: "normalization",
+		Parameters: `{"gate_adjustment":0,"volume_adjustment":0}`,
 	}
 	if err := enqueueJobTx(tx, job, now); err != nil {
 		return Sermon{}, err
@@ -146,7 +146,7 @@ func (s *Store) EnqueueProcessingRerun(sermonID, jobID, part string, now time.Ti
 		return Sermon{}, ErrNotRetryable
 	}
 	resume := processingReturnState{Stage: sm.Stage, Status: sm.Status}
-	if sm.Stage == "metadata" || sm.Stage == "transcription" || sm.Stage == "title" || sm.Stage == "topics" || sm.Stage == "scriptures" {
+	if sm.Stage == "metadata" || sm.Stage == "transcription" || sm.Stage == "title" || sm.Stage == "topics" || sm.Stage == "scriptures" || sm.Stage == "edit" {
 		resume = processingReturnState{Stage: "metadata", Status: "done"}
 	}
 	// A failed rerun retains the state it was originally meant to restore.
@@ -242,77 +242,6 @@ func (s *Store) SetNormalizationAdjustments(sermonID string, gate, volume int) e
 	return nil
 }
 
-// EnqueueApplyEdits moves a normalized or previously rendered sermon to edit/pending.
-func (s *Store) EnqueueApplyEdits(sermonID, jobID, parameters string, now time.Time) (Sermon, error) {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return Sermon{}, err
-	}
-	defer tx.Rollback()
-	res, err := tx.Exec(`UPDATE sermons SET stage='edit', status='pending'
-		WHERE id=? AND edit_approved=0 AND status='done' AND stage IN ('normalization','edit')`, sermonID)
-	if err != nil {
-		return Sermon{}, err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return Sermon{}, err
-	}
-	if n == 0 {
-		return Sermon{}, ErrEditConflict
-	}
-	if err := enqueueJobTx(tx, NewJob{ID: jobID, SermonID: sermonID, Type: "apply_edits", Stage: "edit", Parameters: parameters}, now); err != nil {
-		return Sermon{}, err
-	}
-	sm, err := getSermon(tx, sermonID)
-	if err != nil {
-		return Sermon{}, err
-	}
-	return sm, tx.Commit()
-}
-
-// SetAppliedRegions stores the exact plan which produced the published final audio.
-func (s *Store) SetAppliedRegions(sermonID string, regions []byte) error {
-	res, err := s.db.Exec(`UPDATE sermons SET applied_regions=? WHERE id=? AND edit_approved=0`, string(regions), sermonID)
-	if err != nil {
-		return err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-	if n == 0 {
-		return ErrEditConflict
-	}
-	return nil
-}
-
-// ApproveEdit durably marks a completed edit irreversible. File cleanup is
-// deliberately performed by the caller after this transaction commits.
-func (s *Store) ApproveEdit(id string) (Sermon, error) {
-	tx, err := s.db.Begin()
-	if err != nil {
-		return Sermon{}, err
-	}
-	defer tx.Rollback()
-	res, err := tx.Exec(`UPDATE sermons SET edit_approved=1 WHERE id=? AND stage='edit' AND status='done' AND edit_approved=0`, id)
-	if err != nil {
-		return Sermon{}, err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return Sermon{}, err
-	}
-	if n == 0 {
-		return Sermon{}, ErrEditConflict
-	}
-	sm, err := getSermon(tx, id)
-	if err != nil {
-		return Sermon{}, err
-	}
-	return sm, tx.Commit()
-}
-
 type sqlExecer interface {
 	Exec(query string, args ...any) (sql.Result, error)
 }
@@ -370,6 +299,7 @@ func (s *Store) DiscardInterruptedUploads() ([]string, error) {
 }
 
 // RecoverRunningJobs returns work abandoned by a stopped process to the queue.
+// Retired edit jobs are failed without discarding their history or artifacts.
 func (s *Store) RecoverRunningJobs() error {
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -377,6 +307,16 @@ func (s *Store) RecoverRunningJobs() error {
 	}
 	defer tx.Rollback()
 
+	if _, err := tx.Exec(`UPDATE sermons SET status='failed'
+		WHERE stage='edit' AND status IN ('pending','running') AND EXISTS (
+			SELECT 1 FROM jobs WHERE sermon_id=sermons.id AND type='apply_edits' AND state IN ('queued','running')
+		)`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE jobs SET state='failed', last_error='The previous audio editor has been removed.'
+		WHERE type='apply_edits' AND state IN ('queued','running')`); err != nil {
+		return err
+	}
 	if _, err := tx.Exec(
 		`UPDATE sermons SET status = 'pending'
 		 WHERE status = 'running' AND EXISTS (
@@ -384,6 +324,7 @@ func (s *Store) RecoverRunningJobs() error {
 			WHERE jobs.sermon_id = sermons.id
 			  AND jobs.stage = sermons.stage
 			  AND jobs.state = 'running'
+			  AND jobs.type != 'apply_edits'
 		)`); err != nil {
 		return err
 	}
@@ -392,7 +333,7 @@ func (s *Store) RecoverRunningJobs() error {
 		 SET state = 'queued',
 		     attempts = CASE WHEN attempts > 0 THEN attempts - 1 ELSE 0 END,
 		     updated_at = ?
-		 WHERE state = 'running'`,
+		 WHERE state = 'running' AND type != 'apply_edits'`,
 		time.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 		return err
 	}
@@ -401,6 +342,7 @@ func (s *Store) RecoverRunningJobs() error {
 
 // ClaimNextJob atomically claims the oldest ready job whose type has a
 // registered handler. Claiming increments the current execution-cycle attempt.
+// Legacy apply_edits rows are inert even if a caller requests their type.
 func (s *Store) ClaimNextJob(ctx context.Context, types []string, now time.Time) (Job, error) {
 	if len(types) == 0 {
 		return Job{}, ErrNoJob
@@ -417,7 +359,7 @@ func (s *Store) ClaimNextJob(ctx context.Context, types []string, now time.Time)
 		SET state = 'running', attempts = attempts + 1, updated_at = ?
 		WHERE id = (
 			SELECT id FROM jobs
-			WHERE state = 'queued' AND available_at <= ? AND type IN (` + placeholders + `)
+			WHERE state = 'queued' AND type != 'apply_edits' AND available_at <= ? AND type IN (` + placeholders + `)
 			ORDER BY available_at, created_at, id LIMIT 1
 		) AND state = 'queued'
 		RETURNING id, sermon_id, type, stage, state, attempts, progress,
@@ -599,7 +541,7 @@ func (s *Store) RetryFailedJob(sermonID string, now time.Time) (Job, Sermon, err
 	var jobID string
 	err = tx.QueryRow(
 		`SELECT j.id FROM jobs j JOIN sermons s ON s.id = j.sermon_id
-		 WHERE s.id = ? AND s.status = 'failed' AND j.stage = s.stage AND j.state = 'failed'
+		 WHERE s.id = ? AND s.status = 'failed' AND j.stage = s.stage AND j.state = 'failed' AND j.type != 'apply_edits'
 		 ORDER BY j.created_at DESC, j.id DESC LIMIT 1`, sermonID).Scan(&jobID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Job{}, Sermon{}, ErrNotRetryable

@@ -13,10 +13,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 )
 
-const normalizationPipelineVersion = 1
+const normalizationPipelineVersion = 2
 
 // NormalizationSettings are relative adjustments from the default treatment.
 type NormalizationSettings struct {
@@ -111,20 +112,19 @@ type audioSpec struct {
 type ffmpegRunner func(context.Context, string, string, string, string, func(int) error) error
 type audioProbe func(string, audioSpec) error
 
-// NormalizeHandler produces the lossless master and browser proxy for one job.
+// NormalizeHandler retains a normalized FLAC and derives the MP3 from it.
 type NormalizeHandler struct {
 	store      *store.Store
 	uploadsDir string
 	runFFmpeg  ffmpegRunner
 	probe      audioProbe
-	waveform   func(context.Context, string) (Waveform, error)
 }
 
 // NewNormalizeHandler builds the production FFmpeg-backed normalization handler.
 func NewNormalizeHandler(st *store.Store, uploadsDir string) *NormalizeHandler {
 	return &NormalizeHandler{
 		store: st, uploadsDir: uploadsDir,
-		runFFmpeg: runFFmpeg, probe: probeAudio, waveform: GenerateWaveform,
+		runFFmpeg: runFFmpeg, probe: probeAudio,
 	}
 }
 
@@ -134,22 +134,14 @@ func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Repo
 	if err != nil {
 		return Result{}, err
 	}
-	input, err := findOriginal(filepath.Join(h.uploadsDir, job.SermonID))
-	if err != nil {
-		return Result{}, err
-	}
-
-	dir := filepath.Dir(input)
+	dir := filepath.Join(h.uploadsDir, job.SermonID)
 	flacFinal := filepath.Join(dir, "normalized.flac")
 	mp3Final := filepath.Join(dir, "normalized.mp3")
 	flacTemp := filepath.Join(dir, ".normalize-"+job.ID+".flac")
 	mp3Temp := filepath.Join(dir, ".normalize-"+job.ID+".mp3")
-	waveformFinal := filepath.Join(dir, "waveform.json")
-	waveformTemp := filepath.Join(dir, ".normalize-"+job.ID+"-waveform.json")
 	markerPath := filepath.Join(dir, ".normalization-complete.json")
 	defer os.Remove(flacTemp)
 	defer os.Remove(mp3Temp)
-	defer os.Remove(waveformTemp)
 
 	marker := CompletionMarker{
 		JobID: job.ID, Parameters: job.Parameters,
@@ -162,28 +154,20 @@ func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Repo
 		{TemporaryPath: mp3Temp, FinalPath: mp3Final, Validate: func(path string) error {
 			return h.probe(path, audioSpec{codec: "mp3", sampleRate: 44100, channels: 1})
 		}},
-		{TemporaryPath: waveformTemp, FinalPath: waveformFinal, Validate: validateWaveformFile},
 	}
 	committed, err := HasCommittedArtifacts(markerPath, marker, artifacts)
 	if err != nil {
 		return Result{}, err
 	}
 	if !committed {
+		input, err := findOriginal(dir)
+		if err != nil {
+			return Result{}, err
+		}
 		filter := normalizationFilter(settings)
 		if err := h.runFFmpeg(ctx, input, flacTemp, mp3Temp, filter, func(percent int) error {
 			return reporter.Progress(percent, nil)
 		}); err != nil {
-			return Result{}, err
-		}
-		waveform, err := h.waveform(ctx, flacTemp)
-		if err != nil {
-			return Result{}, err
-		}
-		data, err := EncodeWaveform(waveform)
-		if err != nil {
-			return Result{}, err
-		}
-		if err := os.WriteFile(waveformTemp, data, 0o644); err != nil {
 			return Result{}, err
 		}
 		if err := CommitArtifacts(markerPath, marker, artifacts); err != nil {
@@ -195,22 +179,24 @@ func (h *NormalizeHandler) Run(ctx context.Context, job store.Job, reporter Repo
 	); err != nil {
 		return Result{}, fmt.Errorf("store normalization adjustments: %w", err)
 	}
+	// Both outputs and the completion marker are durable before deleting the
+	// upload. A retry after deletion can use the marker without the original.
+	if original, err := findOriginal(dir); err == nil {
+		if err := os.Remove(original); err != nil {
+			return Result{}, fmt.Errorf("remove normalized original upload: %w", err)
+		}
+		if err := syncDir(dir); err != nil {
+			return Result{}, fmt.Errorf("sync original upload removal: %w", err)
+		}
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return Result{}, err
+	}
 	if err := reporter.Progress(100, nil); err != nil {
 		return Result{}, err
 	}
-	return Result{}, nil
-}
-
-func validateWaveformFile(path string) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	var waveform Waveform
-	if err := json.Unmarshal(data, &waveform); err != nil {
-		return err
-	}
-	return ValidateWaveform(waveform)
+	return Result{Next: &store.NewJob{
+		ID: uuid.New().String(), Type: "transcribe", Stage: "transcription",
+	}}, nil
 }
 
 func normalizationFilter(settings NormalizationSettings) string {
@@ -222,9 +208,8 @@ func normalizationFilter(settings NormalizationSettings) string {
 	filters = append(filters,
 		fmt.Sprintf("loudnorm=I=%d:LRA=11:TP=-1.5:dual_mono=true", loudnessLU),
 		"aresample=44100",
-		"asplit=2[master][proxy]",
 	)
-	return "[0:a:0]" + strings.Join(filters, ",")
+	return strings.Join(filters, ",")
 }
 
 func normalizationGate(adjustment int) string {
@@ -264,12 +249,29 @@ func findOriginal(dir string) (string, error) {
 		}
 	}
 	if found == "" {
-		return "", errors.New("original audio file not found")
+		return "", fmt.Errorf("original audio file not found: %w", os.ErrNotExist)
 	}
 	return found, nil
 }
 
 func runFFmpeg(ctx context.Context, input, flacOutput, mp3Output, filter string, onProgress func(int) error) error {
+	if err := encodeAudio(ctx, input, flacOutput, []string{"-af", filter, "-c:a", "flac"}, func(percent int) error {
+		if percent < 0 {
+			return onProgress(percent)
+		}
+		return onProgress(percent * 70 / 100)
+	}); err != nil {
+		return err
+	}
+	return encodeAudio(ctx, flacOutput, mp3Output, []string{"-c:a", "libmp3lame", "-b:a", "32k"}, func(percent int) error {
+		if percent < 0 {
+			return onProgress(percent)
+		}
+		return onProgress(70 + percent*30/100)
+	})
+}
+
+func encodeAudio(ctx context.Context, input, output string, options []string, onProgress func(int) error) error {
 	duration, durationErr := probeDuration(ctx, input)
 	initialProgress := 0
 	if durationErr != nil || duration <= 0 {
@@ -281,11 +283,12 @@ func runFFmpeg(ctx context.Context, input, flacOutput, mp3Output, filter string,
 	}
 	args := []string{
 		"-hide_banner", "-nostdin", "-y", "-i", input,
-		"-filter_complex", filter,
-		"-map", "[master]", "-ac", "1", "-ar", "44100", "-c:a", "flac", flacOutput,
-		"-map", "[proxy]", "-ac", "1", "-ar", "44100", "-c:a", "libmp3lame", "-b:a", "128k", mp3Output,
-		"-progress", "pipe:1", "-nostats",
+		"-map", "0:a:0", "-ac", "1", "-ar", "44100",
 	}
+	args = append(args, options...)
+	args = append(args, output,
+		"-progress", "pipe:1", "-nostats",
+	)
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
