@@ -1,9 +1,8 @@
 module Dialog exposing (view)
 
-import Button
 import Html exposing (Html, div, h2, text)
 import Html.Attributes exposing (attribute, id)
-import Html.Events exposing (onClick, preventDefaultOn)
+import Html.Events exposing (preventDefaultOn)
 import Json.Decode as Decode
 import Ui
 
@@ -19,10 +18,7 @@ view config attributes content actions =
              ]
                 ++ attributes
             )
-            [ div [ Ui.dialogHeader ]
-                [ h2 [ Ui.panelHeading, id (config.id ++ "-title") ] [ text config.title ]
-                , Button.action "ph:x" "Close dialog" False [ onClick config.onClose ]
-                ]
+            [ h2 [ Ui.panelHeading, id (config.id ++ "-title") ] [ text config.title ]
             , div [ Ui.dialogBody, id (config.id ++ "-body") ] content
             , div [ Ui.dialogActions ] actions
             ]

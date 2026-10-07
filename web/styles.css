@@ -278,13 +278,6 @@ h2::after {
   margin: var(--space-xl) 0;
 }
 
-.dialog__header {
-  align-items: center;
-  display: flex;
-  gap: var(--space-xl);
-  justify-content: space-between;
-}
-
 /* editor — audio-first section list and one open adjustment at a time */
 
 .editor__actions {

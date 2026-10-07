@@ -6,7 +6,6 @@ module Ui exposing
     , dialog
     , dialogActions
     , dialogBody
-    , dialogHeader
     , emptyState
     , errorPanel
     , errorText
@@ -143,11 +142,6 @@ dialogActions =
 dialogBody : Html.Attribute msg
 dialogBody =
     class "dialog__body"
-
-
-dialogHeader : Html.Attribute msg
-dialogHeader =
-    class "dialog__header"
 
 
 
