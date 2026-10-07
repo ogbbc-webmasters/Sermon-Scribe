@@ -9,6 +9,7 @@ module Api exposing
     , pipelineEventDecoder
     , retryProcessing
     , saveScriptures
+    , scriptureOptions
     , sermonDecoder
     , uploadSermon
     , uploadTracker
@@ -150,9 +151,9 @@ decodeMetadata sermon =
         |> Decode.andThen
             (\decodedSermon ->
                 Decode.map2
-                    (\scriptureOptions topics ->
+                    (\options topics ->
                         { decodedSermon
-                            | scriptureOptions = scriptureOptions
+                            | scriptureOptions = options
                             , topics = topics
                         }
                     )
@@ -237,6 +238,25 @@ pipelineUpdateDecoder : Decoder PipelineEvent
 pipelineUpdateDecoder =
     Decode.field "data" sermonDecoder
         |> Decode.map PipelineUpdate
+
+
+scriptureOptions : Sermon -> List String
+scriptureOptions sermon =
+    let
+        readings =
+            List.filterMap identity [ sermon.oldTestamentReading, sermon.newTestamentReading ]
+
+        available =
+            if List.isEmpty sermon.scriptureOptions then
+                sermon.scriptures
+
+            else
+                sermon.scriptureOptions
+
+        additional =
+            List.filter (\reference -> not (List.member reference readings)) available
+    in
+    List.take 6 (readings ++ additional)
 
 
 {-| Tracker id for `Http.track`ing upload progress.

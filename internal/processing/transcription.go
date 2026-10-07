@@ -23,6 +23,7 @@ import (
 const openRouterURL = "https://openrouter.ai/api/v1"
 const openRouterDecisionsURL = "https://openrouter.ai/api/alpha/decisions"
 const maxTranscriptionRequestBytes = 25_000_000
+const maxScriptureOptions = 6
 
 type AIConfig struct {
 	APIKey             string
@@ -395,6 +396,9 @@ func (h *MetadataHandler) Run(ctx context.Context, job store.Job, reporter Repor
 			scriptureOptions = append(scriptureOptions, candidate)
 		}
 	}
+	if len(scriptureOptions) > maxScriptureOptions {
+		scriptureOptions = scriptureOptions[:maxScriptureOptions]
+	}
 	title, scores, err := h.classifyMetadata(ctx, *sermon.Transcript, result.TitleCandidates, job.Type != "extract_title" && job.Type != "extract_scriptures")
 	if err != nil {
 		return Result{}, err
@@ -556,7 +560,7 @@ func metadataPrompt(transcript, jobType string) string {
 func scriptureExtractionInstructions() string {
 	return `- old_testament_reading: the identifiable formal Old Testament passage read at the opening of this sermon, if stated in the transcript; otherwise an empty string.
 - new_testament_reading: the identifiable formal New Testament passage read at the opening of this sermon, if stated in the transcript; otherwise an empty string.
-- scriptures: additional Scripture passages beyond those readings that are substantively developed and could reasonably be selected as references for this sermon. Do not include every chapter or passing citation: omit brief quotations, rapid supporting citations, incidental allusions, and uncertain references. Include the governing text and other passages essential to the sermon’s main reasoning or application. These are optional candidates, not selected references.
+- scriptures: additional Scripture passages beyond those readings, with no more than six total references across the two readings and this list (up to four additional passages when both readings are present, or up to six when neither is present). Include only passages substantively developed and important to the sermon's main reasoning or application. Prioritize the governing text and the most central supporting passages. Do not include every chapter or passing citation: omit brief quotations, rapid supporting citations, incidental allusions, and uncertain references. These are optional candidates, not selected references.
 	Use full Bible book names and always include verse numbers. Use standard Book C:V or Book C:V1-V2 references; never return a bare chapter. If the sermon treats a whole chapter as a primary passage, give its full verse range from verse 1 through the chapter's last verse (for example, Romans 8:1-39); do not shorten it to just the book and chapter. Do not invent a narrower verse range when the transcript does not support it.
   Deduplicate and combine overlapping or contiguous verses. Return normalized references as strings.
 `

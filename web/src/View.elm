@@ -166,24 +166,12 @@ viewDetailMetadata : Model -> Sermon -> Html Msg
 viewDetailMetadata model sermon =
     let
         options =
-            if List.isEmpty sermon.scriptureOptions then
-                sermon.scriptures
-
-            else
-                sermon.scriptureOptions
+            Api.scriptureOptions sermon
 
         selected =
             Dict.get sermon.id model.scriptureDrafts
                 |> Maybe.withDefault (Set.fromList sermon.scriptures)
 
-        readingReferences =
-            List.filterMap identity [ sermon.oldTestamentReading, sermon.newTestamentReading ]
-
-        additionalOptions =
-            List.filter (\reference -> not (List.member reference readingReferences)) options
-
-        scriptureOptions =
-            readingReferences ++ additionalOptions
     in
     div [ class "sermon-detail__sections" ]
         [ Card.view (text "Scripture References")
@@ -201,7 +189,7 @@ viewDetailMetadata model sermon =
 
               else
                 div [ class "sermon-detail__scripture-selections" ]
-                    (List.map (viewScriptureOption sermon.id selected) scriptureOptions)
+                    (List.map (viewScriptureOption sermon.id selected) options)
             , if Set.member sermon.id model.scriptureSaveErrors then
                 div [ class "sermon-detail__scripture-save-error" ]
                     [ p [ class "sermon-detail__scripture-status" ] [ text "Could not save your selection." ]

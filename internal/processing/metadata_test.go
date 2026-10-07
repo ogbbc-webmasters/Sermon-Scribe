@@ -315,7 +315,7 @@ func TestMetadataHandlerSelectsTitleAndPreservesTopics(t *testing.T) {
 							{"title":"Receive wisdom","title_generated":true,"title_reasoning":"Closing exhortation."}
 						]`
 					}
-					if !strings.Contains(payload.Messages[0].Content, "old_testament_reading:") || !strings.Contains(payload.Messages[0].Content, "new_testament_reading:") || !strings.Contains(payload.Messages[0].Content, "additional Scripture passages beyond those readings") || !strings.Contains(payload.Messages[0].Content, "rapid supporting citations") || !strings.Contains(payload.Messages[0].Content, "never return a bare chapter") || !strings.Contains(payload.Messages[0].Content, "full verse range from verse 1") {
+					if !strings.Contains(payload.Messages[0].Content, "old_testament_reading:") || !strings.Contains(payload.Messages[0].Content, "new_testament_reading:") || !strings.Contains(payload.Messages[0].Content, "no more than six total references") || !strings.Contains(payload.Messages[0].Content, "up to six when neither is present") || !strings.Contains(payload.Messages[0].Content, "rapid supporting citations") || !strings.Contains(payload.Messages[0].Content, "never return a bare chapter") || !strings.Contains(payload.Messages[0].Content, "full verse range from verse 1") {
 						t.Fatal("scripture extraction prompt does not prioritize primary passages")
 					}
 					metadata := `{"title_candidates":` + candidates + `,"speaker":"John Doe","old_testament_reading":"Genesis 1:1-5","new_testament_reading":"John 1:1-5","scriptures":["James 1:5","James 1:6","James 1:5-6","Romans 8:28","Psalm 23:1","Acts 2:42","Revelation 2:4"],"topics":["Assurance","Atonement"],"topics_reasoning":{"Assurance":"Legacy reasoning must be ignored."}}`
@@ -411,7 +411,7 @@ func TestMetadataHandlerSelectsTitleAndPreservesTopics(t *testing.T) {
 			if sm.Title == nil || *sm.Title != tt.wantTitle || sm.TitleGenerated == nil || *sm.TitleGenerated != tt.generated || sm.TitleReasoning == nil || *sm.TitleReasoning != tt.wantReason {
 				t.Fatalf("incorrect winning title metadata: %+v", sm)
 			}
-			if sm.Speaker == nil || *sm.Speaker != "John Doe" || sm.OldTestamentReading != "Genesis 1:1-5" || sm.NewTestamentReading != "John 1:1-5" || !reflect.DeepEqual(sm.Scriptures, []string{"Genesis 1:1-5", "John 1:1-5"}) || !reflect.DeepEqual(sm.ScriptureOptions, []string{"Genesis 1:1-5", "John 1:1-5", "James 1:5-6", "Romans 8:28", "Psalm 23:1", "Acts 2:42", "Revelation 2:4"}) || !reflect.DeepEqual(sm.Topics, []string{"Assurance", "Atonement"}) || len(sm.TopicScores) != 79 || sm.TopicScores["Assurance"] != 0.81 || sm.TopicScores["Atonement"] != 0.23 {
+			if sm.Speaker == nil || *sm.Speaker != "John Doe" || sm.OldTestamentReading != "Genesis 1:1-5" || sm.NewTestamentReading != "John 1:1-5" || !reflect.DeepEqual(sm.Scriptures, []string{"Genesis 1:1-5", "John 1:1-5"}) || !reflect.DeepEqual(sm.ScriptureOptions, []string{"Genesis 1:1-5", "John 1:1-5", "James 1:5-6", "Romans 8:28", "Psalm 23:1", "Acts 2:42"}) || len(sm.ScriptureOptions) > maxScriptureOptions || !reflect.DeepEqual(sm.Topics, []string{"Assurance", "Atonement"}) || len(sm.TopicScores) != 79 || sm.TopicScores["Assurance"] != 0.81 || sm.TopicScores["Atonement"] != 0.23 {
 				t.Fatalf("incorrect other metadata: %+v", sm)
 			}
 			encoded, err := json.Marshal(sm)

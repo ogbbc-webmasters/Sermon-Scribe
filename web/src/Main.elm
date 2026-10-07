@@ -222,7 +222,7 @@ update msg model =
                 Just sermon ->
                     let
                         options =
-                            scriptureOptions sermon
+                            Api.scriptureOptions sermon
 
                         current =
                             Dict.get id model.scriptureDrafts
@@ -259,7 +259,7 @@ update msg model =
             let
                 latest =
                     Dict.get id model.scriptureDrafts
-                        |> Maybe.map (\selection -> List.filter (\option -> Set.member option selection) (scriptureOptions sermon))
+                        |> Maybe.map (\selection -> List.filter (\option -> Set.member option selection) (Api.scriptureOptions sermon))
                         |> Maybe.withDefault submitted
 
                 updated =
@@ -293,7 +293,7 @@ update msg model =
             let
                 selected =
                     Dict.get sermon.id model.scriptureDrafts
-                        |> Maybe.map (\selection -> List.filter (\option -> Set.member option selection) (scriptureOptions sermon))
+                        |> Maybe.map (\selection -> List.filter (\option -> Set.member option selection) (Api.scriptureOptions sermon))
                         |> Maybe.withDefault sermon.scriptures
             in
             ( { model
@@ -456,15 +456,6 @@ findSermon id sermonList =
 
         _ ->
             Nothing
-
-
-scriptureOptions : Api.Sermon -> List String
-scriptureOptions sermon =
-    if List.isEmpty sermon.scriptureOptions then
-        sermon.scriptures
-
-    else
-        sermon.scriptureOptions
 
 
 uploadErrorMessage : Http.Error -> String
