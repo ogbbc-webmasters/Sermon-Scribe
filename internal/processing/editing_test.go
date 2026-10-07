@@ -373,28 +373,25 @@ func TestWaveformPeaksPreserveTimeAndSignedAmplitude(t *testing.T) {
 	if out, err := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "aevalsrc=if(lt(t\\,1)\\,0.2\\,if(lt(t\\,2)\\,-0.6\\,if(lt(t\\,3)\\,0\\,0.1))):s=8000:d=4", input).CombinedOutput(); err != nil {
 		t.Fatalf("fixture: %v %s", err, out)
 	}
-	peaks, hires, err := WaveformPeaks(context.Background(), input, 4)
+	hires, err := WaveformPeaks(context.Background(), input, 4)
 	if err != nil {
 		t.Fatal(err)
-	}
-	if len(peaks) != 4000 {
-		t.Fatalf("peak count: %d", len(peaks))
 	}
 	if len(hires) != 400 {
 		t.Fatalf("high-resolution pair count: %d", len(hires)/2)
 	}
-	for index, want := range map[int]float64{100: 0.2, 1200: 0.6, 2200: 0, 3500: 0.1} {
-		if math.Abs(peaks[index]-want) > 0.0001 {
-			t.Fatalf("peak %d: %f, want %f", index, peaks[index], want)
+	for index, want := range map[int]int16{10: 6553, 110: -19660, 210: 0, 350: 3276} {
+		if math.Abs(float64(hires[index])-float64(want)) > 1 {
+			t.Fatalf("peak %d: %d, want %d", index, hires[index], want)
 		}
 	}
 	if hires[0] <= 0 || hires[1] <= 0 || hires[100] >= 0 || hires[101] >= 0 || hires[200] != 0 || hires[201] != 0 || hires[300] <= 0 || hires[301] <= 0 {
 		t.Fatalf("high-resolution signed min/max pairs: %+v", hires[:8])
 	}
-	if _, _, err := WaveformPeaks(context.Background(), input, 0); err == nil {
+	if _, err := WaveformPeaks(context.Background(), input, 0); err == nil {
 		t.Fatal("accepted zero duration")
 	}
-	if _, _, err := WaveformPeaks(context.Background(), input+"missing", 4); err == nil {
+	if _, err := WaveformPeaks(context.Background(), input+"missing", 4); err == nil {
 		t.Fatal("accepted missing source")
 	}
 }

@@ -208,32 +208,22 @@ customElements.define("editing-waveform", class extends HTMLElement {
     spinner.setAttribute("aria-hidden", "true");
     this.status.append(spinner, "Loading waveform…");
     this.append(this.status);
-    this.peaks = [];
     this.hires = null;
     this.draw();
     try {
-      const response = await fetch(this.getAttribute("src"), { signal: request.signal });
+      const response = await fetch(this.getAttribute("src") + "/highres", { signal: request.signal });
       if (!response.ok) throw new Error("Waveform unavailable");
-      const wave = await response.json();
+      const buffer = await response.arrayBuffer();
       if (request.signal.aborted) return;
-      this.peaks = wave.peaks;
+      if (!buffer.byteLength || buffer.byteLength % 4 !== 0 || Number(response.headers.get("X-Waveform-Rate")) !== hiresRate) {
+        throw new Error("Invalid high-resolution waveform");
+      }
+      const view = new DataView(buffer);
+      this.hires = new Int16Array(buffer.byteLength / 2);
+      for (let i = 0; i < this.hires.length; i++) this.hires[i] = view.getInt16(i * 2, true);
       this.status.remove();
-      this.setAttribute("aria-busy", "false");
       this.removeAttribute("title");
       this.draw();
-      try {
-        const hiresResponse = await fetch(this.getAttribute("src") + "/highres", { signal: request.signal });
-        if (!hiresResponse.ok) throw new Error("High-resolution waveform unavailable");
-        const buffer = await hiresResponse.arrayBuffer();
-        if (buffer.byteLength % 4 !== 0 || Number(hiresResponse.headers.get("X-Waveform-Rate")) !== hiresRate) {
-          throw new Error("Invalid high-resolution waveform");
-        }
-        const view = new DataView(buffer);
-        this.hires = new Int16Array(buffer.byteLength / 2);
-        for (let i = 0; i < this.hires.length; i++) this.hires[i] = view.getInt16(i * 2, true);
-      } catch (error) {
-        if (error.name !== "AbortError") this.hires = null;
-      }
     } catch (error) {
       if (!request.signal.aborted) {
         this.status.textContent = "Waveform unavailable. You can still select sections with the arrow keys.";
@@ -295,15 +285,13 @@ customElements.define("editing-waveform", class extends HTMLElement {
     return Math.max(0, Math.min(this.draft.duration, (bestPair + 0.5) / hiresRate));
   }
 
-  waveformRangeAt(start, end, overviewPeak) {
+  waveformRangeAt(start, end) {
     const pairs = this.hires?.length / 2;
-    if (!pairs || (end - start) * hiresRate > 12) {
-      return { min: -overviewPeak, max: overviewPeak };
-    }
+    if (!pairs) return { min: 0, max: 0 };
 
     const from = Math.max(0, Math.floor(start * hiresRate));
     const to = Math.min(pairs, Math.max(from + 1, Math.ceil(end * hiresRate)));
-    if (from >= to) return { min: -overviewPeak, max: overviewPeak };
+    if (from >= to) return { min: 0, max: 0 };
 
     let min = 32767;
     let max = -32768;
@@ -335,7 +323,7 @@ customElements.define("editing-waveform", class extends HTMLElement {
     const ratio = window.devicePixelRatio || 1;
     this.canvas.width = Math.round(width * ratio);
     this.canvas.height = Math.round(height * ratio);
-    if (!this.peaks?.length) return;
+    if (!this.hires?.length) return;
     const ctx = this.canvas.getContext("2d");
     ctx.scale(ratio, ratio);
     const styles = getComputedStyle(this);
@@ -355,17 +343,12 @@ customElements.define("editing-waveform", class extends HTMLElement {
         ctx.strokeRect(start + 1.5, 1.5, Math.max(0, end - start - 3), height - 3);
       }
     });
-    const peaks = this.peaks || [];
     let section = 0;
     for (let x = 0; x < width; x++) {
       while (section < draft.sections.length - 1 && x >= position(draft.breakpoints[section + 1].time)) section++;
-      let peak = 0;
       const sampleStart = viewStart + x / width * span;
       const sampleEnd = viewStart + (x + 1) / width * span;
-      const from = Math.floor(sampleStart / draft.duration * peaks.length);
-      const to = Math.max(from + 1, Math.ceil(sampleEnd / draft.duration * peaks.length));
-      for (let i = from; i < Math.min(to, peaks.length); i++) peak = Math.max(peak, peaks[i]);
-      const range = this.waveformRangeAt(sampleStart, sampleEnd, peak);
+      const range = this.waveformRangeAt(sampleStart, sampleEnd);
       const scale = waveHeight / 2 - 10;
       const top = waveHeight / 2 - range.max * scale;
       const bottom = waveHeight / 2 - range.min * scale;

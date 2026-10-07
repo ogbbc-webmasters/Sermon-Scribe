@@ -181,24 +181,6 @@ func TestEditingWaveformCacheTracksSourceNotDraft(t *testing.T) {
 			t.Fatalf("fixture: %v %s", err, out)
 		}
 	}
-	read := func(want float64) {
-		t.Helper()
-		resp, err := http.Get(ts.URL + "/api/sermons/waveform/editing/waveform")
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer resp.Body.Close()
-		var got struct {
-			Duration float64   `json:"duration"`
-			Peaks    []float64 `json:"peaks"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
-			t.Fatal(err)
-		}
-		if resp.StatusCode != 200 || got.Duration != 4 || len(got.Peaks) != 4000 || got.Peaks[1000] < want-0.0001 || got.Peaks[1000] > want+0.0001 || resp.Header.Get("Cache-Control") != "no-store" {
-			t.Fatalf("waveform response: %d, duration=%f, count=%d", resp.StatusCode, got.Duration, len(got.Peaks))
-		}
-	}
 	readHires := func(want int16) {
 		t.Helper()
 		resp, err := http.Get(ts.URL + "/api/sermons/waveform/editing/waveform/highres")
@@ -210,7 +192,7 @@ func TestEditingWaveformCacheTracksSourceNotDraft(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if resp.StatusCode != 200 || resp.Header.Get("Content-Type") != "application/octet-stream" || resp.Header.Get("X-Waveform-Rate") != "50" || len(data) != 4*50*2*2 {
+		if resp.StatusCode != 200 || resp.Header.Get("Cache-Control") != "no-store" || resp.Header.Get("Content-Type") != "application/octet-stream" || resp.Header.Get("X-Waveform-Rate") != "50" || len(data) != 4*50*2*2 {
 			t.Fatalf("high-resolution response: status=%d type=%q rate=%q bytes=%d", resp.StatusCode, resp.Header.Get("Content-Type"), resp.Header.Get("X-Waveform-Rate"), len(data))
 		}
 		got := int(binary.LittleEndian.Uint16(data))
@@ -226,18 +208,27 @@ func TestEditingWaveformCacheTracksSourceNotDraft(t *testing.T) {
 		}
 	}
 	writeSource("0.2")
-	read(0.2)
 	readHires(6553)
-	if _, err := os.Stat(filepath.Join(dir, "waveform.json")); err != nil {
+	metadata, err := os.ReadFile(filepath.Join(dir, "waveform-hires.json"))
+	if err != nil {
 		t.Fatal("cache not written:", err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(metadata, &fields); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := fields["peaks"]; ok {
+		t.Fatal("cache still contains overview peaks")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "waveform.json")); !os.IsNotExist(err) {
+		t.Fatal("legacy overview cache was written")
 	}
 	d, _ = srv.Store.GetEditing("waveform")
 	d.Sections[0].Keep = false
 	if _, err := srv.Store.MutateEditing("waveform", &d, d.Revision, false, ""); err != nil {
 		t.Fatal(err)
 	}
-	read(0.2)
+	readHires(6553)
 	writeSource("-0.6")
-	read(0.6)
 	readHires(-19660)
 }

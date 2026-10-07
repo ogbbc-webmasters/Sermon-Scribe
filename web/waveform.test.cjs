@@ -357,36 +357,55 @@ test("quiet snapping stays at the requested position when there is no quieter ne
   assert.equal(wave.snapToQuiet(1), 1);
 });
 
-test("zoomed waveform uses signed high-resolution peaks while overview keeps its envelope", () => {
+test("all zoom levels aggregate signed high-resolution peaks without an overview fallback", () => {
   const wave = setup();
   wave.hires = new Int16Array(10000);
   wave.hires.fill(0);
   wave.hires[1000] = -16384;
   wave.hires[1001] = 24576;
 
-  const detail = wave.waveformRangeAt(10, 10.1, 0.9);
+  const detail = wave.waveformRangeAt(10, 10.1);
   assert.equal(detail.min, -0.5);
   assert.equal(detail.max, 0.75);
-  const overview = wave.waveformRangeAt(10, 10.3, 0.9);
-  assert.equal(overview.min, -0.9);
-  assert.equal(overview.max, 0.9);
+  wave.hires[1040] = -28672;
+  wave.hires[1041] = 8192;
+  const overview = wave.waveformRangeAt(10, 12);
+  assert.equal(overview.min, -0.875);
+  assert.equal(overview.max, 0.75);
+  const subBucket = wave.waveformRangeAt(10.001, 10.002);
+  assert.equal(subBucket.min, -0.5);
+  assert.equal(subBucket.max, 0.75);
 });
 
-test("spinner lasts until overview arrives, not until high-resolution data arrives", async () => {
+test("only high-resolution data is requested and the spinner lasts until its body arrives", async () => {
   const requests = [];
-  const wave = setup(() => new Promise(resolve => requests.push(resolve)));
+  let finishBody;
+  const wave = setup(url => new Promise(resolve => requests.push({ url, resolve })));
+  wave.setAttribute("src", "/waveform");
+  const draws = [];
+  wave.draw = () => draws.push(wave.hires && Array.from(wave.hires));
   const pending = wave.load();
   assert.equal(wave.getAttribute("aria-busy"), "true");
   assert.equal(wave.status.attrs.role, "status");
   assert.equal(wave.status.children[0].attrs.icon, "ph:spinner-gap");
   assert.equal(wave.status.children[1], "Loading waveform…");
-  requests[0]({ ok: true, json: async () => ({ peaks: [0.2, 0.8] }) });
+  assert.equal(requests[0].url, "/waveform/highres");
+  requests[0].resolve({ ok: true, headers: { get: () => "50" },
+    arrayBuffer: () => new Promise(resolve => { finishBody = resolve; }) });
   await new Promise(resolve => setImmediate(resolve));
+  assert.equal(wave.getAttribute("aria-busy"), "true");
+  assert.equal(wave.status.removed, undefined);
+  const buffer = new ArrayBuffer(4);
+  const view = new DataView(buffer);
+  view.setInt16(0, -16384, true);
+  view.setInt16(2, 24576, true);
+  finishBody(buffer);
+  await pending;
   assert.equal(wave.status.removed, true);
   assert.equal(wave.getAttribute("aria-busy"), "false");
-  assert.deepEqual(wave.peaks, [0.2, 0.8]);
-  requests[1]({ ok: false });
-  await pending;
+  assert.deepEqual(Array.from(wave.hires), [-16384, 24576]);
+  assert.deepEqual(draws, [null, [-16384, 24576]]);
+  assert.equal(requests.length, 1);
 });
 
 test("failed and superseded loads cannot leave a spinner or overwrite the new status", async () => {
@@ -406,13 +425,26 @@ test("failed and superseded loads cannot leave a spinner or overwrite the new st
   assert.equal(wave.getAttribute("aria-busy"), "false");
 });
 
-test("missing peaks clear the canvas without drawing a false silence line", () => {
+test("missing high-resolution data clears the canvas without drawing a false silence line", () => {
   const wave = setup();
   wave.clientWidth = 1000;
   wave.clientHeight = 128;
-  wave.canvas = { getContext() { assert.fail("must not draw without peaks"); } };
-  wave.peaks = [];
+  wave.canvas = { getContext() { assert.fail("must not draw without high-resolution data"); } };
+  wave.hires = null;
   wave.draw();
   assert.equal(wave.canvas.width, 1000);
   assert.equal(wave.canvas.height, 128);
+});
+
+test("a superseded high-resolution body cannot overwrite the latest data", async () => {
+  let finishOld;
+  const wave = setup(async () => ({ ok: true, headers: { get: () => "50" },
+    arrayBuffer: () => new Promise(resolve => { finishOld = resolve; }) }));
+  const old = wave.load();
+  await new Promise(resolve => setImmediate(resolve));
+  wave.request.abort();
+  wave.hires = new Int16Array([-8192, 16384]);
+  finishOld(new ArrayBuffer(4));
+  await old;
+  assert.deepEqual(Array.from(wave.hires), [-8192, 16384]);
 });

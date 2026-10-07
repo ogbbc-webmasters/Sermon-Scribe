@@ -280,35 +280,30 @@ func (h *EditingHandler) Run(ctx context.Context, job store.Job, reporter Report
 	return Result{Next: &store.NewJob{ID: uuid.NewString(), Type: "extract_metadata", Stage: "metadata"}}, nil
 }
 
-// WaveformPeaks produces a fixed-size overview and 20 ms min/max pairs without
+// WaveformPeaks produces 20 ms min/max pairs without
 // retaining the decoded recording in memory.
-func WaveformPeaks(ctx context.Context, input string, duration float64) ([]float64, []int16, error) {
+func WaveformPeaks(ctx context.Context, input string, duration float64) ([]int16, error) {
 	if duration <= 0 || math.IsNaN(duration) || math.IsInf(duration, 0) {
-		return nil, nil, fmt.Errorf("invalid waveform duration")
+		return nil, fmt.Errorf("invalid waveform duration")
 	}
-	const count = 4000
 	const rate = 8000
 	const hiresRate = 50
 	const samplesPerHiresPair = rate / hiresRate
-	peaks := make([]float64, count)
 	var hires []int16
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-i", input, "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "pipe:1")
 	pipe, err := cmd.StdoutPipe()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	if err = cmd.Start(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	var sample int64
 	var data [16000]byte
 	for {
 		n, readErr := io.ReadFull(pipe, data[:])
 		for i := 0; i+1 < n; i += 2 {
-			bucket := min(count-1, int(float64(sample)*count/(duration*rate)))
 			value := int16(binary.LittleEndian.Uint16(data[i : i+2]))
-			amplitude := math.Abs(float64(value)) / 32768
-			peaks[bucket] = math.Max(peaks[bucket], amplitude)
 			pair := int(sample/samplesPerHiresPair) * 2
 			if pair == len(hires) {
 				hires = append(hires, value, value)
@@ -322,15 +317,15 @@ func WaveformPeaks(ctx context.Context, input string, duration float64) ([]float
 			if readErr != io.EOF && readErr != io.ErrUnexpectedEOF {
 				_ = cmd.Process.Kill()
 				_ = cmd.Wait()
-				return nil, nil, readErr
+				return nil, readErr
 			}
 			break
 		}
 	}
 	if err = cmd.Wait(); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-	return peaks, hires, nil
+	return hires, nil
 }
 
 // PreviewAudio generates at most six seconds of source audio plus a short cue.
