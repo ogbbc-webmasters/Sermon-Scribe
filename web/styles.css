@@ -538,12 +538,20 @@ h2::after {
 }
 
 .sermon-detail__scripture-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.sermon-detail__scripture-selections {
   display: grid;
   gap: var(--space-xs);
 }
 
 .sermon-detail__scripture-group {
-  display: grid;
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--space-xs);
 }
 
@@ -553,25 +561,40 @@ h2::after {
 
 .sermon-detail__scripture-option {
   align-items: center;
-  background: var(--card);
+  background: var(--track);
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
+  color: var(--ink);
   cursor: pointer;
-  display: flex;
-  gap: var(--space-sm);
-  padding: var(--space-xs) var(--space-md);
+  display: inline-flex;
+  font-size: 0.9rem;
+  gap: var(--space-xs);
+  padding: 4px var(--space-sm);
 }
 
 .sermon-detail__scripture-option:hover {
   background: var(--wash);
+  border-color: var(--line-strong);
+}
+
+.sermon-detail__scripture-option--selected {
+  background: var(--green-soft);
+  border-color: var(--green-line);
+  color: var(--green-dark);
+}
+
+.sermon-detail__scripture-option--selected:hover {
+  background: var(--green-soft);
+  border-color: var(--green-line);
+  color: var(--green-dark);
 }
 
 .sermon-detail__scripture-option input {
   accent-color: var(--green);
   flex: 0 0 auto;
-  height: 18px;
+  height: 14px;
   margin: 0;
-  width: 18px;
+  width: 14px;
 }
 
 .sermon-detail__scripture-status {

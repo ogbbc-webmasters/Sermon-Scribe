@@ -6,7 +6,7 @@ import DateFormat exposing (formatDate)
 import Dict
 import File
 import Html exposing (Html, a, audio, button, details, div, h2, input, label, mark, p, span, strong, summary, text)
-import Html.Attributes exposing (accept, attribute, checked, class, controls, disabled, download, hidden, href, id, placeholder, src, style, title, type_, value)
+import Html.Attributes exposing (accept, attribute, checked, class, classList, controls, disabled, download, hidden, href, id, placeholder, src, style, title, type_, value)
 import Html.Events exposing (on, onCheck, onClick, onInput, stopPropagationOn)
 import Icon
 import Json.Decode as Decode exposing (Decoder)
@@ -213,12 +213,7 @@ viewDetailMetadata model sermon =
                 text ""
 
               else
-                p [ Ui.panelText ] [ text "Old Testament Reading and New Testament Reading are selected when found; other passages are optional." ]
-            , if List.isEmpty options then
-                text ""
-
-              else
-                div [ class "sermon-detail__scripture-options" ]
+                div [ class "sermon-detail__scripture-selections" ]
                     (readingGroups
                         ++ (if List.isEmpty additionalOptions then
                                 []
@@ -240,9 +235,6 @@ viewDetailMetadata model sermon =
                     [ p [ class "sermon-detail__scripture-status" ] [ text "Could not save your selection." ]
                     , button [ Ui.button, onClick (RetryScriptureSave sermon) ] [ text "Retry" ]
                     ]
-
-              else if not (List.isEmpty options) then
-                p [ class "sermon-detail__scripture-status", attribute "role" "status" ] [ text "Changes save automatically." ]
 
               else
                 text ""
@@ -268,7 +260,12 @@ viewDetailMetadata model sermon =
 
 viewScriptureOption : String -> Set.Set String -> String -> Html Msg
 viewScriptureOption sermonId selected reference =
-    label [ class "sermon-detail__scripture-option" ]
+    label
+        [ classList
+            [ ( "sermon-detail__scripture-option", True )
+            , ( "sermon-detail__scripture-option--selected", Set.member reference selected )
+            ]
+        ]
         [ input
             [ type_ "checkbox"
             , checked (Set.member reference selected)
