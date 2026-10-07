@@ -643,7 +643,7 @@ view model =
 
                         _ ->
                             text ""
-                    , Button.action "ph:arrow-left" "Back to sermon" False [ onClick Close ]
+                    , Button.action "ph:x" "Close editor" False [ onClick Close ]
                     ]
                 ]
             ]
