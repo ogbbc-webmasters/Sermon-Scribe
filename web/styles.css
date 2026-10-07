@@ -47,6 +47,7 @@
   /* type */
   --font-body: "Avenir Next", Avenir, "Segoe UI", system-ui, sans-serif;
   --font-display: Georgia, "Times New Roman", serif;
+  --font-size-transcript: 1rem;
 
   /* shape */
   --radius-sm: 10px;
@@ -907,14 +908,20 @@ h2::after {
 }
 
 .sermon-detail__pill--read {
-  background: var(--clear);
+  background: var(--green-soft);
   box-shadow: var(--shadow-scripture-outline);
-  color: var(--green);
+  color: var(--green-dark);
 }
 
 .sermon-detail__pill--topic {
   background: var(--green);
   color: var(--on-accent);
+}
+
+.sermon-detail__scripture-status {
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-left: var(--space-xs);
 }
 
 .sermon-detail__search {
@@ -955,6 +962,7 @@ h2::after {
 }
 
 .sermon-detail__transcript {
+  font-size: var(--font-size-transcript);
   max-height: var(--transcript-height);
   overflow-y: auto;
   white-space: pre-wrap;

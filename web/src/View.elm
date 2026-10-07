@@ -392,7 +392,13 @@ viewScripture sermon reference =
             )
         , title label
         ]
-        [ text reference ]
+        [ text reference
+        , if isRead then
+            span [ class "sermon-detail__scripture-status" ] [ text "Read" ]
+
+          else
+            text ""
+        ]
 
 
 viewProcessingRetry : Model -> Sermon -> String -> String -> Html Msg
