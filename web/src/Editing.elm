@@ -49,6 +49,7 @@ type alias Model =
     , generation : Int
     , sequence : Int
     , confirmingRegenerate : Bool
+    , showingDurationDialog : Bool
     , preserveEdited : Bool
     , addingBreakpoint : Bool
     }
@@ -56,7 +57,7 @@ type alias Model =
 
 init : Model
 init =
-    Model Nothing False Nothing Nothing Nothing False False False Nothing Nothing "" 0 [] 0 0 False True False
+    Model Nothing False Nothing Nothing Nothing False False False Nothing Nothing "" 0 [] 0 0 False False True False
 
 
 type Msg
@@ -81,6 +82,7 @@ type Msg
     | Regenerate
     | ConfirmRegenerate
     | CancelRegenerate
+    | DismissDurationDialog
     | ChooseRegenerateMode Bool
     | Regenerated Int (Result Http.Error Draft)
     | Preview
@@ -146,7 +148,7 @@ update msg model =
 
         ApplyRecording sermonId ->
             if model.sermonId == Just sermonId && model.draft /= Nothing then
-                update (Apply False) { model | visible = False }
+                update (Apply False) model
 
             else
                 let
@@ -402,11 +404,17 @@ update msg model =
             if model.regenerating then
                 ( model, Cmd.none, Nothing )
 
+            else if Maybe.withDefault 0 (Maybe.map keptDuration model.draft) >= 90 * 60 then
+                ( { model | showingDurationDialog = True }, Cmd.none, Nothing )
+
             else if model.draft /= model.saved || model.saving then
                 save { model | pendingApply = Just skip }
 
             else
                 apply skip model
+
+        DismissDurationDialog ->
+            ( { model | showingDurationDialog = False }, Cmd.none, Nothing )
 
         Applied generation result ->
             if generation /= model.generation then
@@ -495,10 +503,14 @@ apply : Bool -> Model -> ( Model, Cmd Msg, Maybe Encode.Value )
 apply skip model =
     case model.draft of
         Just draft ->
-            ( { model | applying = True, pendingApply = Nothing, error = Nothing }
-            , Http.post { url = endpoint model ++ "/apply", body = Http.jsonBody (Encode.object [ ( "revision", Encode.int draft.revision ), ( "skip", Encode.bool skip ) ]), expect = Http.expectStringResponse (Applied model.generation) applyResponse }
-            , stop
-            )
+            if keptDuration draft >= 90 * 60 then
+                ( { model | visible = True, showingDurationDialog = True, pendingApply = Nothing }, Cmd.none, Nothing )
+
+            else
+                ( { model | visible = False, applying = True, pendingApply = Nothing, error = Nothing }
+                , Http.post { url = endpoint model ++ "/apply", body = Http.jsonBody (Encode.object [ ( "revision", Encode.int draft.revision ), ( "skip", Encode.bool skip ) ]), expect = Http.expectStringResponse (Applied model.generation) applyResponse }
+                , stop
+                )
 
         Nothing ->
             ( model, Cmd.none, Nothing )
@@ -634,12 +646,8 @@ view model =
                 , div [ class "editor__finish-actions" ]
                     [ case ( model.sermonId, model.draft ) of
                         ( Just sermonId, Just draft ) ->
-                            if keptDuration draft > 0 && keptDuration draft < 90 * 60 then
-                                Button.labeled "Apply" Button.applyEdits busy
-                                    [ onClick (ApplyRecording sermonId), disabled busy ]
-
-                            else
-                                text ""
+                            Button.labeled "Apply" Button.applyEdits busy
+                                [ onClick (ApplyRecording sermonId), disabled (busy || keptDuration draft <= 0) ]
 
                         _ ->
                             text ""
@@ -649,6 +657,21 @@ view model =
             ]
             [ if model.confirmingRegenerate then
                 regenerationDialog model
+
+              else
+                text ""
+            , if model.showingDurationDialog then
+                Html.node "app-dialog" []
+                    [ Html.node "dialog"
+                        [ Ui.dialog
+                        , attribute "aria-labelledby" "duration-limit-title"
+                        , preventDefaultOn "cancel" (Decode.succeed ( DismissDurationDialog, True ))
+                        ]
+                        [ h2 [ Ui.panelHeading, id "duration-limit-title" ] [ text "Edit audio to under 90 minutes" ]
+                        , div [ Ui.sermonActions ]
+                            [ Button.action "ph:x" "Close dialog" False [ onClick DismissDurationDialog ] ]
+                        ]
+                    ]
 
               else
                 text ""
