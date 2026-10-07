@@ -137,3 +137,78 @@ func TestUploadPreparationDefersTreatmentUntilExport(t *testing.T) {
 		t.Fatalf("prepared retry without original: %v", err)
 	}
 }
+
+func TestExportMissingFLACUsesMatchingAudio(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	for _, tc := range []struct {
+		name, source, available string
+		prepared, wantError     bool
+	}{
+		{"legacy-proxy", "normalized.flac", "normalized.mp3", false, false},
+		{"prepared-proxy", "normalized.flac", "normalized.mp3", true, false},
+		{"edited-playback", "edit-first/edited.flac", "edit-first/edited.mp3", false, false},
+		{"original-only", "normalized.flac", "original.wav", false, false},
+		{"missing-edited-audio", "edit-first/edited.flac", "normalized.mp3", false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			uploads := t.TempDir()
+			dir := filepath.Join(uploads, "sermon")
+			available := filepath.Join(dir, tc.available)
+			if err := os.MkdirAll(filepath.Dir(available), 0755); err != nil {
+				t.Fatal(err)
+			}
+			out, err := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=330:duration=8:sample_rate=48000", "-af", "volume=0.2", "-ac", "2", available).CombinedOutput()
+			if err != nil {
+				t.Fatalf("fixture: %v: %s", err, out)
+			}
+			if tc.source == "edit-first/edited.flac" && !tc.wantError {
+				// A different full-recording duration exposes choosing the wrong
+				// fallback and silently losing previously applied cuts.
+				out, err := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=frequency=880:duration=20", filepath.Join(dir, "normalized.mp3")).CombinedOutput()
+				if err != nil {
+					t.Fatalf("full recording: %v: %s", err, out)
+				}
+			}
+			if tc.prepared {
+				if err := writeMarker(filepath.Join(dir, ".source-prepared.json"), CompletionMarker{JobID: "prepare"}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			parameters, _ := json.Marshal(store.ExportSnapshot{Source: tc.source})
+			job := store.Job{ID: "export", SermonID: "sermon", Parameters: string(parameters)}
+			_, err = NewExportHandler(uploads).Run(context.Background(), job, &recordingReporter{})
+			if tc.wantError {
+				if err == nil {
+					t.Fatal("missing edited audio silently exported the full recording")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			output := filepath.Join(dir, "export-export", "export.mp3")
+			if err := probeAudio(output, audioSpec{codec: "mp3", sampleRate: 44100, channels: 1}); err != nil {
+				t.Fatal(err)
+			}
+			duration, err := probeDuration(context.Background(), output)
+			if err != nil || math.Abs(duration-8) > 0.12 {
+				t.Fatalf("fallback duration: %f, %v", duration, err)
+			}
+			measurement, err := exec.Command("ffmpeg", "-hide_banner", "-nostats", "-i", output, "-af", "loudnorm=dual_mono=true:print_format=json", "-f", "null", "-").CombinedOutput()
+			if err != nil {
+				t.Fatalf("measure fallback: %v: %s", err, measurement)
+			}
+			var stats map[string]string
+			if err := json.Unmarshal(measurement[strings.LastIndex(string(measurement), "{"):], &stats); err != nil {
+				t.Fatal(err)
+			}
+			loudness, err := strconv.ParseFloat(stats["input_i"], 64)
+			normalized := tc.prepared || tc.available == "original.wav"
+			if err != nil || (normalized && math.Abs(loudness-(-16)) > 0.6) || (!normalized && loudness > -30) {
+				t.Fatalf("normalized=%t fallback loudness=%f: %v", normalized, loudness, err)
+			}
+		})
+	}
+}

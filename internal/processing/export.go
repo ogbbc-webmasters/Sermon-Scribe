@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ogbbc-webmasters/Sermon-Scribe/internal/store"
 )
@@ -48,15 +49,37 @@ func (h *ExportHandler) Run(ctx context.Context, job store.Job, reporter Reporte
 		return Result{}, err
 	}
 	if !committed {
-		options := []string{"-c:a", "libmp3lame", "-b:a", "32k"}
+		normalize := false
 		if _, err := os.Stat(filepath.Join(dir, ".source-prepared.json")); err == nil {
-			options = append([]string{"-af", normalizationFilter(settings)}, options...)
+			normalize = true
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return Result{}, err
 		}
-		// Older recordings are already treated. Always encode from the retained
-		// lossless source, never from a previous export or the playback MP3.
-		if err := encodeAudio(ctx, filepath.Join(dir, snapshot.Source), temporary, options, func(percent int) error {
+		input := filepath.Join(dir, snapshot.Source)
+		if _, err := os.Stat(input); errors.Is(err, os.ErrNotExist) {
+			// Some legacy recordings only retain their MP3. For applied edits,
+			// use the matching generation rather than undoing cuts by falling
+			// back to the full recording.
+			input = strings.TrimSuffix(input, ".flac") + ".mp3"
+			if _, err := os.Stat(input); errors.Is(err, os.ErrNotExist) && snapshot.Source == "normalized.flac" {
+				input, err = findOriginal(dir)
+				if err != nil {
+					return Result{}, fmt.Errorf("export source audio is unavailable: %w", err)
+				}
+				normalize = true
+			} else if err != nil {
+				return Result{}, fmt.Errorf("export source audio is unavailable: %w", err)
+			}
+		} else if err != nil {
+			return Result{}, err
+		}
+		options := []string{"-c:a", "libmp3lame", "-b:a", "32k"}
+		if normalize {
+			options = append([]string{"-af", normalizationFilter(settings)}, options...)
+		}
+		// Prefer lossless audio; legacy treated MP3s must not be treated twice.
+		// Never use a previous export as the source for a new export.
+		if err := encodeAudio(ctx, input, temporary, options, func(percent int) error {
 			return reporter.Progress(percent, nil)
 		}); err != nil {
 			return Result{}, err
