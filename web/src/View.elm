@@ -44,6 +44,90 @@ view model =
                 ]
 
 
+viewAICosts : Sermon -> Html Msg
+viewAICosts sermon =
+    let
+        total =
+            List.sum (List.map .costUsd sermon.aiCosts)
+
+        unknown =
+            List.sum (List.map .unknownCosts sermon.aiCosts)
+
+        taskLabel task =
+            case task of
+                "transcribe" ->
+                    "Transcription"
+
+                "extract_metadata" ->
+                    "Metadata extraction"
+
+                "extract_title" ->
+                    "Title extraction"
+
+                "extract_topics" ->
+                    "Topic extraction"
+
+                "extract_scriptures" ->
+                    "Scripture extraction"
+
+                "select_title" ->
+                    "Title selection"
+
+                "score_topics" ->
+                    "Topic scoring"
+
+                "select_title_and_score_topics" ->
+                    "Title selection & topic scoring"
+
+                _ ->
+                    task
+    in
+    Card.view (text "AI cost")
+        []
+        (if List.isEmpty sermon.aiCosts then
+            [ p [ Ui.hint ] [ text "No OpenRouter calls tracked yet. Costs from before tracking was enabled are not included." ] ]
+
+         else
+            [ p [] [ strong [] [ text (formatCost total ++ " USD") ], text " · Includes retries and regenerations" ]
+            , if unknown > 0 then
+                p [ Ui.hint ] [ text (String.fromInt unknown ++ " call(s) have unreported costs. This total includes only reported charges.") ]
+
+              else
+                text ""
+            , Html.details []
+                [ Html.summary [] [ text "Breakdown by model and task" ]
+                , div []
+                    (List.map
+                        (\cost ->
+                            p []
+                                [ strong [] [ text (taskLabel cost.task) ]
+                                , Html.br [] []
+                                , span [ Ui.hint ] [ text cost.model ]
+                                , Html.br [] []
+                                , text (formatCost cost.costUsd ++ " USD · " ++ String.fromInt cost.calls ++ " call(s)")
+                                , if cost.unknownCosts > 0 then
+                                    text (" · " ++ String.fromInt cost.unknownCosts ++ " unreported")
+
+                                  else
+                                    text ""
+                                ]
+                        )
+                        sermon.aiCosts
+                    )
+                ]
+            ]
+        )
+
+
+formatCost : Float -> String
+formatCost amount =
+    let
+        units =
+            round (amount * 10000)
+    in
+    "$" ++ String.fromInt (units // 10000) ++ "." ++ String.padLeft 4 '0' (String.fromInt (modBy 10000 units))
+
+
 viewDetailMessage : String -> Html Msg
 viewDetailMessage message =
     div [ class "page page--detail" ]
@@ -114,6 +198,7 @@ viewSermonDetail model sermon =
                     ]
                 ]
             , viewDetailStatus model sermon
+            , viewAICosts sermon
             , if Editing.isOpen sermon.id model.editor then
                 Html.map EditingMsg (Editing.view model.editor sermon.transcriptionMetadata)
 
@@ -261,7 +346,9 @@ viewDetailAudio model sermon =
             (ownsDraft && (model.editor.applying || model.editor.pendingApply /= Nothing))
                 || (sermon.stage == "editing" && (sermon.status == "pending" || sermon.status == "running"))
     in
-    Card.viewWithAttributes [ class "sermon-detail__audio-card" ] (text "Audio") Nothing
+    Card.viewWithAttributes [ class "sermon-detail__audio-card" ]
+        (text "Audio")
+        Nothing
         [ Button.labeled "Edit"
             Button.editAudio
             False

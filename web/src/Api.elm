@@ -1,5 +1,6 @@
 module Api exposing
-    ( PipelineEvent(..)
+    ( AICost
+    , PipelineEvent(..)
     , Sermon
     , TranscriptSegment
     , TranscriptWord
@@ -51,6 +52,16 @@ type alias Sermon =
     , transcriptionMetadata : Maybe TranscriptionMetadata
     , editingDuration : Maybe Float
     , playbackVersion : String
+    , aiCosts : List AICost
+    }
+
+
+type alias AICost =
+    { task : String
+    , model : String
+    , calls : Int
+    , costUsd : Float
+    , unknownCosts : Int
     }
 
 
@@ -110,7 +121,7 @@ sermonDecoder =
         )
         (Decode.map8
             (\id originalFilename uploadedAt uploadedBy stage status progress error ->
-                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0 False Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] [] [] [] Nothing Nothing ""
+                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0 False Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] [] [] [] Nothing Nothing "" []
             )
             (Decode.field "id" Decode.string)
             (Decode.field "original_filename" Decode.string)
@@ -125,6 +136,21 @@ sermonDecoder =
         (Decode.field "normalization_volume_adjustment" Decode.int)
         (Decode.oneOf [ Decode.field "normalization_reviewed" Decode.bool, Decode.succeed False ])
         |> Decode.andThen decodeMetadata
+        |> Decode.andThen
+            (\sermon ->
+                Decode.map (\costs -> { sermon | aiCosts = costs })
+                    (Decode.field "ai_costs" (Decode.list aiCostDecoder))
+            )
+
+
+aiCostDecoder : Decoder AICost
+aiCostDecoder =
+    Decode.map5 AICost
+        (Decode.field "task" Decode.string)
+        (Decode.field "model" Decode.string)
+        (Decode.field "calls" Decode.int)
+        (Decode.field "cost_usd" Decode.float)
+        (Decode.field "unknown_costs" Decode.int)
 
 
 decodeMetadata : Sermon -> Decoder Sermon
