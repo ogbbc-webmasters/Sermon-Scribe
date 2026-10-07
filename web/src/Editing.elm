@@ -741,10 +741,10 @@ navigation model draft =
     in
     div [ class "editor__navigation" ]
         [ div [ Ui.sermonActions ]
-            [ Button.action "ph:skip-back" "Previous section" False [ onClick (Select (Passage previousSection)), disabled (busy || previousSection < 0) ]
-            , Button.action "ph:skip-forward" "Next section" False [ onClick (Select (Passage nextSection)), disabled (busy || nextSection >= List.length draft.sections) ]
-            , Button.action "ph:caret-left" "Previous breakpoint" False [ onClick (Select (Boundary previousBoundary)), disabled (busy || previousBoundary < 1) ]
-            , Button.action "ph:caret-right" "Next breakpoint" False [ onClick (Select (Boundary nextBoundary)), disabled (busy || nextBoundary >= List.length draft.breakpoints - 1) ]
+            [ Button.action "ph:caret-left" "Previous section" False [ onClick (Select (Passage previousSection)), disabled (busy || previousSection < 0) ]
+            , Button.action "ph:caret-right" "Next section" False [ onClick (Select (Passage nextSection)), disabled (busy || nextSection >= List.length draft.sections) ]
+            , Button.action "ph:skip-back" "Previous breakpoint" False [ onClick (Select (Boundary previousBoundary)), disabled (busy || previousBoundary < 1) ]
+            , Button.action "ph:skip-forward" "Next breakpoint" False [ onClick (Select (Boundary nextBoundary)), disabled (busy || nextBoundary >= List.length draft.breakpoints - 1) ]
             ]
         ]
 
