@@ -301,7 +301,7 @@ func PreviewAudio(ctx context.Context, input, mode string, start, end, duration 
 		clipEnd := math.Min(duration, start+1)
 		edge := start - clipStart
 		args = append(args, "-ss", fmt.Sprintf("%.9f", clipStart), "-t", fmt.Sprintf("%.9f", clipEnd-clipStart), "-i", input)
-		filters = []string{fmt.Sprintf("[0:a]atrim=start=0:end=%.9f,asetpts=PTS-STARTPTS[a]", edge), "sine=frequency=1200:duration=0.5,aformat=sample_rates=44100:channel_layouts=mono[b]", fmt.Sprintf("[0:a]atrim=start=%.9f,asetpts=PTS-STARTPTS[c]", edge), "[a][b][c]concat=n=3:v=0:a=1[out]"}
+		filters = []string{fmt.Sprintf("[0:a]atrim=start=0:end=%.9f,asetpts=PTS-STARTPTS[a]", edge), "sine=frequency=1200:duration=0.5,aformat=sample_rates=44100:channel_layouts=mono,adelay=250:all=1,apad=pad_dur=0.25[b]", fmt.Sprintf("[0:a]atrim=start=%.9f,asetpts=PTS-STARTPTS[c]", edge), "[a][b][c]concat=n=3:v=0:a=1[out]"}
 	} else if mode == "section" && end > start && end <= duration {
 		if end-start <= 6 {
 			args = append(args, "-ss", fmt.Sprintf("%.9f", start), "-t", fmt.Sprintf("%.9f", end-start), "-i", input)

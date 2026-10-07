@@ -47,6 +47,9 @@ func TestEditingAudioContent(t *testing.T) {
 			from, to := int(w[0]*48000), int(w[1]*48000)
 			crossings := 0
 			for i := from + 1; i < to; i++ {
+				if w[2] == 0 && math.Abs(float64(samples[i])) > 0.00001 {
+					t.Fatalf("window %.2f–%.2f is not silent", w[0], w[1])
+				}
 				if samples[i-1] <= 0 && samples[i] > 0 {
 					crossings++
 				}
@@ -62,7 +65,7 @@ func TestEditingAudioContent(t *testing.T) {
 		start, end, duration float64
 		windows              [][3]float64
 	}{
-		{"breakpoint", 14, 0, 2.5, [][3]float64{{0.2, 0.8, 660}, {1.1, 1.4, 1200}, {1.7, 2.3, 880}}},
+		{"breakpoint", 14, 0, 3, [][3]float64{{0.2, 0.8, 660}, {1.05, 1.2, 0}, {1.35, 1.65, 1200}, {1.8, 1.95, 0}, {2.2, 2.8, 880}}},
 		{"section", 2, 18, 7, [][3]float64{{0.2, 0.8, 330}, {3.1, 3.9, 250}, {4.2, 4.8, 880}}},
 		{"section", 2, 4, 2, [][3]float64{{0.2, 1.8, 330}}},
 	} {

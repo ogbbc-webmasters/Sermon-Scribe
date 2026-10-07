@@ -143,7 +143,7 @@ func TestEditingFFmpegPipelinePauseAndRedo(t *testing.T) {
 	for _, tc := range []struct {
 		mode             string
 		start, end, want float64
-	}{{"breakpoint", 0, 0, 1.5}, {"breakpoint", 5, 0, 2.5}, {"breakpoint", 8, 0, 1.5}, {"section", 0, 8, 7}, {"section", 1, 4, 3}} {
+	}{{"breakpoint", 0, 0, 2}, {"breakpoint", 5, 0, 3}, {"breakpoint", 8, 0, 2}, {"section", 0, 8, 7}, {"section", 1, 4, 3}} {
 		audio, err := PreviewAudio(ctx, source, tc.mode, tc.start, tc.end, 8)
 		if err != nil || len(audio) < 44 || string(audio[:4]) != "RIFF" {
 			t.Fatalf("preview %+v: %v", tc, err)
