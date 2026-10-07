@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -119,6 +120,45 @@ func (s *Server) handleApplyEditing(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusAccepted, sm)
 }
+func (s *Server) handleEditingWaveform(w http.ResponseWriter, r *http.Request) {
+	d, err := s.Store.GetEditing(r.PathValue("id"))
+	if err != nil {
+		editingError(w, err)
+		return
+	}
+	dir := filepath.Join(s.UploadsDir, r.PathValue("id"))
+	source := filepath.Join(dir, "normalized.flac")
+	info, err := os.Stat(source)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "source audio is not available")
+		return
+	}
+	var wave struct {
+		Modified int64     `json:"modified"`
+		Size     int64     `json:"size"`
+		Duration float64   `json:"duration"`
+		Peaks    []float64 `json:"peaks"`
+	}
+	cache := filepath.Join(dir, "waveform.json")
+	raw, _ := os.ReadFile(cache)
+	if json.Unmarshal(raw, &wave) != nil || wave.Modified != info.ModTime().UnixNano() || wave.Size != info.Size() || wave.Duration != d.Duration || len(wave.Peaks) != 4000 {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Minute)
+		defer cancel()
+		wave.Peaks, err = processing.WaveformPeaks(ctx, source, d.Duration)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not generate waveform")
+			return
+		}
+		wave.Modified, wave.Size, wave.Duration = info.ModTime().UnixNano(), info.Size(), d.Duration
+		if raw, err = json.Marshal(wave); err == nil {
+			// A missing or incomplete cache is regenerated on the next request.
+			_ = os.WriteFile(cache, raw, 0600)
+		}
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, wave)
+}
+
 func (s *Server) handleEditingPreview(w http.ResponseWriter, r *http.Request) {
 	d, err := s.Store.GetEditing(r.PathValue("id"))
 	if err != nil {

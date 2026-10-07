@@ -2,8 +2,10 @@ package processing
 
 import (
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -243,6 +245,48 @@ func (h *EditingHandler) Run(ctx context.Context, job store.Job, reporter Report
 		return Result{}, err
 	}
 	return Result{Next: &store.NewJob{ID: uuid.NewString(), Type: "extract_metadata", Stage: "metadata"}}, nil
+}
+
+// WaveformPeaks reduces source audio to a fixed-size overview without retaining
+// the decoded recording in memory.
+func WaveformPeaks(ctx context.Context, input string, duration float64) ([]float64, error) {
+	if duration <= 0 || math.IsNaN(duration) || math.IsInf(duration, 0) {
+		return nil, fmt.Errorf("invalid waveform duration")
+	}
+	const count = 4000
+	const rate = 8000
+	peaks := make([]float64, count)
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-v", "error", "-i", input, "-vn", "-ac", "1", "-ar", "8000", "-f", "s16le", "pipe:1")
+	pipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	if err = cmd.Start(); err != nil {
+		return nil, err
+	}
+	var sample int64
+	var data [16000]byte
+	for {
+		n, readErr := io.ReadFull(pipe, data[:])
+		for i := 0; i+1 < n; i += 2 {
+			bucket := min(count-1, int(float64(sample)*count/(duration*rate)))
+			amplitude := math.Abs(float64(int16(binary.LittleEndian.Uint16(data[i:i+2])))) / 32768
+			peaks[bucket] = math.Max(peaks[bucket], amplitude)
+			sample++
+		}
+		if readErr != nil {
+			if readErr != io.EOF && readErr != io.ErrUnexpectedEOF {
+				_ = cmd.Process.Kill()
+				_ = cmd.Wait()
+				return nil, readErr
+			}
+			break
+		}
+	}
+	if err = cmd.Wait(); err != nil {
+		return nil, err
+	}
+	return peaks, nil
 }
 
 // PreviewAudio generates at most six seconds of source audio plus a short cue.

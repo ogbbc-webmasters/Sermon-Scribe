@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -147,4 +148,59 @@ func TestEditingHTTPContract(t *testing.T) {
 	if err != nil || job.Type != "render_edit" {
 		t.Fatalf("apply job %+v %v", job, err)
 	}
+}
+
+func TestEditingWaveformCacheTracksSourceNotDraft(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	srv, ts := newTestServer(t)
+	if err := srv.Store.CreateSermon(store.Sermon{ID: "waveform", Stage: "editing", Status: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	d := store.Editing{Duration: 4, Breakpoints: []store.Breakpoint{{ID: "start", Kind: "start"}, {ID: "end", Time: 4, Kind: "end"}}, Sections: []store.Section{{ID: "section", Keep: true}}}
+	if err := srv.Store.PrepareEditing("waveform", d, "source", store.TranscriptionMetadata{Duration: 4}); err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(srv.UploadsDir, "waveform")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	writeSource := func(level string) {
+		t.Helper()
+		if out, err := exec.Command("ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "aevalsrc="+level+":s=8000:d=4", filepath.Join(dir, "normalized.flac")).CombinedOutput(); err != nil {
+			t.Fatalf("fixture: %v %s", err, out)
+		}
+	}
+	read := func(want float64) {
+		t.Helper()
+		resp, err := http.Get(ts.URL + "/api/sermons/waveform/editing/waveform")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var got struct {
+			Duration float64   `json:"duration"`
+			Peaks    []float64 `json:"peaks"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+			t.Fatal(err)
+		}
+		if resp.StatusCode != 200 || got.Duration != 4 || len(got.Peaks) != 4000 || got.Peaks[1000] < want-0.0001 || got.Peaks[1000] > want+0.0001 || resp.Header.Get("Cache-Control") != "no-store" {
+			t.Fatalf("waveform response: %d, duration=%f, count=%d", resp.StatusCode, got.Duration, len(got.Peaks))
+		}
+	}
+	writeSource("0.2")
+	read(0.2)
+	if _, err := os.Stat(filepath.Join(dir, "waveform.json")); err != nil {
+		t.Fatal("cache not written:", err)
+	}
+	d, _ = srv.Store.GetEditing("waveform")
+	d.Sections[0].Keep = false
+	if _, err := srv.Store.MutateEditing("waveform", &d, d.Revision, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	read(0.2)
+	writeSource("-0.6")
+	read(0.6)
 }

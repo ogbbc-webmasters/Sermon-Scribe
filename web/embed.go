@@ -6,7 +6,7 @@ import (
 	"io/fs"
 )
 
-//go:embed index.html styles.css elm.js editing.js
+//go:embed index.html styles.css elm.js editing.js waveform.js
 var webFS embed.FS
 
 // WebFS returns the embedded frontend.

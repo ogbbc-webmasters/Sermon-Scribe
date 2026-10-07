@@ -213,3 +213,33 @@ func TestEditingFFmpegPipelinePauseAndRedo(t *testing.T) {
 		t.Fatal("skip erased draft")
 	}
 }
+
+func TestWaveformPeaksPreserveTimeAndSignedAmplitude(t *testing.T) {
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		t.Skip("ffmpeg unavailable")
+	}
+	input := filepath.Join(t.TempDir(), "source.flac")
+	// Different positive/negative levels and silence distinguish correct peak
+	// placement from averaging, signed maxima, or shifted time buckets.
+	if out, err := exec.Command("ffmpeg", "-v", "error", "-f", "lavfi", "-i", "aevalsrc=if(lt(t\\,1)\\,0.2\\,if(lt(t\\,2)\\,-0.6\\,if(lt(t\\,3)\\,0\\,0.1))):s=8000:d=4", input).CombinedOutput(); err != nil {
+		t.Fatalf("fixture: %v %s", err, out)
+	}
+	peaks, err := WaveformPeaks(context.Background(), input, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(peaks) != 4000 {
+		t.Fatalf("peak count: %d", len(peaks))
+	}
+	for index, want := range map[int]float64{100: 0.2, 1200: 0.6, 2200: 0, 3500: 0.1} {
+		if math.Abs(peaks[index]-want) > 0.0001 {
+			t.Fatalf("peak %d: %f, want %f", index, peaks[index], want)
+		}
+	}
+	if _, err := WaveformPeaks(context.Background(), input, 0); err == nil {
+		t.Fatal("accepted zero duration")
+	}
+	if _, err := WaveformPeaks(context.Background(), input+"missing", 4); err == nil {
+		t.Fatal("accepted missing source")
+	}
+}

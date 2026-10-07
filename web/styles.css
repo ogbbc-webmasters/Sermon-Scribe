@@ -82,6 +82,7 @@
   --editor-section-title-width: 10rem;
   --editor-border: 1px;
   --focus-width: 3px;
+  --waveform-height: 128px;
 }
 
 /* ------------------------------------------------------------ base/reset */
@@ -364,6 +365,27 @@ h2::after {
 
 .editor__section-title:focus-visible {
   outline: var(--focus-width) solid var(--focus);
+}
+
+.editor__waveform {
+  background: var(--paper);
+  border: var(--editor-border) solid var(--line);
+  border-radius: var(--radius-sm);
+  display: block;
+  height: var(--waveform-height);
+  margin-bottom: var(--space-xl);
+  overflow: hidden;
+}
+
+.editor__waveform:focus-within {
+  outline: var(--focus-width) solid var(--focus);
+}
+
+.editor__waveform-canvas {
+  cursor: pointer;
+  display: block;
+  height: 100%;
+  width: 100%;
 }
 
 /* empty-state — placeholder shown when a list has no items */

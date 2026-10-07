@@ -3,9 +3,9 @@ module Editing exposing (Model, Msg(..), init, isOpen, keptDuration, update, vie
 import Browser.Dom
 import Button
 import Card
-import Html exposing (Html, audio, button, div, input, label, p, span, strong, text)
-import Html.Attributes exposing (attribute, checked, class, controls, disabled, id, name, src, type_)
-import Html.Events exposing (on, onClick, preventDefaultOn, stopPropagationOn)
+import Html exposing (Html, div, input, label, p, strong, text)
+import Html.Attributes exposing (attribute, checked, class, disabled, id, name, type_)
+import Html.Events exposing (on, onClick, preventDefaultOn)
 import Http
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -156,7 +156,7 @@ update msg model =
                     Ok draft ->
                         let
                             next =
-                                { model | draft = Just draft, saved = Just draft, error = Nothing }
+                                { model | draft = Just draft, saved = Just draft, error = Nothing, selection = Just (Passage 0) }
                         in
                         case next.pendingApply of
                             Just skip ->
@@ -206,12 +206,7 @@ update msg model =
 
         Select selection ->
             ( { model
-                | selection =
-                    if model.selection == Just selection then
-                        Nothing
-
-                    else
-                        Just selection
+                | selection = Just selection
                 , audioStatus = ""
                 , playhead = sectionStart selection model
               }
@@ -617,9 +612,56 @@ view model =
                         ]
 
                 Just draft ->
-                    div [ class "editor__list" ] (List.concat (List.indexedMap (sectionRow model draft) draft.sections))
+                    div []
+                        [ waveform model draft
+                        , selectedCard model draft
+                        ]
             ]
         ]
+
+
+waveform : Model -> Draft -> Html Msg
+waveform model draft =
+    Html.node "editing-waveform"
+        [ class "editor__waveform"
+        , attribute "src" (endpoint model ++ "/waveform")
+        , attribute "data-draft" (Encode.encode 0 (encodeDraft draft))
+        , attribute "data-selection"
+            (case model.selection of
+                Just (Boundary index) ->
+                    "boundary:" ++ String.fromInt index
+
+                Just (Passage index) ->
+                    "section:" ++ String.fromInt index
+
+                Nothing ->
+                    ""
+            )
+        , attribute "data-disabled"
+            (if model.regenerating || model.applying || model.pendingApply /= Nothing then
+                "true"
+
+             else
+                "false"
+            )
+        , on "waveformselect"
+            (Decode.at [ "detail" ]
+                (Decode.map2
+                    (\kind index ->
+                        Select
+                            (if kind == "boundary" then
+                                Boundary index
+
+                             else
+                                Passage index
+                            )
+                    )
+                    (Decode.field "kind" Decode.string)
+                    (Decode.field "index" Decode.int)
+                )
+            )
+        ]
+        []
 
 
 keptDuration : Draft -> Float
@@ -636,8 +678,31 @@ keptDuration draft =
         |> List.sum
 
 
-sectionRow : Model -> Draft -> Int -> Section -> List (Html Msg)
-sectionRow model draft index section =
+selectedCard : Model -> Draft -> Html Msg
+selectedCard model draft =
+    case model.selection of
+        Just (Passage index) ->
+            case at index draft.sections of
+                Just section ->
+                    sectionCard model draft index section
+
+                Nothing ->
+                    text ""
+
+        Just (Boundary index) ->
+            case at index draft.breakpoints of
+                Just b ->
+                    Card.view (text (kindLabel b.kind)) [] [ boundaryPanel model draft index b ]
+
+                Nothing ->
+                    text ""
+
+        Nothing ->
+            text ""
+
+
+sectionCard : Model -> Draft -> Int -> Section -> Html Msg
+sectionCard model draft index section =
     let
         range =
             Maybe.map2 (\a b -> timestamp a.time ++ "–" ++ timestamp b.time) (at index draft.breakpoints) (at (index + 1) draft.breakpoints) |> Maybe.withDefault ""
@@ -646,91 +711,16 @@ sectionRow model draft index section =
             model.regenerating || model.applying || model.pendingApply /= Nothing
 
         radios =
-            div [ class "editor__choices", attribute "role" "group", attribute "aria-label" ("Section " ++ String.fromInt (index + 1) ++ " inclusion"), stopPropagationOn "click" (Decode.succeed ( IgnoreClick, True )) ]
+            div [ class "editor__choices", attribute "role" "group", attribute "aria-label" ("Section " ++ String.fromInt (index + 1) ++ " inclusion") ]
                 (List.map (\( keep, caption ) -> label [ class "editor__choice" ] [ input [ type_ "radio", name section.id, checked (section.keep == keep), disabled busy, onClick (Keep index keep) ] [], text caption ]) [ ( True, "Keep" ), ( False, "Delete" ) ])
-
-        boundary =
-            case at (index + 1) draft.breakpoints of
-                Just b ->
-                    if b.kind == "end" then
-                        []
-
-                    else
-                        [ button
-                            [ class "editor__breakpoint"
-                            , onClick (Select (Boundary (index + 1)))
-                            , disabled busy
-                            , attribute "aria-expanded"
-                                (if model.selection == Just (Boundary (index + 1)) then
-                                    "true"
-
-                                 else
-                                    "false"
-                                )
-                            ]
-                            [ text (timestamp b.time ++ " · " ++ kindLabel b.kind) ]
-                        , if model.selection == Just (Boundary (index + 1)) then
-                            boundaryPanel model draft (index + 1) b
-
-                          else
-                            text ""
-                        ]
-
-                Nothing ->
-                    []
     in
-    [ div
-        [ class
-            (if section.keep then
-                "editor__section"
-
-             else
-                "editor__section editor__section--deleted"
-            )
+    Card.viewWithSubtitle
+        (text ("Section " ++ String.fromInt (index + 1)))
+        (Just (text range))
+        [ radios
+        , Button.action "ph:headphones" "Preview start & finish" False [ onClick Preview, disabled busy ]
         ]
-        [ div
-            [ class "editor__row"
-            , onClick
-                (if busy then
-                    IgnoreClick
-
-                 else
-                    Select (Passage index)
-                )
-            ]
-            [ button
-                [ class "editor__section-title"
-                , disabled busy
-                , attribute "aria-expanded"
-                    (if model.selection == Just (Passage index) then
-                        "true"
-
-                     else
-                        "false"
-                    )
-                ]
-                [ Button.icon
-                    (if model.selection == Just (Passage index) then
-                        "ph:caret-down"
-
-                     else
-                        "ph:caret-right"
-                    )
-                , span [ class "editor__section-label" ]
-                    [ strong [] [ text ("Section " ++ String.fromInt (index + 1)) ]
-                    , span [] [ text range ]
-                    ]
-                ]
-            , radios
-            ]
-        , if model.selection == Just (Passage index) then
-            sectionPanel model draft index
-
-          else
-            text ""
-        ]
-    ]
-        ++ boundary
+        []
 
 
 boundaryPanel : Model -> Draft -> Int -> Breakpoint -> Html Msg
@@ -782,16 +772,6 @@ boundaryPanel model draft index b =
             [ Button.action "ph:headphones" "Listen around breakpoint" False [ onClick Preview, disabled busy ]
             , Button.action "ph:arrow-left" "Earlier" False [ onClick (Nudge -0.1), disabled busy ]
             , Button.action "ph:arrow-right" "Later" False [ onClick (Nudge 0.1), disabled busy ]
+            , Button.action "ph:minus" "Remove breakpoint" False [ onClick RemoveBoundary, disabled (busy || not removable) ]
             ]
-        , Button.action "ph:minus" "Remove breakpoint" False [ onClick RemoveBoundary, disabled (busy || not removable) ]
-        ]
-
-
-sectionPanel : Model -> Draft -> Int -> Html Msg
-sectionPanel model draft index =
-    div [ class "editor__adjustment" ]
-        [ div [ Ui.sermonActions ]
-            [ Button.action "ph:headphones" "Preview start & finish" False [ onClick Preview ]
-            ]
-        , audio [ id "editing-source", class "editor__audio", controls True, attribute "preload" "metadata", attribute "data-start" (at index draft.breakpoints |> Maybe.map (.time >> String.fromFloat) |> Maybe.withDefault "0"), attribute "data-end" (at (index + 1) draft.breakpoints |> Maybe.map (.time >> String.fromFloat) |> Maybe.withDefault "0"), src ("/api/sermons/" ++ Url.percentEncode (Maybe.withDefault "" model.sermonId) ++ "/audio/source"), on "timeupdate" (Decode.at [ "target", "currentTime" ] Decode.float |> Decode.map Playhead) ] []
         ]

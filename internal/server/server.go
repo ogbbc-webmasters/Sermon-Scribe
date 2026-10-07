@@ -65,6 +65,7 @@ func (s *Server) Routes(webFS fs.FS) http.Handler {
 	mux.HandleFunc("POST /api/sermons/{id}/editing/regenerate", s.handleRegenerateEditing)
 	mux.HandleFunc("POST /api/sermons/{id}/editing/apply", s.handleApplyEditing)
 	mux.HandleFunc("GET /api/sermons/{id}/editing/preview", s.handleEditingPreview)
+	mux.HandleFunc("GET /api/sermons/{id}/editing/waveform", s.handleEditingWaveform)
 	mux.HandleFunc("GET /api/events", s.handleEvents)
 	files := http.FileServerFS(webFS)
 	mux.HandleFunc("GET /sermons/{id}", func(w http.ResponseWriter, r *http.Request) {
