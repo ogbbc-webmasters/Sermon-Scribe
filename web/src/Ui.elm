@@ -1,9 +1,5 @@
 module Ui exposing
-    ( audioReview
-    , audioReviewControls
-    , audioReviewLabel
-    , audioReviewPlayer
-    , badge
+    ( badge
     , badgeFailed
     , button
     , card
@@ -49,32 +45,6 @@ See docs/styling.md for the naming and state-ownership conventions.
 
 import Html
 import Html.Attributes exposing (attribute, class)
-
-
-
--- AUDIO REVIEW
-
-
-audioReview : Html.Attribute msg
-audioReview =
-    class "audio-review"
-
-
-audioReviewPlayer : Html.Attribute msg
-audioReviewPlayer =
-    class "audio-review__player"
-
-
-audioReviewLabel : Html.Attribute msg
-audioReviewLabel =
-    class "audio-review__label"
-
-
-audioReviewControls : Html.Attribute msg
-audioReviewControls =
-    class "audio-review__controls"
-
-
 
 -- BUTTONS
 

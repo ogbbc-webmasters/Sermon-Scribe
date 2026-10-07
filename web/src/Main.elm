@@ -56,9 +56,6 @@ init _ url key =
       , retrying = Set.empty
       , regenerating = Dict.empty
       , retryError = Nothing
-      , rerunning = Set.empty
-      , reviewingNormalization = Set.empty
-      , normalizationError = Nothing
       , zone = Time.utc
       }
     , Cmd.batch [ Api.fetchSermons GotSermons, Task.perform GotZone Time.here ]
@@ -213,65 +210,6 @@ update msg model =
                 | retrying = Set.remove original.id model.retrying
                 , regenerating = Dict.remove original.id model.regenerating
                 , retryError = Just "Could not regenerate. Please try again."
-              }
-            , Cmd.none
-            )
-
-        RerunNormalization sermon adjustment ->
-            ( { model
-                | rerunning = Set.insert sermon.id model.rerunning
-                , normalizationError = Nothing
-              }
-            , Api.rerunNormalization (RerunNormalizationFinished sermon) sermon.id adjustment
-            )
-
-        RerunNormalizationFinished original (Ok sermon) ->
-            ( { model
-                | rerunning = Set.remove original.id model.rerunning
-                , normalizationError = Nothing
-                , sermons =
-                    if Set.member original.id model.deletedSermons then
-                        model.sermons
-
-                    else
-                        replaceSermonIfUnchanged original sermon model.sermons
-              }
-            , Cmd.none
-            )
-
-        RerunNormalizationFinished original (Err _) ->
-            ( { model
-                | rerunning = Set.remove original.id model.rerunning
-                , normalizationError = Just "Could not adjust the recording. Please try again."
-              }
-            , Cmd.none
-            )
-
-        ReviewNormalization sermon ->
-            ( { model
-                | reviewingNormalization = Set.insert sermon.id model.reviewingNormalization
-                , normalizationError = Nothing
-              }
-            , Api.reviewNormalization (NormalizationReviewed sermon) sermon.id
-            )
-
-        NormalizationReviewed _ (Ok sermon) ->
-            ( { model
-                | sermons =
-                    if Set.member sermon.id model.deletedSermons then
-                        model.sermons
-
-                    else
-                        upsertSermon sermon model.sermons
-                , reviewingNormalization = Set.remove sermon.id model.reviewingNormalization
-              }
-            , Cmd.none
-            )
-
-        NormalizationReviewed original (Err _) ->
-            ( { model
-                | reviewingNormalization = Set.remove original.id model.reviewingNormalization
-                , normalizationError = Just "Could not save the normalization review. Please try again."
               }
             , Cmd.none
             )

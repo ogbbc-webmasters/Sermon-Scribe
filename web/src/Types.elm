@@ -40,9 +40,6 @@ type alias Model =
     , retrying : Set String
     , regenerating : Dict String String
     , retryError : Maybe String
-    , rerunning : Set String
-    , reviewingNormalization : Set String
-    , normalizationError : Maybe String
     , zone : Time.Zone
     }
 
@@ -59,10 +56,6 @@ type Msg
     | UploadFinished (Result Http.Error Sermon)
     | RetryProcessing Sermon String
     | RetryFinished Sermon (Result Http.Error Sermon)
-    | RerunNormalization Sermon String
-    | RerunNormalizationFinished Sermon (Result Http.Error Sermon)
-    | ReviewNormalization Sermon
-    | NormalizationReviewed Sermon (Result Http.Error Sermon)
     | OpenSermon Sermon
     | SearchTranscript String
     | SelectTranscriptMatch Int

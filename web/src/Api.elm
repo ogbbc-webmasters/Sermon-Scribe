@@ -4,9 +4,7 @@ module Api exposing
     , deleteSermon
     , fetchSermons
     , pipelineEventDecoder
-    , rerunNormalization
     , retryProcessing
-    , reviewNormalization
     , sermonDecoder
     , uploadSermon
     , uploadTracker
@@ -18,7 +16,6 @@ module Api exposing
 import File exposing (File)
 import Http
 import Json.Decode as Decode exposing (Decoder)
-import Json.Encode as Encode
 import Dict
 
 
@@ -199,26 +196,6 @@ retryProcessing : (Result Http.Error Sermon -> msg) -> String -> String -> Cmd m
 retryProcessing toMsg id part =
     Http.post
         { url = "/api/sermons/" ++ id ++ "/retry/" ++ part
-        , body = Http.emptyBody
-        , expect = Http.expectJson toMsg sermonDecoder
-        }
-
-
-rerunNormalization : (Result Http.Error Sermon -> msg) -> String -> String -> Cmd msg
-rerunNormalization toMsg id adjustment =
-    Http.post
-        { url = "/api/sermons/" ++ id ++ "/normalize"
-        , body =
-            Http.jsonBody
-                (Encode.object [ ( "adjustment", Encode.string adjustment ) ])
-        , expect = Http.expectJson toMsg sermonDecoder
-        }
-
-
-reviewNormalization : (Result Http.Error Sermon -> msg) -> String -> Cmd msg
-reviewNormalization toMsg id =
-    Http.post
-        { url = "/api/sermons/" ++ id ++ "/review-normalization"
         , body = Http.emptyBody
         , expect = Http.expectJson toMsg sermonDecoder
         }

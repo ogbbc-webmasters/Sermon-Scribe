@@ -39,7 +39,6 @@ view model =
                 [ viewUpload model.upload
                 , h2 [] [ text "Sermons" ]
                 , viewOptionalError model.deleteError
-                , viewOptionalError model.normalizationError
                 , viewSermons model
                 ]
 
@@ -343,8 +342,6 @@ viewProcessingRetry model sermon part label =
         , disabled
             (Set.member sermon.id model.retrying
                 || Set.member sermon.id model.deleting
-                || Set.member sermon.id model.rerunning
-                || Set.member sermon.id model.reviewingNormalization
                 || model.confirmingDelete
                 /= Nothing
                 || (sermon.status /= "done" && sermon.status /= "failed")
@@ -489,117 +486,12 @@ viewSermon model sermon =
             [ href ("/sermons/" ++ sermon.id)
             , stopPropagationOn "click" (Decode.succeed ( NoOp, True ))
             ]
-        , viewNormalizedAudio model sermon
         ]
-
-
-viewNormalizedAudio : Model -> Sermon -> Html Msg
-viewNormalizedAudio model sermon =
-    if sermon.stage == "normalization" && sermon.status == "done" && not sermon.normalizationReviewed then
-        let
-            isBusy =
-                Set.member sermon.id model.rerunning
-                    || Set.member sermon.id model.reviewingNormalization
-                    || Set.member sermon.id model.deleting
-                    || Set.member sermon.id model.retrying
-
-            adjustmentButtons =
-                normalizationAdjustments
-                    |> List.map
-                        (\adjustment ->
-                            button
-                                [ Ui.button
-                                , onClick (RerunNormalization sermon adjustment.name)
-                                , disabled (isBusy || adjustmentAtLimit sermon adjustment.name)
-                                ]
-                                [ text adjustment.label ]
-                        )
-        in
-        div [ Ui.audioReview, stopPropagationOn "click" (Decode.succeed ( NoOp, True )) ]
-            [ audio
-                [ Ui.audioReviewPlayer
-                , controls True
-                , src (normalizedAudioUrl sermon "proxy")
-                ]
-                []
-            , p [ Ui.audioReviewLabel ]
-                [ text "How does the recording sound?" ]
-            , div [ Ui.audioReviewControls ]
-                (button
-                    [ Ui.primaryButton
-                    , onClick (ReviewNormalization sermon)
-                    , disabled isBusy
-                    ]
-                    [ text
-                        (if Set.member sermon.id model.reviewingNormalization then
-                            "Saving review…"
-
-                         else
-                            "Complete Normalization Review"
-                        )
-                    ]
-                    :: adjustmentButtons
-                )
-            , p [ Ui.hint ]
-                [ a
-                    [ class "focusable"
-                    , href (normalizedAudioUrl sermon "proxy" ++ "&download=1")
-                    , download "normalized.mp3"
-                    ]
-                    [ text "Download MP3" ]
-                ]
-            ]
-
-    else
-        text ""
-
-
-type alias NormalizationAdjustment =
-    { name : String
-    , label : String
-    }
-
-
-normalizationAdjustments : List NormalizationAdjustment
-normalizationAdjustments =
-    [ { name = "more-gate", label = "I hear too much background noise" }
-    , { name = "less-gate", label = "Some words sound cut off" }
-    , { name = "more-volume", label = "The recording is too quiet" }
-    , { name = "less-volume", label = "The recording is too loud" }
-    ]
-
-
-adjustmentAtLimit : Sermon -> String -> Bool
-adjustmentAtLimit sermon adjustment =
-    case adjustment of
-        "more-gate" ->
-            sermon.normalizationGateAdjustment >= 3
-
-        "less-gate" ->
-            sermon.normalizationGateAdjustment <= -3
-
-        "more-volume" ->
-            sermon.normalizationVolumeAdjustment >= 3
-
-        "less-volume" ->
-            sermon.normalizationVolumeAdjustment <= -3
-
-        _ ->
-            True
 
 
 audioUrl : String -> String -> String
 audioUrl id audioType =
     "/api/sermons/" ++ id ++ "/audio/" ++ audioType
-
-
-normalizedAudioUrl : Sermon -> String -> String
-normalizedAudioUrl sermon audioType =
-    audioUrl sermon.id audioType
-        ++ "?gate="
-        ++ String.fromInt sermon.normalizationGateAdjustment
-        ++ "&volume="
-        ++ String.fromInt sermon.normalizationVolumeAdjustment
 
 
 {-| Render a stage/status pair in plain language. Later specs add more
