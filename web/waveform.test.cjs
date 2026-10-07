@@ -11,9 +11,16 @@ function setup() {
     getAttribute(name) { return this.attrs[name] ?? null; }
     setAttribute(name, value) { this.attrs[name] = value; }
     dispatchEvent(event) { this.events.push(event); }
+    append() {}
   }
   runInNewContext(readFileSync(__dirname + "/waveform.js", "utf8"), {
     HTMLElement,
+    ResizeObserver: class { observe() {} },
+    document: { createElement: () => ({
+      listeners: {}, setAttribute() {},
+      addEventListener(name, handler) { this.listeners[name] = handler; },
+      getBoundingClientRect() { return { left: 10, width: 1000 }; }
+    }) },
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     customElements: { define: (_, cls) => { Waveform = cls; } }
   });
@@ -102,4 +109,26 @@ test("hit testing uses the zoomed and panned window, including nearby boundaries
   wave.pan(40);
   assert.deepEqual(selection(wave, 800), { kind: "boundary", index: 3 });
   assert.deepEqual(selection(wave, 700), { kind: "section", index: 2 });
+});
+
+test("wheel zoom is quicker while horizontal and shift-wheel panning are gentler", () => {
+  const wave = setup();
+  wave.load = () => {};
+  wave.connectedCallback();
+  let prevented = 0;
+  const wheel = values => wave.canvas.listeners.wheel({
+    deltaMode: 0, deltaX: 0, deltaY: 0, clientX: 260, shiftKey: false,
+    preventDefault() { prevented++; }, ...values
+  });
+  wheel({ deltaY: -100 });
+  assert.ok(Math.abs(wave.view.span - 100 * Math.exp(-0.5)) < 1e-9);
+  assert.ok(Math.abs(wave.view.start + 0.25 * wave.view.span - 25) < 1e-9);
+  wave.setView(20, 50);
+  wheel({ deltaX: 100 });
+  assert.equal(wave.view.start, 21.75);
+  wheel({ deltaY: -200, shiftKey: true });
+  assert.equal(wave.view.start, 18.25);
+  assert.equal(wave.view.span, 50);
+  assert.equal(prevented, 3);
+  assert.equal(wave.events.length, 0);
 });

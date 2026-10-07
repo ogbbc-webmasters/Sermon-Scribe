@@ -15,9 +15,9 @@ customElements.define("editing-waveform", class extends HTMLElement {
       const bounds = this.canvas.getBoundingClientRect();
       const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bounds.width : 1;
       if (event.shiftKey || Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
-        this.pan((event.shiftKey ? event.deltaY : event.deltaX) * unit / bounds.width * this.view.span);
+        this.pan((event.shiftKey ? event.deltaY : event.deltaX) * unit / bounds.width * this.view.span * 0.35);
       } else {
-        this.zoom(Math.exp(-event.deltaY * unit * 0.002), (event.clientX - bounds.left) / bounds.width);
+        this.zoom(Math.exp(-event.deltaY * unit * 0.005), (event.clientX - bounds.left) / bounds.width);
       }
     }, { passive: false });
     this.canvas.addEventListener("pointerdown", event => {
