@@ -115,16 +115,11 @@ viewSermonDetail model sermon =
               else if sermon.stage == "editing" && sermon.status == "done" then
                 div [ Ui.panel ]
                     [ h2 [ Ui.panelHeading ] [ text "Ready to edit" ]
-                    , p [ Ui.hint ] [ text "Transcription is finished. Review which sections to keep, or continue with the complete recording." ]
                     , div [ Ui.sermonActions ]
                         [ button [ Ui.primaryButton, onClick (EditingMsg (Editing.Open sermon.id False)) ] [ text "Edit recording" ]
                         , button [ Ui.button, onClick (EditingMsg (Editing.Open sermon.id True)) ] [ text "Continue without editing" ]
                         ]
                     ]
-
-              else if sermon.stage == "metadata" && (sermon.status == "done" || sermon.status == "failed") then
-                div [ Ui.sermonActions ]
-                    [ button [ Ui.button, onClick (EditingMsg (Editing.Open sermon.id False)) ] [ text "Reopen editing" ] ]
 
               else
                 text ""
@@ -267,7 +262,13 @@ viewDetailAudio sermon =
             audioUrl sermon.id "playback"
     in
     Card.view (text "Audio")
-        [ Icon.view "a"
+        [ Icon.view "button"
+            Icon.editAudio
+            False
+            [ onClick (EditingMsg (Editing.Open sermon.id False))
+            , disabled (sermon.stage /= "metadata" || (sermon.status /= "done" && sermon.status /= "failed"))
+            ]
+        , Icon.view "a"
             Icon.downloadAudio
             False
             [ href (source ++ "?download=1")

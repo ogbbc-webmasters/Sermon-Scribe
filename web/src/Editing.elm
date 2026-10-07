@@ -519,7 +519,6 @@ view : Model -> Html Msg
 view model =
     div [ class "editor" ]
         [ h2 [ Ui.panelHeading ] [ text "Edit recording" ]
-        , p [ Ui.hint ] [ text "Listen to the edges. Keep what belongs; delete what doesn't. Your source recording stays untouched." ]
         , case model.error of
             Just error ->
                 div [ Ui.errorPanel, attribute "role" "alert" ]
@@ -578,7 +577,6 @@ view model =
                                     "Apply edits & continue"
                                 )
                             ]
-                        , p [ Ui.hint ] [ text "Metadata will be generated from the kept sections. You can reopen editing later." ]
                         ]
                     ]
         ]
@@ -728,28 +726,21 @@ boundaryPanel model draft index b =
     in
     div [ class "editor__adjustment", id "breakpoint-adjustment", attribute "tabindex" "-1", attribute "aria-label" "Adjust breakpoint", keyboard ]
         [ strong [] [ text ("Place breakpoint · " ++ String.fromFloat (toFloat (round (b.time * 10)) / 10) ++ " seconds") ]
-        , p [ Ui.hint ] [ text "One second before → high beep → one second after." ]
         , div [ Ui.sermonActions ]
             [ button [ Ui.button, onClick Preview, disabled busy ] [ text "Listen around breakpoint" ]
             , button [ Ui.button, onClick (Nudge -0.1), disabled busy ] [ text "← Earlier" ]
             , button [ Ui.button, onClick (Nudge 0.1), disabled busy ] [ text "Later →" ]
             ]
-        , p [ Ui.hint ] [ text "Arrow keys move 0.1 seconds and replay. Shift + arrow moves 1 second." ]
+        , p [ Ui.hint ] [ text "← / → 0.1s · Shift 1s" ]
         , p [ attribute "role" "status", Ui.hint ] [ text model.audioStatus ]
         , button [ Ui.button, onClick RemoveBoundary, disabled (busy || not removable) ] [ text "Remove breakpoint" ]
-        , if removable then
-            text ""
-
-          else
-            p [ Ui.hint ] [ text "To join these sections, first give both the same Keep / Delete choice." ]
         ]
 
 
 sectionPanel : Model -> Draft -> Int -> Html Msg
 sectionPanel model draft index =
     div [ class "editor__adjustment" ]
-        [ p [ Ui.hint ] [ text "First three seconds → low tone (middle skipped) → last three seconds. Short sections play in full." ]
-        , div [ Ui.sermonActions ]
+        [ div [ Ui.sermonActions ]
             [ button [ Ui.button, onClick Preview ] [ text "Preview start & finish" ]
             , button [ Ui.button, onClick PlayFull ] [ text "Play full section" ]
             ]

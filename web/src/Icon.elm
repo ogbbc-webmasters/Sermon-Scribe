@@ -1,4 +1,4 @@
-module Icon exposing (Config, back, copiedTranscript, copyTranscript, deleteSermon, downloadAudio, nextMatch, openSermon, previousMatch, regenerate, titleInfo, view, warning)
+module Icon exposing (Config, back, copiedTranscript, copyTranscript, deleteSermon, downloadAudio, editAudio, nextMatch, openSermon, previousMatch, regenerate, titleInfo, view, warning)
 
 import Html exposing (Html)
 import Html.Attributes exposing (attribute, title, type_)
@@ -27,6 +27,11 @@ deleteSermon =
 downloadAudio : Config
 downloadAudio =
     Config "ph:download-simple" "Download audio" "var(--green)"
+
+
+editAudio : Config
+editAudio =
+    Config "ph:scissors" "Edit recording" "var(--green)"
 
 
 copyTranscript : Config
