@@ -128,7 +128,7 @@ viewSermonDetail model sermon =
                     [ div [ class "sermon-detail__column", hidden (not hasMetadata) ]
                         [ viewDetailMetadata model sermon ]
                     , div [ class "sermon-detail__column" ]
-                        [ viewDetailAudio sermon
+                        [ viewDetailAudio model sermon
                         , viewDetailTranscript model sermon
                         ]
                     ]
@@ -231,23 +231,52 @@ viewScriptureOption sermonId selected reference =
         ]
 
 
-viewDetailAudio : Sermon -> Html Msg
-viewDetailAudio sermon =
+viewDetailAudio : Model -> Sermon -> Html Msg
+viewDetailAudio model sermon =
     let
         source =
             audioUrl sermon.id "playback"
+
+        editable =
+            (sermon.stage == "editing" && sermon.status == "done")
+                || (sermon.stage == "metadata" && (sermon.status == "done" || sermon.status == "failed"))
+
+        ownsDraft =
+            model.editor.sermonId == Just sermon.id
+
+        busy =
+            ownsDraft && (model.editor.regenerating || model.editor.applying || model.editor.pendingApply /= Nothing)
+
+        duration =
+            case
+                if ownsDraft then
+                    model.editor.draft
+
+                else
+                    Nothing
+            of
+                Just draft ->
+                    Just (Editing.keptDuration draft)
+
+                Nothing ->
+                    sermon.editingDuration
     in
     Card.view (text "Audio")
-        [ Button.view "button"
+        [ if duration |> Maybe.map (\seconds -> seconds > 0 && seconds < 90 * 60) |> Maybe.withDefault False then
+            Button.action "ph:check"
+                "Apply edits"
+                busy
+                [ onClick (EditingMsg (Editing.ApplyRecording sermon.id))
+                , disabled (not editable || busy)
+                ]
+
+          else
+            text ""
+        , Button.view "button"
             Button.editAudio
             False
-            [ onClick (EditingMsg (Editing.Open sermon.id False))
-            , disabled
-                (not
-                    ((sermon.stage == "editing" && sermon.status == "done")
-                        || (sermon.stage == "metadata" && (sermon.status == "done" || sermon.status == "failed"))
-                    )
-                )
+            [ onClick (EditingMsg (Editing.Open sermon.id))
+            , disabled (not editable || busy)
             ]
         , Button.view "a"
             Button.downloadAudio
@@ -256,7 +285,18 @@ viewDetailAudio sermon =
             , download ""
             ]
         ]
-        [ audio [ class "sermon-detail__audio", controls True, attribute "preload" "metadata", src source ] [] ]
+        [ audio [ class "sermon-detail__audio", controls True, attribute "preload" "metadata", src source ] []
+        , if duration |> Maybe.map (\seconds -> seconds >= 80 * 60) |> Maybe.withDefault False then
+            p [ Ui.hint ] [ text "Please edit the audio to under 80 minutes." ]
+
+          else
+            text ""
+        , if ownsDraft then
+            viewOptionalError model.editor.error
+
+          else
+            text ""
+        ]
 
 
 viewDetailTranscript : Model -> Sermon -> Html Msg

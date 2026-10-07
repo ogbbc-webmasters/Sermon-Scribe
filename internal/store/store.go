@@ -28,6 +28,7 @@ type Sermon struct {
 	NormalizationReviewed         bool                   `json:"normalization_reviewed"`
 	AppliedRegions                json.RawMessage        `json:"applied_regions,omitempty"`
 	EditApproved                  bool                   `json:"edit_approved"`
+	EditingDuration               *float64               `json:"editing_duration,omitempty"`
 	Transcript                    *string                `json:"transcript,omitempty"`
 	Title                         *string                `json:"title,omitempty"`
 	TitleGenerated                *bool                  `json:"title_generated,omitempty"`
@@ -123,9 +124,10 @@ const sermonViewSQL = `
 	       CASE WHEN s.transcript IS NULL THEN t.metadata ELSE s.transcription_metadata END,
 	       s.title, s.title_generated, s.title_reasoning,
 	       s.speaker, s.old_testament_reading, s.new_testament_reading,
-	       s.scriptures, s.scripture_options, s.topics, s.topic_scores
+	       s.scriptures, s.scripture_options, s.topics, s.topic_scores, e.draft
 	FROM sermons s
 	LEFT JOIN source_transcriptions t ON t.sermon_id = s.id
+	LEFT JOIN editing e ON e.sermon_id = s.id
 	LEFT JOIN jobs j ON j.id = (
 		SELECT id FROM jobs
 		WHERE sermon_id = s.id AND stage = s.stage
@@ -175,14 +177,28 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 	var applied []byte
 	var transcript, transcriptionMetadata, title, titleReasoning, speaker, oldTestamentReading, newTestamentReading, scriptures, scriptureOptions, topics, topicScores sql.NullString
 	var titleGenerated sql.NullBool
+	var editingDraft sql.NullString
 	err := row.Scan(
 		&sm.ID, &sm.OriginalFilename, &sm.UploadedAt, &sm.UploadedBy,
 		&sm.Stage, &sm.Status, &sm.Progress, &sm.Error,
 		&sm.NormalizationGateAdjustment, &sm.NormalizationVolumeAdjustment,
 		&sm.NormalizationReviewed, &applied, &sm.EditApproved,
 		&transcript, &transcriptionMetadata, &title, &titleGenerated, &titleReasoning, &speaker,
-		&oldTestamentReading, &newTestamentReading, &scriptures, &scriptureOptions, &topics, &topicScores,
+		&oldTestamentReading, &newTestamentReading, &scriptures, &scriptureOptions, &topics, &topicScores, &editingDraft,
 	)
+	if editingDraft.Valid {
+		var draft Editing
+		if err := json.Unmarshal([]byte(editingDraft.String), &draft); err != nil {
+			return fmt.Errorf("decode editing draft for sermon %s: %w", sm.ID, err)
+		}
+		duration := 0.0
+		for i, section := range draft.Sections {
+			if section.Keep {
+				duration += draft.Breakpoints[i+1].Time - draft.Breakpoints[i].Time
+			}
+		}
+		sm.EditingDuration = &duration
+	}
 	if len(applied) > 0 {
 		sm.AppliedRegions = json.RawMessage(applied)
 	}

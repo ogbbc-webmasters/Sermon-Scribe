@@ -49,6 +49,7 @@ type alias Sermon =
     , topics : List String
     , topicScores : List ( String, Float )
     , transcriptionMetadata : Maybe TranscriptionMetadata
+    , editingDuration : Maybe Float
     }
 
 
@@ -108,7 +109,7 @@ sermonDecoder =
         )
         (Decode.map8
             (\id originalFilename uploadedAt uploadedBy stage status progress error ->
-                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0 False Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] [] [] [] Nothing
+                Sermon id originalFilename uploadedAt uploadedBy stage status progress error 0 0 False Nothing Nothing Nothing Nothing Nothing Nothing Nothing [] [] [] [] Nothing Nothing
             )
             (Decode.field "id" Decode.string)
             (Decode.field "original_filename" Decode.string)
@@ -168,9 +169,10 @@ decodeMetadata sermon =
             )
         |> Decode.andThen
             (\decodedSermon ->
-                Decode.map
-                    (\metadata -> { decodedSermon | transcriptionMetadata = metadata })
+                Decode.map2
+                    (\metadata duration -> { decodedSermon | transcriptionMetadata = metadata, editingDuration = duration })
                     (Decode.maybe (Decode.field "transcription_metadata" transcriptionMetadataDecoder))
+                    (Decode.maybe (Decode.field "editing_duration" Decode.float))
             )
 
 
@@ -304,7 +306,9 @@ retryProcessing : (Result Http.Error Sermon -> msg) -> String -> String -> Cmd m
 retryProcessing toMsg id part =
     Http.post
         { url =
-            "/api/sermons/" ++ id ++ "/retry"
+            "/api/sermons/"
+                ++ id
+                ++ "/retry"
                 ++ (if part == "" then
                         ""
 

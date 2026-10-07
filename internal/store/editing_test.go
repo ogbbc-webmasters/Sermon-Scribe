@@ -14,6 +14,31 @@ func editingFixture() Editing {
 	return Editing{Duration: 10, Breakpoints: []Breakpoint{{"start", 0, "start"}, {"middle", 5, "manual"}, {"end", 10, "end"}}, Sections: []Section{{"a", true}, {"b", true}}}
 }
 
+func TestEditingDurationUsesKeptSections(t *testing.T) {
+	st, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.CreateSermon(Sermon{ID: "duration", Stage: "editing", Status: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ cut, want float64 }{{1799.75, 5400.25}, {1800, 5400}, {1800.25, 5399.75}} {
+		d := Editing{Duration: 7200, Breakpoints: []Breakpoint{{"start", 0, "start"}, {"cut", tc.cut, "manual"}, {"end", 7200, "end"}}, Sections: []Section{{"delete", false}, {"keep", true}}}
+		if err := st.PrepareEditing("duration", d, "source", TranscriptionMetadata{Duration: 12}); err != nil {
+			t.Fatal(err)
+		}
+		sm, err := st.GetSermon("duration")
+		if err != nil || sm.EditingDuration == nil || *sm.EditingDuration != tc.want {
+			t.Fatalf("kept duration: %v, want %v: %v", sm.EditingDuration, tc.want, err)
+		}
+		list, err := st.ListSermons()
+		if err != nil || len(list) != 1 || list[0].EditingDuration == nil || *list[0].EditingDuration != tc.want {
+			t.Fatalf("listed kept duration: %+v %v", list, err)
+		}
+	}
+}
+
 func TestSourceTranscriptVisibleWithoutReplacingAppliedOutput(t *testing.T) {
 	st, err := Open(":memory:")
 	if err != nil {

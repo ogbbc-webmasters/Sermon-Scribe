@@ -1,4 +1,4 @@
-module Editing exposing (Model, Msg(..), init, isOpen, update, view)
+module Editing exposing (Model, Msg(..), init, isOpen, keptDuration, update, view)
 
 import Browser.Dom
 import Button
@@ -34,10 +34,12 @@ type Selection
 
 type alias Model =
     { sermonId : Maybe String
+    , visible : Bool
     , draft : Maybe Draft
     , selection : Maybe Selection
     , saved : Maybe Draft
     , saving : Bool
+    , regenerating : Bool
     , applying : Bool
     , pendingApply : Maybe Bool
     , error : Maybe String
@@ -51,11 +53,12 @@ type alias Model =
 
 init : Model
 init =
-    Model Nothing Nothing Nothing Nothing False False Nothing Nothing "" 0 [] 0 0
+    Model Nothing False Nothing Nothing Nothing False False False Nothing Nothing "" 0 [] 0 0
 
 
 type Msg
-    = Open String Bool
+    = Open String
+    | ApplyRecording String
     | Loaded Int (Result Http.Error Draft)
     | Close
     | Select Selection
@@ -70,6 +73,8 @@ type Msg
     | Apply Bool
     | Applied Int (Result Http.Error ())
     | Reload
+    | Regenerate
+    | Regenerated Int (Result Http.Error Draft)
     | Preview
     | PlayFull
     | Playhead Float
@@ -80,7 +85,7 @@ type Msg
 
 isOpen : String -> Model -> Bool
 isOpen sermonId model =
-    model.sermonId == Just sermonId
+    model.visible && model.sermonId == Just sermonId
 
 
 endpoint : Model -> String
@@ -120,21 +125,27 @@ stop =
 update : Msg -> Model -> ( Model, Cmd Msg, Maybe Encode.Value )
 update msg model =
     case msg of
-        Open sermonId skip ->
-            let
-                next =
-                    { init
-                        | sermonId = Just sermonId
-                        , generation = model.generation + 1
-                        , pendingApply =
-                            if skip then
-                                Just True
+        Open sermonId ->
+            if model.sermonId == Just sermonId && model.draft /= Nothing then
+                ( { model | visible = True }, Cmd.none, stop )
 
-                            else
-                                Nothing
-                    }
-            in
-            ( next, Http.get { url = endpoint next, expect = Http.expectJson (Loaded next.generation) draftDecoder }, stop )
+            else
+                let
+                    next =
+                        { init | sermonId = Just sermonId, visible = True, generation = model.generation + 1 }
+                in
+                ( next, Http.get { url = endpoint next, expect = Http.expectJson (Loaded next.generation) draftDecoder }, stop )
+
+        ApplyRecording sermonId ->
+            if model.sermonId == Just sermonId && model.draft /= Nothing then
+                update (Apply False) { model | visible = False }
+
+            else
+                let
+                    ( next, cmd, audioEffect ) =
+                        update (Open sermonId) model
+                in
+                ( { next | visible = False, pendingApply = Just False }, cmd, audioEffect )
 
         Loaded generation result ->
             if generation /= model.generation then
@@ -161,14 +172,37 @@ update msg model =
                         ( { model | error = Just "Could not load editing suggestions. Try again.", pendingApply = Nothing }, Cmd.none, Nothing )
 
         Close ->
-            if model.saving || model.applying || model.draft /= model.saved then
+            ( { model | visible = False }, Cmd.none, stop )
+
+        Reload ->
+            update (Open (Maybe.withDefault "" model.sermonId)) { model | draft = Nothing }
+
+        Regenerate ->
+            case model.draft of
+                Just draft ->
+                    if model.saving || model.regenerating || model.applying || model.pendingApply /= Nothing || model.draft /= model.saved then
+                        ( model, Cmd.none, Nothing )
+
+                    else
+                        ( { model | regenerating = True, error = Nothing }
+                        , Http.post { url = endpoint model ++ "/regenerate", body = Http.jsonBody (Encode.object [ ( "revision", Encode.int draft.revision ) ]), expect = Http.expectJson (Regenerated model.generation) draftDecoder }
+                        , stop
+                        )
+
+                Nothing ->
+                    ( model, Cmd.none, Nothing )
+
+        Regenerated generation result ->
+            if generation /= model.generation then
                 ( model, Cmd.none, Nothing )
 
             else
-                ( { init | generation = model.generation + 1 }, Cmd.none, stop )
+                case result of
+                    Ok draft ->
+                        ( { model | regenerating = False, draft = Just draft, saved = Just draft, selection = Nothing, undo = [], sequence = model.sequence + 1, audioStatus = "" }, Cmd.none, stop )
 
-        Reload ->
-            update (Open (Maybe.withDefault "" model.sermonId) False) model
+                    Err err ->
+                        ( { model | regenerating = False, error = Just (saveError err) }, Cmd.none, Nothing )
 
         Select selection ->
             ( { model
@@ -323,7 +357,10 @@ update msg model =
                         ( { model | saving = False, pendingApply = Nothing, error = Just (saveError err) }, Cmd.none, Nothing )
 
         Apply skip ->
-            if model.draft /= model.saved || model.saving then
+            if model.regenerating then
+                ( model, Cmd.none, Nothing )
+
+            else if model.draft /= model.saved || model.saving then
                 save { model | pendingApply = Just skip }
 
             else
@@ -381,7 +418,7 @@ change : (Draft -> Draft) -> Model -> ( Model, Cmd Msg, Maybe Encode.Value )
 change transform model =
     case model.draft of
         Just draft ->
-            if model.applying || model.pendingApply /= Nothing || transform draft == draft then
+            if model.regenerating || model.applying || model.pendingApply /= Nothing || transform draft == draft then
                 ( model, Cmd.none, Nothing )
 
             else
@@ -399,7 +436,7 @@ save : Model -> ( Model, Cmd Msg, Maybe Encode.Value )
 save model =
     case model.draft of
         Just draft ->
-            if model.saving || model.applying || model.draft == model.saved then
+            if model.saving || model.regenerating || model.applying || model.draft == model.saved then
                 ( model, Cmd.none, Nothing )
 
             else
@@ -522,7 +559,7 @@ kindLabel kind =
             "Silence ends"
 
         "speaker" ->
-            "New speaker"
+            "Speaker segment"
 
         "singing_start" ->
             "Singing starts"
@@ -540,13 +577,16 @@ view model =
         [ Card.viewWithSubtitle
             (text "Edit recording")
             (Maybe.map (\draft -> text ("Kept duration: " ++ timestamp (keptDuration draft))) model.draft)
-            [ Button.view "button" (Button.regenerate "Regenerate breakpoints") False [ disabled True ]
+            [ Button.view "button"
+                (Button.regenerate "Regenerate breakpoints")
+                model.regenerating
+                [ onClick Regenerate
+                , disabled (model.draft == Nothing || model.saving || model.regenerating || model.applying || model.pendingApply /= Nothing || model.draft /= model.saved)
+                ]
             , Button.action "ph:arrow-right"
                 "Continue"
-                (model.applying || model.pendingApply /= Nothing)
-                [ onClick (Apply False)
-                , disabled (model.draft == Nothing || model.applying || model.pendingApply /= Nothing || not (model.draft |> Maybe.map (.sections >> List.any .keep) |> Maybe.withDefault False) || model.error /= Nothing)
-                ]
+                False
+                [ onClick Close ]
             ]
             [ case model.error of
                 Just error ->
@@ -558,7 +598,7 @@ view model =
 
                               else
                                 Button.action "ph:floppy-disk" "Try saving again" model.saving [ onClick RetrySave, disabled model.saving ]
-                            , Button.action "ph:arrow-clockwise" "Reload saved draft" False [ onClick Reload, disabled (model.saving || model.applying) ]
+                            , Button.action "ph:arrow-clockwise" "Reload saved draft" False [ onClick Reload, disabled (model.saving || model.regenerating || model.applying) ]
                             ]
                         ]
 
@@ -603,7 +643,7 @@ sectionRow model draft index section =
             Maybe.map2 (\a b -> timestamp a.time ++ "–" ++ timestamp b.time) (at index draft.breakpoints) (at (index + 1) draft.breakpoints) |> Maybe.withDefault ""
 
         busy =
-            model.applying || model.pendingApply /= Nothing
+            model.regenerating || model.applying || model.pendingApply /= Nothing
 
         radios =
             div [ class "editor__choices", attribute "role" "group", attribute "aria-label" ("Section " ++ String.fromInt (index + 1) ++ " inclusion"), stopPropagationOn "click" (Decode.succeed ( IgnoreClick, True )) ]
@@ -702,7 +742,7 @@ boundaryPanel : Model -> Draft -> Int -> Breakpoint -> Html Msg
 boundaryPanel model draft index b =
     let
         busy =
-            model.applying || model.pendingApply /= Nothing
+            model.regenerating || model.applying || model.pendingApply /= Nothing
 
         removable =
             Maybe.map2 (\left right -> left.keep == right.keep) (at (index - 1) draft.sections) (at index draft.sections) |> Maybe.withDefault False
