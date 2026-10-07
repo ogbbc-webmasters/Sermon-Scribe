@@ -37,8 +37,7 @@ view model =
 
         Nothing ->
             div [ class "page" ]
-                [ viewUpload model.upload
-                , h2 [] [ text "Sermons" ]
+                [ viewSermonListHeader model.upload
                 , viewOptionalError model.deleteError
                 , viewSermons model
                 ]
@@ -515,8 +514,8 @@ viewOptionalError maybeMessage =
             text ""
 
 
-viewUpload : UploadState -> Html Msg
-viewUpload upload =
+viewSermonListHeader : UploadState -> Html Msg
+viewSermonListHeader upload =
     let
         busy =
             case upload of
@@ -527,7 +526,10 @@ viewUpload upload =
                     False
     in
     div []
-        [ Button.labeled "Upload" Button.uploadSermon busy [ onClick ChooseFile, disabled busy ]
+        [ div [ class "sermon-list__header" ]
+            [ h2 [ class "sermon-list__heading" ] [ text "Sermons" ]
+            , Button.labeled "Upload" Button.uploadSermon busy [ onClick ChooseFile, disabled busy ]
+            ]
         , case upload of
             Uploading fraction ->
                 div [ attribute "role" "status" ]

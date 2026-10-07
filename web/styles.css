@@ -907,6 +907,20 @@ h2::after {
   margin: 0;
 }
 
+/* sermon-list — list heading and upload action */
+
+.sermon-list__header {
+  align-items: center;
+  display: flex;
+  gap: var(--space-lg);
+  margin-bottom: var(--space-lg);
+}
+
+.sermon-list__heading {
+  flex: 1;
+  margin: 0;
+}
+
 /* spinner — progress indicator for in-flight actions */
 
 .spinner {
