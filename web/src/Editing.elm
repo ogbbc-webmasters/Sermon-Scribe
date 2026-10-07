@@ -719,11 +719,6 @@ sectionRow model draft index section =
                 , span [ class "editor__section-label" ]
                     [ strong [] [ text ("Section " ++ String.fromInt (index + 1)) ]
                     , span [] [ text range ]
-                    , if section.keep then
-                        text ""
-
-                      else
-                        span [] [ text "Excluded" ]
                     ]
                 ]
             , radios
