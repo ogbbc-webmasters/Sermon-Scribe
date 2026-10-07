@@ -210,7 +210,7 @@ viewSermonDetail model sermon =
                 ]
             , viewDetailStatus model sermon
             , if Editing.isOpen sermon.id model.editor then
-                Html.map EditingMsg (Editing.view model.editor sermon.transcriptionMetadata)
+                Html.map EditingMsg (Editing.view model.editor sermon.sourceTranscriptionMetadata)
 
               else
                 text ""

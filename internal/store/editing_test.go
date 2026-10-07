@@ -2,9 +2,11 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"math"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -40,7 +42,7 @@ func TestPlaybackVersionTracksCommittedGeneration(t *testing.T) {
 	}
 	check("")
 	for _, path := range []string{"edit-first/edited.mp3", "edit-second/edited.mp3"} {
-		if err := st.CommitEditing("playback", path, "same text", TranscriptionMetadata{Duration: 5}, true); err != nil {
+		if err := st.CommitEditing("playback", path, editingFixture(), true); err != nil {
 			t.Fatal(err)
 		}
 		check(path)
@@ -49,7 +51,7 @@ func TestPlaybackVersionTracksCommittedGeneration(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("edit-second/edited.mp3")
-	if err := st.CommitEditing("playback", "", "source", TranscriptionMetadata{}, false); err != nil {
+	if err := st.CommitEditing("playback", "", editingFixture(), false); err != nil {
 		t.Fatal(err)
 	}
 	check("")
@@ -80,7 +82,7 @@ func TestEditingDurationUsesKeptSections(t *testing.T) {
 	}
 }
 
-func TestSourceTranscriptVisibleWithoutReplacingAppliedOutput(t *testing.T) {
+func TestSourceTranscriptTakesPrecedenceOverLegacyOutput(t *testing.T) {
 	st, err := Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -94,8 +96,8 @@ func TestSourceTranscriptVisibleWithoutReplacingAppliedOutput(t *testing.T) {
 		metadata *TranscriptionMetadata
 	}{
 		{"source-only", "source recording", &source},
-		{"applied", "kept output", &applied},
-		{"legacy", "legacy output", nil},
+		{"applied", "source recording", &source},
+		{"legacy", "source recording", &source},
 	} {
 		t.Run(tc.id, func(t *testing.T) {
 			if err := st.CreateSermon(Sermon{ID: tc.id, Stage: "editing", Status: "done"}); err != nil {
@@ -105,11 +107,12 @@ func TestSourceTranscriptVisibleWithoutReplacingAppliedOutput(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.id == "applied" {
-				if err := st.SaveTranscription(tc.id, tc.text, applied); err != nil {
+				raw, _ := json.Marshal(applied)
+				if _, err := st.db.Exec(`UPDATE sermons SET transcript='kept output',transcription_metadata=? WHERE id=?`, string(raw), tc.id); err != nil {
 					t.Fatal(err)
 				}
 			} else if tc.id == "legacy" {
-				if err := st.SaveTranscript(tc.id, tc.text); err != nil {
+				if _, err := st.db.Exec(`UPDATE sermons SET transcript='legacy output' WHERE id=?`, tc.id); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -180,9 +183,6 @@ func TestEditingConflictsSnapshotAndPreservation(t *testing.T) {
 	if err = st.CreateSermon(Sermon{ID: "s", Stage: "metadata", Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
-	if err = st.SaveTranscription("s", "applied", TranscriptionMetadata{Duration: 4}); err != nil {
-		t.Fatal(err)
-	}
 	if err = st.PrepareEditing("s", editingFixture(), "source", TranscriptionMetadata{Duration: 10, Words: []TranscriptWord{{Word: "source", Start: 6, End: 7}}}); err != nil {
 		t.Fatal(err)
 	}
@@ -203,8 +203,8 @@ func TestEditingConflictsSnapshotAndPreservation(t *testing.T) {
 		t.Fatal("endpoint identity changed")
 	}
 	sm, _ := st.GetSermon("s")
-	if *sm.Transcript != "applied" {
-		t.Fatal("draft changed applied transcript")
+	if *sm.Transcript != "source" {
+		t.Fatal("draft changed source transcript")
 	}
 	if _, err = st.MutateEditing("s", nil, d.Revision, false, "render"); err != nil {
 		t.Fatal(err)
@@ -242,7 +242,7 @@ func TestEditingConflictsSnapshotAndPreservation(t *testing.T) {
 	}
 }
 
-func TestRefreshEditingTranscriptionPreservesDraft(t *testing.T) {
+func TestSourceTranscriptionRefreshPreservesDraft(t *testing.T) {
 	st, err := Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -261,8 +261,7 @@ func TestRefreshEditingTranscriptionPreservesDraft(t *testing.T) {
 		t.Fatal(err)
 	}
 	sourceMetadata := TranscriptionMetadata{Language: "en", Duration: 10, Words: []TranscriptWord{{Word: "new", Start: 6, End: 7}}}
-	keptMetadata := TranscriptionMetadata{Language: "en", Duration: 4, Words: []TranscriptWord{{Word: "kept", Start: 0, End: 1}}}
-	if err := st.RefreshEditingTranscription("refresh", "new source", sourceMetadata, "kept transcript", keptMetadata); err != nil {
+	if err := st.SaveSourceTranscription("refresh", "new source", sourceMetadata); err != nil {
 		t.Fatal(err)
 	}
 	gotDraft, err := st.GetEditing("refresh")
@@ -274,12 +273,12 @@ func TestRefreshEditingTranscriptionPreservesDraft(t *testing.T) {
 		t.Fatalf("source transcription: %q %+v, %v", sourceText, gotSourceMetadata, err)
 	}
 	sermon, err := st.GetSermon("refresh")
-	if err != nil || sermon.Transcript == nil || *sermon.Transcript != "kept transcript" || !reflect.DeepEqual(sermon.TranscriptionMetadata, &keptMetadata) {
-		t.Fatalf("applied transcript: %+v, %v", sermon, err)
+	if err != nil || sermon.Transcript == nil || *sermon.Transcript != "new source" || !reflect.DeepEqual(sermon.SourceTranscriptionMetadata, &sourceMetadata) {
+		t.Fatalf("source transcript: %+v, %v", sermon, err)
 	}
 	var editingSource string
-	if err := st.db.QueryRow(`SELECT source_text FROM editing WHERE sermon_id=?`, "refresh").Scan(&editingSource); err != nil || editingSource != "new source" {
-		t.Fatalf("editing source transcript: %q, %v", editingSource, err)
+	if err := st.db.QueryRow(`SELECT source_text FROM editing WHERE sermon_id=?`, "refresh").Scan(&editingSource); err != nil || editingSource != "" {
+		t.Fatalf("editor must not duplicate source transcript: %q, %v", editingSource, err)
 	}
 }
 
@@ -292,8 +291,8 @@ func TestMetadataCannotBypassEditingPause(t *testing.T) {
 	if err := st.CreateSermon(Sermon{ID: "s", Stage: "editing", Status: "done"}); err != nil {
 		t.Fatal(err)
 	}
-	// Redoing transcription can leave an older applied transcript available.
-	if err := st.SaveTranscript("s", "previous output"); err != nil {
+	// Redoing transcription can leave a previous source transcript available.
+	if err := st.SaveSourceTranscription("s", "previous output", TranscriptionMetadata{}); err != nil {
 		t.Fatal(err)
 	}
 	for _, part := range []string{"title", "topics", "scriptures"} {
@@ -353,5 +352,139 @@ func TestRedoAfterMetadataFailure(t *testing.T) {
 	}
 	if _, err := st.MutateEditing("s", nil, d.Revision, false, "redo"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestAppliedTranscriptIsDerivedWithoutWritingSource(t *testing.T) {
+	st, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	if err := st.CreateSermon(Sermon{ID: "source", Stage: "metadata", Status: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	source := TranscriptionMetadata{Duration: 10, Words: []TranscriptWord{
+		{Word: "removed", Start: 1, End: 2}, {Word: "retained", Start: 6, End: 7},
+	}}
+	draft := editingFixture()
+	draft.Sections[0].Keep = false
+	if err := st.PrepareEditing("source", draft, "removed retained", source); err != nil {
+		t.Fatal(err)
+	}
+	checkSource := func() {
+		t.Helper()
+		text, metadata, err := st.SourceTranscription("source")
+		if err != nil || text != "removed retained" || !reflect.DeepEqual(metadata, source) {
+			t.Fatalf("source changed: %q %+v %v", text, metadata, err)
+		}
+		var untouched bool
+		if err := st.db.QueryRow(`SELECT transcript IS NULL AND transcription_metadata IS NULL FROM sermons WHERE id='source'`).Scan(&untouched); err != nil || !untouched {
+			t.Fatalf("edit wrote a derived transcript: %t %v", untouched, err)
+		}
+	}
+	if err := st.CommitEditing("source", "edited.mp3", draft, true); err != nil {
+		t.Fatal(err)
+	}
+	checkSource()
+	checkOverview := func() {
+		t.Helper()
+		sermon, err := st.GetSermon("source")
+		if err != nil || sermon.Transcript == nil || *sermon.Transcript != "retained" || sermon.TranscriptionMetadata.Words[0].Start != 1 || !reflect.DeepEqual(sermon.SourceTranscriptionMetadata, &source) {
+			t.Fatalf("derived transcript/source timestamps: %+v %v", sermon, err)
+		}
+		list, err := st.ListSermons()
+		if err != nil || len(list) != 1 || *list[0].Transcript != "retained" {
+			t.Fatalf("list must use the same derived transcript: %+v %v", list, err)
+		}
+	}
+	checkOverview()
+	draft, err = st.GetEditing("source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	draft.Sections[0].Keep = true
+	draft.Sections[1].Keep = false
+	if _, err := st.MutateEditing("source", &draft, draft.Revision, false, ""); err != nil {
+		t.Fatal(err)
+	}
+	checkOverview() // Unapplied cuts must not change the playback transcript.
+	checkSource()
+	if err := st.CommitEditing("source", "", draft, false); err != nil {
+		t.Fatal(err)
+	}
+	sermon, err := st.GetSermon("source")
+	if err != nil || sermon.Transcript == nil || *sermon.Transcript != "removed retained" {
+		t.Fatalf("skipping edits must restore the full transcript: %+v %v", sermon, err)
+	}
+	checkSource()
+}
+
+func TestSourceMigrationRecoversFullTranscriptAndAppliedSnapshot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy.db")
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	entries, err := migrationsFS.ReadDir("migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.Name() >= "013" {
+			break
+		}
+		raw, err := migrationsFS.ReadFile("migrations/" + entry.Name())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(string(raw)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`CREATE TABLE schema_version(version INTEGER NOT NULL); INSERT INTO schema_version VALUES(12);`); err != nil {
+		t.Fatal(err)
+	}
+	metadata := TranscriptionMetadata{Duration: 10, Words: []TranscriptWord{{Word: "removed", Start: 1, End: 2}, {Word: "kept", Start: 6, End: 7}}}
+	meta, _ := json.Marshal(metadata)
+	applied := editingFixture()
+	applied.Sections[0].Keep = false
+	snapshot, _ := json.Marshal(EditSnapshot{Draft: applied})
+	pending := editingFixture()
+	pending.Sections[1].Keep = false
+	draft, _ := json.Marshal(pending)
+	for _, id := range []string{"canonical", "editor-fallback"} {
+		if _, err := db.Exec(`INSERT INTO sermons(id,original_filename,uploaded_at,stage,status,transcript,transcription_metadata) VALUES (?,'test.mp3','','metadata','done','old cut','{}')`, id); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`INSERT INTO editing VALUES(?,?,1,?,?,'edit-render/edited.mp3',1)`, id, string(draft), "removed kept", string(meta)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// An existing API response must win over stale editor/sermon copies.
+	if _, err := db.Exec(`INSERT INTO source_transcriptions VALUES('canonical','API source',?)`, string(meta)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO jobs(id,sermon_id,type,stage,state,parameters,available_at,created_at,updated_at) VALUES('render','canonical','render_edit','editing','done',?,'','','')`, string(snapshot)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	st, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	for id, want := range map[string]string{"canonical": "API source", "editor-fallback": "removed kept"} {
+		text, got, err := st.SourceTranscription(id)
+		if err != nil || text != want || !reflect.DeepEqual(got, metadata) {
+			t.Fatalf("migrated source %s: %q %+v %v", id, text, got, err)
+		}
+	}
+	sermon, err := st.GetSermon("canonical")
+	if err != nil || sermon.Transcript == nil || *sermon.Transcript != "kept" || sermon.TranscriptionMetadata.Words[0].Start != 1 {
+		t.Fatalf("migration used pending cuts instead of rendered snapshot: %+v %v", sermon, err)
 	}
 }

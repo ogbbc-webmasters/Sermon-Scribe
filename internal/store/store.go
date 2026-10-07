@@ -42,6 +42,7 @@ type Sermon struct {
 	Topics                        []string               `json:"topics,omitempty"`
 	TopicScores                   map[string]float64     `json:"topic_scores,omitempty"`
 	TranscriptionMetadata         *TranscriptionMetadata `json:"transcription_metadata,omitempty"`
+	SourceTranscriptionMetadata   *TranscriptionMetadata `json:"source_transcription_metadata,omitempty"`
 	AICosts                       []AICost               `json:"ai_costs"`
 }
 
@@ -122,8 +123,8 @@ const sermonViewSQL = `
 	       s.stage, s.status, COALESCE(j.progress, 0), j.last_error,
 	       s.normalization_gate_adjustment, s.normalization_volume_adjustment,
 	       s.normalization_reviewed, s.applied_regions, s.edit_approved,
-	       COALESCE(s.transcript, t.text),
-	       CASE WHEN s.transcript IS NULL THEN t.metadata ELSE s.transcription_metadata END,
+	       COALESCE(t.text, s.transcript),
+	       CASE WHEN t.sermon_id IS NOT NULL THEN t.metadata ELSE s.transcription_metadata END,
 	       s.title, s.title_generated, s.title_reasoning,
 	       s.speaker, s.old_testament_reading, s.new_testament_reading,
 	       s.scriptures, s.scripture_options, s.topics, s.topic_scores, e.draft,
@@ -132,7 +133,8 @@ const sermonViewSQL = `
 	           'calls', calls, 'cost_usd', cost_usd, 'unknown_costs', unknown_costs))
 	        FROM (SELECT task, model, COUNT(*) AS calls, COALESCE(SUM(cost_usd), 0) AS cost_usd,
 	              COUNT(*) - COUNT(cost_usd) AS unknown_costs
-	              FROM ai_calls WHERE sermon_id = s.id GROUP BY task, model ORDER BY task, model))
+	              FROM ai_calls WHERE sermon_id = s.id GROUP BY task, model ORDER BY task, model)),
+	       CASE WHEN e.active THEN e.applied_draft END
 	FROM sermons s
 	LEFT JOIN source_transcriptions t ON t.sermon_id = s.id
 	LEFT JOIN editing e ON e.sermon_id = s.id
@@ -185,7 +187,7 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 	var applied []byte
 	var transcript, transcriptionMetadata, title, titleReasoning, speaker, oldTestamentReading, newTestamentReading, scriptures, scriptureOptions, topics, topicScores sql.NullString
 	var titleGenerated sql.NullBool
-	var editingDraft sql.NullString
+	var editingDraft, appliedDraft sql.NullString
 	var costs string
 	err := row.Scan(
 		&sm.ID, &sm.OriginalFilename, &sm.UploadedAt, &sm.UploadedBy,
@@ -193,7 +195,7 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 		&sm.NormalizationGateAdjustment, &sm.NormalizationVolumeAdjustment,
 		&sm.NormalizationReviewed, &applied, &sm.EditApproved,
 		&transcript, &transcriptionMetadata, &title, &titleGenerated, &titleReasoning, &speaker,
-		&oldTestamentReading, &newTestamentReading, &scriptures, &scriptureOptions, &topics, &topicScores, &editingDraft, &sm.PlaybackVersion, &costs,
+		&oldTestamentReading, &newTestamentReading, &scriptures, &scriptureOptions, &topics, &topicScores, &editingDraft, &sm.PlaybackVersion, &costs, &appliedDraft,
 	)
 	if err != nil {
 		return err
@@ -227,6 +229,31 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 		}
 		sm.TranscriptionMetadata = &metadata
 	}
+	sm.SourceTranscriptionMetadata = sm.TranscriptionMetadata
+	if appliedDraft.Valid && sm.TranscriptionMetadata != nil {
+		var draft Editing
+		if err := json.Unmarshal([]byte(appliedDraft.String), &draft); err != nil {
+			return fmt.Errorf("decode applied draft for sermon %s: %w", sm.ID, err)
+		}
+		var ranges []AudioRange
+		cuts := false
+		for i, section := range draft.Sections {
+			if section.Keep {
+				start, end := draft.Breakpoints[i].Time, draft.Breakpoints[i+1].Time
+				if len(ranges) > 0 && ranges[len(ranges)-1].End == start {
+					ranges[len(ranges)-1].End = end
+				} else {
+					ranges = append(ranges, AudioRange{Start: start, End: end})
+				}
+			} else {
+				cuts = true
+			}
+		}
+		if cuts {
+			text, metadata := MapTranscript(*sm.TranscriptionMetadata, ranges)
+			sm.Transcript, sm.TranscriptionMetadata = &text, &metadata
+		}
+	}
 	if title.Valid {
 		title.String = titleCase(title.String)
 		sm.Title = &title.String
@@ -250,22 +277,6 @@ func scanSermon(row rowScanner, sm *Sermon) error {
 	_ = json.Unmarshal([]byte(scriptureOptions.String), &sm.ScriptureOptions)
 	_ = json.Unmarshal([]byte(topics.String), &sm.Topics)
 	_ = json.Unmarshal([]byte(topicScores.String), &sm.TopicScores)
-	return err
-}
-
-// SaveTranscript stores the transcript produced by the transcription stage.
-func (s *Store) SaveTranscript(id, transcript string) error {
-	_, err := s.db.Exec(`UPDATE sermons SET transcript=? WHERE id=?`, transcript, id)
-	return err
-}
-
-// SaveTranscription atomically stores transcript text and its structured timing metadata.
-func (s *Store) SaveTranscription(id, transcript string, metadata TranscriptionMetadata) error {
-	encoded, err := json.Marshal(metadata)
-	if err != nil {
-		return fmt.Errorf("encode transcription metadata: %w", err)
-	}
-	_, err = s.db.Exec(`UPDATE sermons SET transcript=?, transcription_metadata=? WHERE id=?`, transcript, string(encoded), id)
 	return err
 }
 

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestSaveTranscriptionPersistsStructuredMetadata(t *testing.T) {
+func TestSaveSourceTranscriptionPersistsStructuredMetadata(t *testing.T) {
 	st, err := Open(":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -25,7 +25,7 @@ func TestSaveTranscriptionPersistsStructuredMetadata(t *testing.T) {
 		Segments: []TranscriptSegment{{Start: 1.25, End: 4.5, Text: "Test phrase.", Speaker: &speaker}},
 		Words:    []TranscriptWord{{Word: "Test", Start: 1.25, End: 1.7, Speaker: &speaker, SpeakerLabel: "Speaker 2", Confidence: &confidence}},
 	}
-	if err := st.SaveTranscription("structured-transcript", "Test phrase.", want); err != nil {
+	if err := st.SaveSourceTranscription("structured-transcript", "Test phrase.", want); err != nil {
 		t.Fatal(err)
 	}
 

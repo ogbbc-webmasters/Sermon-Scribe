@@ -184,11 +184,11 @@ func TestSpeakerDraftPreservesLegacyMovedBoundary(t *testing.T) {
 
 func TestTranscriptMapping(t *testing.T) {
 	source := store.TranscriptionMetadata{Words: []store.TranscriptWord{{Word: "one", Start: 0, End: 1}, {Word: "drop", Start: 2, End: 3}, {Word: "two", Start: 4.8, End: 5.4}}}
-	text, m := MapTranscript(source, []AudioRange{{0, 1}, {5, 6}})
+	text, m := store.MapTranscript(source, []AudioRange{{0, 1}, {5, 6}})
 	if text != "one two" || m.Duration != 2 || m.Words[1].Start != 1 || math.Abs(m.Words[1].End-1.4) > 1e-9 {
 		t.Fatalf("mapping %q %+v", text, m)
 	}
-	text, m = MapTranscript(store.TranscriptionMetadata{Segments: []store.TranscriptSegment{{Text: "phrase", Start: 4, End: 6}}}, []AudioRange{{5, 7}})
+	text, m = store.MapTranscript(store.TranscriptionMetadata{Segments: []store.TranscriptSegment{{Text: "phrase", Start: 4, End: 6}}}, []AudioRange{{5, 7}})
 	if text != "phrase" || m.Segments[0].Start != 0 || m.Segments[0].End != 1 {
 		t.Fatalf("segment fallback %q %+v", text, m)
 	}
@@ -211,7 +211,7 @@ func TestKeptSectionsPreservePhrases(t *testing.T) {
 		Words:    []store.TranscriptWord{{Word: "first", Start: 1, End: 1.4}, {Word: "phrase", Start: 1.4, End: 2}, {Word: "drop", Start: 3.5, End: 4}, {Word: "last", Start: 5, End: 5.5}, {Word: "phrase", Start: 5.5, End: 6}, {Word: "next", Start: 6, End: 7}},
 		Segments: []store.TranscriptSegment{{Start: 1, End: 2}, {Start: 3.5, End: 4}, {Start: 5, End: 6}, {Start: 6, End: 7}},
 	}
-	text, mapped := MapTranscript(source, ranges)
+	text, mapped := store.MapTranscript(source, ranges)
 	if text != "first phrase last phrase next" || len(mapped.Segments) != 3 || mapped.Segments[0].Text != "first phrase" || mapped.Segments[1].Text != "last phrase" || mapped.Segments[1].Start != 3 || mapped.Segments[2].Start != 4 {
 		t.Fatalf("phrase mapping: %q %+v", text, mapped)
 	}

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -38,34 +40,6 @@ func (s *Store) SaveSourceTranscription(id, text string, m TranscriptionMetadata
 	}
 	_, err = s.db.Exec(`INSERT INTO source_transcriptions VALUES(?,?,?) ON CONFLICT(sermon_id) DO UPDATE SET text=excluded.text,metadata=excluded.metadata`, id, text, string(raw))
 	return err
-}
-
-// RefreshEditingTranscription replaces the source transcript and the applied
-// transcript without changing the saved editing draft or its revision.
-func (s *Store) RefreshEditingTranscription(id, sourceText string, sourceMetadata TranscriptionMetadata, transcript string, transcriptMetadata TranscriptionMetadata) error {
-	sourceRaw, err := json.Marshal(sourceMetadata)
-	if err != nil {
-		return fmt.Errorf("encode source transcription metadata: %w", err)
-	}
-	transcriptRaw, err := json.Marshal(transcriptMetadata)
-	if err != nil {
-		return fmt.Errorf("encode transcript metadata: %w", err)
-	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-	if _, err = tx.Exec(`INSERT INTO source_transcriptions VALUES(?,?,?) ON CONFLICT(sermon_id) DO UPDATE SET text=excluded.text,metadata=excluded.metadata`, id, sourceText, string(sourceRaw)); err != nil {
-		return err
-	}
-	if _, err = tx.Exec(`UPDATE editing SET source_text=?,source_metadata=? WHERE sermon_id=?`, sourceText, string(sourceRaw), id); err != nil {
-		return err
-	}
-	if _, err = tx.Exec(`UPDATE sermons SET transcript=?,transcription_metadata=? WHERE id=?`, transcript, string(transcriptRaw), id); err != nil {
-		return err
-	}
-	return tx.Commit()
 }
 
 func (s *Store) SourceTranscription(id string) (string, TranscriptionMetadata, error) {
@@ -138,7 +112,10 @@ func (s *Store) PrepareEditing(id string, d Editing, text string, m Transcriptio
 	d.Revision = rev + 1
 	raw, _ := json.Marshal(d)
 	meta, _ := json.Marshal(m)
-	_, err = tx.Exec(`INSERT INTO editing(sermon_id,draft,revision,source_text,source_metadata) VALUES(?,?,?,?,?) ON CONFLICT(sermon_id) DO UPDATE SET draft=excluded.draft,revision=excluded.revision,source_text=excluded.source_text,source_metadata=excluded.source_metadata`, id, string(raw), d.Revision, text, string(meta))
+	if _, err = tx.Exec(`INSERT INTO source_transcriptions VALUES(?,?,?) ON CONFLICT(sermon_id) DO NOTHING`, id, text, string(meta)); err != nil {
+		return err
+	}
+	_, err = tx.Exec(`INSERT INTO editing(sermon_id,draft,revision,source_text,source_metadata) VALUES(?,?,?,'','{}') ON CONFLICT(sermon_id) DO UPDATE SET draft=excluded.draft,revision=excluded.revision`, id, string(raw), d.Revision)
 	if err != nil {
 		return err
 	}
@@ -154,7 +131,7 @@ func (s *Store) MutateEditing(id string, d *Editing, revision int, skip bool, jo
 	defer tx.Rollback()
 	var raw, text, meta string
 	var rev int
-	err = tx.QueryRow(`SELECT draft,revision,source_text,source_metadata FROM editing WHERE sermon_id=?`, id).Scan(&raw, &rev, &text, &meta)
+	err = tx.QueryRow(`SELECT e.draft,e.revision,t.text,t.metadata FROM editing e JOIN source_transcriptions t ON t.sermon_id=e.sermon_id WHERE e.sermon_id=?`, id).Scan(&raw, &rev, &text, &meta)
 	if err != nil {
 		return Editing{}, err
 	}
@@ -217,8 +194,8 @@ func (s *Store) EditingPlayback(id string) (string, error) {
 	}
 	return path, err
 }
-func (s *Store) CommitEditing(id, path, text string, m TranscriptionMetadata, active bool) error {
-	raw, err := json.Marshal(m)
+func (s *Store) CommitEditing(id, path string, draft Editing, active bool) error {
+	raw, err := json.Marshal(draft)
 	if err != nil {
 		return err
 	}
@@ -227,11 +204,62 @@ func (s *Store) CommitEditing(id, path, text string, m TranscriptionMetadata, ac
 		return err
 	}
 	defer tx.Rollback()
-	if _, err = tx.Exec(`UPDATE editing SET playback=?,active=? WHERE sermon_id=?`, path, active, id); err != nil {
-		return err
-	}
-	if _, err = tx.Exec(`UPDATE sermons SET transcript=?,transcription_metadata=? WHERE id=?`, text, string(raw), id); err != nil {
+	if _, err = tx.Exec(`UPDATE editing SET playback=?,active=?,applied_draft=? WHERE sermon_id=?`, path, active, string(raw), id); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+type AudioRange struct{ Start, End float64 }
+
+// MapTranscript derives a playback transcript without changing its source.
+func MapTranscript(source TranscriptionMetadata, ranges []AudioRange) (string, TranscriptionMetadata) {
+	m := TranscriptionMetadata{Language: source.Language}
+	var text []string
+	offset := 0.0
+	for _, r := range ranges {
+		firstSegment := len(m.Segments)
+		sourceSegment, previousSegment := 0, -1
+		previousSpeaker := ""
+		for _, w := range source.Words {
+			mid := (w.Start + w.End) / 2
+			if mid >= r.Start && mid < r.End {
+				for sourceSegment+1 < len(source.Segments) && mid >= source.Segments[sourceSegment].End {
+					sourceSegment++
+				}
+				speaker := w.SpeakerLabel
+				if w.Speaker != nil {
+					speaker = strconv.Itoa(*w.Speaker)
+				}
+				w.Start = offset + math.Max(w.Start, r.Start) - r.Start
+				w.End = offset + math.Min(w.End, r.End) - r.Start
+				m.Words = append(m.Words, w)
+				text = append(text, w.Word)
+				// Never join phrases across a deleted range.
+				if len(m.Segments) == firstSegment || sourceSegment != previousSegment || speaker != previousSpeaker || w.Start-m.Segments[len(m.Segments)-1].End > 2 {
+					m.Segments = append(m.Segments, TranscriptSegment{Start: w.Start, End: w.End, Text: w.Word, Speaker: w.Speaker})
+				} else {
+					segment := &m.Segments[len(m.Segments)-1]
+					segment.End = w.End
+					segment.Text += " " + w.Word
+				}
+				previousSegment, previousSpeaker = sourceSegment, speaker
+			}
+		}
+		for _, s := range source.Segments {
+			if len(source.Words) > 0 {
+				break
+			}
+			mid := (s.Start + s.End) / 2
+			if mid >= r.Start && mid < r.End {
+				s.Start = offset + math.Max(s.Start, r.Start) - r.Start
+				s.End = offset + math.Min(s.End, r.End) - r.Start
+				m.Segments = append(m.Segments, s)
+				text = append(text, s.Text)
+			}
+		}
+		offset += r.End - r.Start
+	}
+	m.Duration = offset
+	return strings.Join(text, " "), m
 }

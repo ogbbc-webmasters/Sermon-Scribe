@@ -29,9 +29,6 @@ func TestRegenerateSpeakerBreakpoints(t *testing.T) {
 	if err := srv.Store.PrepareEditing("regenerate", d, "original", metadata); err != nil {
 		t.Fatal(err)
 	}
-	if err := srv.Store.SaveTranscription("regenerate", "committed", store.TranscriptionMetadata{Duration: 2}); err != nil {
-		t.Fatal(err)
-	}
 	request := func(body string, status int) store.Editing {
 		t.Helper()
 		resp, err := http.Post(ts.URL+"/api/sermons/regenerate/editing/regenerate", "application/json", bytes.NewBufferString(body))
@@ -74,8 +71,8 @@ func TestRegenerateSpeakerBreakpoints(t *testing.T) {
 	}
 	request(`{"revision":3,"preserve_edited":true}`, 409)
 	sm, err := srv.Store.GetSermon("regenerate")
-	if err != nil || sm.Stage != "editing" || sm.Status != "done" || sm.Transcript == nil || *sm.Transcript != "committed" {
-		t.Fatalf("regeneration changed applied output or pipeline: %+v %v", sm, err)
+	if err != nil || sm.Stage != "editing" || sm.Status != "done" || sm.Transcript == nil || *sm.Transcript != "original" {
+		t.Fatalf("regeneration changed source transcript or pipeline: %+v %v", sm, err)
 	}
 	if err := srv.Store.EnqueueJob(store.NewJob{ID: "busy", SermonID: "regenerate", Type: "prepare_edit", Stage: "editing"}, time.Now()); err != nil {
 		t.Fatal(err)
@@ -140,7 +137,7 @@ func TestEditingHTTPContract(t *testing.T) {
 	if body := request("GET", "audio/playback", nil, 200); string(body) != "normalized.mp3" {
 		t.Fatal("stale render played")
 	}
-	if err := srv.Store.CommitEditing("editing", "edited.mp3", "committed", store.TranscriptionMetadata{}, true); err != nil {
+	if err := srv.Store.CommitEditing("editing", "edited.mp3", saved, true); err != nil {
 		t.Fatal(err)
 	}
 	if body := request("GET", "audio/playback", nil, 200); string(body) != "edited.mp3" {
@@ -150,7 +147,7 @@ func TestEditingHTTPContract(t *testing.T) {
 	request("PUT", "editing", saved, 409)
 	request("POST", "editing/apply", map[string]any{"revision": 2, "skip": true}, 409)
 	sm, _ := srv.Store.GetSermon("editing")
-	if *sm.Transcript != "committed" {
+	if *sm.Transcript != "source" {
 		t.Fatal("apply queue replaced prior transcript")
 	}
 	if body := request("GET", "audio/playback", nil, 200); string(body) != "edited.mp3" {

@@ -22,7 +22,7 @@ func TestRetryProcessingParts(t *testing.T) {
 			if err := srv.Store.CreateSermon(store.Sermon{ID: "ready", OriginalFilename: "source.mp3", UploadedAt: "2026-10-06T00:00:00Z", Stage: "normalization", Status: "done"}); err != nil {
 				t.Fatal(err)
 			}
-			if err := srv.Store.SaveTranscript("ready", "Existing transcript"); err != nil {
+			if err := srv.Store.SaveSourceTranscription("ready", "Existing transcript", store.TranscriptionMetadata{}); err != nil {
 				t.Fatal(err)
 			}
 			if err := srv.Store.SaveMetadata("ready", "Existing title", true, "Existing reason", "Existing speaker", []string{"James 1:1"}, []string{"Assurance"}, map[string]float64{"Assurance": 0.9}); err != nil {

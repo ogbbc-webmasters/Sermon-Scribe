@@ -124,7 +124,7 @@ func TestTranscriptionRetryPreparesEditingWithoutReturnState(t *testing.T) {
 	}
 }
 
-func TestTranscriptionRetryPreservesEditingDraftAndMapsKeptTranscript(t *testing.T) {
+func TestTranscriptionRetryPreservesEditingDraftAndFullSource(t *testing.T) {
 	st := processingTestStore(t)
 	const sermonID = "transcription-retry-with-draft"
 	if err := st.CreateSermon(store.Sermon{ID: sermonID, OriginalFilename: "source.mp3", UploadedAt: "2026-10-06T00:00:00Z", Stage: "transcription", Status: "running"}); err != nil {
@@ -145,6 +145,9 @@ func TestTranscriptionRetryPreservesEditingDraftAndMapsKeptTranscript(t *testing
 	}
 	savedDraft, err := st.GetEditing(sermonID)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.CommitEditing(sermonID, "edited.mp3", savedDraft, true); err != nil {
 		t.Fatal(err)
 	}
 	uploads := t.TempDir()
@@ -179,13 +182,16 @@ func TestTranscriptionRetryPreservesEditingDraftAndMapsKeptTranscript(t *testing
 	if err != nil || !reflect.DeepEqual(gotDraft, savedDraft) {
 		t.Fatalf("editing draft changed after transcription: %+v, want %+v; %v", gotDraft, savedDraft, err)
 	}
-	fullText, _, err := st.SourceTranscription(sermonID)
-	if err != nil || fullText != "one two three four" {
+	fullText, fullMetadata, err := st.SourceTranscription(sermonID)
+	if err != nil || fullText != "one two three four" || len(fullMetadata.Words) != 4 || fullMetadata.Words[0].Start != 0.1 {
 		t.Fatalf("full source transcript = %q, %v", fullText, err)
 	}
 	sermon, err := st.GetSermon(sermonID)
 	if err != nil || sermon.Transcript == nil || *sermon.Transcript != "three four" {
 		t.Fatalf("kept transcript = %+v, %v", sermon.Transcript, err)
+	}
+	if !reflect.DeepEqual(sermon.SourceTranscriptionMetadata, &fullMetadata) {
+		t.Fatalf("editor must receive full regenerated metadata: %+v", sermon.SourceTranscriptionMetadata)
 	}
 }
 
@@ -344,7 +350,7 @@ func TestMetadataHandlerSelectsTitleAndPreservesTopics(t *testing.T) {
 			if err := st.CreateSermon(store.Sermon{ID: "metadata-test", OriginalFilename: "test.mp3", UploadedAt: "2026-10-06T00:00:00Z", Stage: "metadata", Status: "running"}); err != nil {
 				t.Fatal(err)
 			}
-			if err := st.SaveTranscript("metadata-test", transcript); err != nil {
+			if err := st.SaveSourceTranscription("metadata-test", transcript, store.TranscriptionMetadata{}); err != nil {
 				t.Fatal(err)
 			}
 			if err := st.SaveMetadata("metadata-test", "Existing title", true, "Existing reason", "Existing speaker", []string{"James 1:1"}, []string{"Assurance"}, map[string]float64{"Assurance": 0.3}); err != nil {
@@ -498,7 +504,7 @@ func TestScriptureRegenerationPreservesOtherFields(t *testing.T) {
 			if err := st.CreateSermon(store.Sermon{ID: "scriptures", OriginalFilename: "source.mp3", UploadedAt: "2026-10-06T00:00:00Z", Stage: "scriptures", Status: "running"}); err != nil {
 				t.Fatal(err)
 			}
-			if err := st.SaveTranscript("scriptures", "Existing transcript"); err != nil {
+			if err := st.SaveSourceTranscription("scriptures", "Existing transcript", store.TranscriptionMetadata{}); err != nil {
 				t.Fatal(err)
 			}
 			if err := st.SaveMetadata("scriptures", "Existing title", true, "Existing reason", "Existing speaker", []string{"Old reference"}, []string{"Assurance"}, map[string]float64{"Assurance": 0.9}); err != nil {
@@ -559,7 +565,7 @@ func TestMetadataTargetedRetryPreservesOtherFields(t *testing.T) {
 			if err := st.CreateSermon(store.Sermon{ID: "targeted", OriginalFilename: "source.mp3", UploadedAt: "2026-10-06T00:00:00Z", Stage: "metadata", Status: "done"}); err != nil {
 				t.Fatal(err)
 			}
-			if err := st.SaveTranscript("targeted", "One. Two. Three. Four. Five."); err != nil {
+			if err := st.SaveSourceTranscription("targeted", "One. Two. Three. Four. Five.", store.TranscriptionMetadata{}); err != nil {
 				t.Fatal(err)
 			}
 			if err := st.SaveMetadata("targeted", "Existing title", true, "Existing reason", "Existing speaker", []string{"James 1:1"}, []string{"Assurance"}, map[string]float64{"Assurance": 0.3}); err != nil {

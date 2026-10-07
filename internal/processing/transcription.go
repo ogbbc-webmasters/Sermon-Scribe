@@ -160,13 +160,8 @@ func (h *TranscriptionHandler) Run(ctx context.Context, job store.Job, reporter 
 			SpeakerLabel: word.SpeakerLabel, Confidence: word.Confidence,
 		}
 	}
-	if draft, err := h.store.GetEditing(job.SermonID); err == nil {
-		ranges := keptRanges(store.EditSnapshot{Draft: draft})
-		if len(ranges) == 0 {
-			ranges = []AudioRange{{Start: 0, End: draft.Duration}}
-		}
-		transcript, transcriptMetadata := MapTranscript(metadata, ranges)
-		if err := h.store.RefreshEditingTranscription(job.SermonID, result.Text, metadata, transcript, transcriptMetadata); err != nil {
+	if _, err := h.store.GetEditing(job.SermonID); err == nil {
+		if err := h.store.SaveSourceTranscription(job.SermonID, result.Text, metadata); err != nil {
 			return Result{}, err
 		}
 		return Result{
