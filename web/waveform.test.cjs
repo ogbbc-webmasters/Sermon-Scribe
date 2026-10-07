@@ -21,7 +21,7 @@ function setup() {
       clientWidth: 1000, focus() {}, setPointerCapture() {}, releasePointerCapture() {},
       classList: { add() {}, remove() {}, toggle() {} },
       addEventListener(name, handler) { this.listeners[name] = handler; },
-      getBoundingClientRect() { return { left: 10, top: 20, width: 1000 }; }
+      getBoundingClientRect() { return { left: 10, top: 20, width: 1000, height: 128 }; }
     }) },
     CustomEvent: class { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },
     customElements: { define: (_, cls) => { Waveform = cls; } }
@@ -53,12 +53,13 @@ test("nearest breakpoint wins inside the pixel hit area at different widths", ()
   const wave = setup();
   assert.deepEqual(selection(wave, 101), { kind: "boundary", index: 1 });
   assert.deepEqual(selection(wave, 109), { kind: "boundary", index: 2 });
-  assert.deepEqual(selection(wave, 621), { kind: "section", index: 2 });
+  assert.deepEqual(selection(wave, 607), { kind: "section", index: 2 });
+  assert.deepEqual(selection(wave, 609), { kind: "boundary", index: 3 });
   assert.deepEqual(selection(wave, 623), { kind: "boundary", index: 3 });
   assert.deepEqual(selection(wave, 315, 500), { kind: "boundary", index: 3 });
 });
 
-test("breakpoint taps cover 44 pixels while section taps keep their own area", () => {
+test("breakpoints are clickable along their lines and sections have a separate strip", () => {
   const wave = setup();
   wave.load = () => {};
   wave.connectedCallback();
@@ -75,8 +76,18 @@ test("breakpoint taps cover 44 pixels while section taps keep their own area", (
   assert.equal(wave.events[0].detail.kind, "boundary");
   assert.equal(wave.events[0].detail.index, 3);
   tap(65);
-  assert.equal(wave.events[1].detail.kind, "section");
+  assert.equal(wave.events[1].detail.kind, "boundary");
   assert.equal(wave.events[1].detail.index, 3);
+  tap(103);
+  assert.equal(wave.events[2].detail.kind, "boundary");
+  tap(105);
+  assert.equal(wave.events[3].detail.kind, "section");
+  assert.equal(wave.events[3].detail.index, 3);
+  const tiny = { button: 0, pointerId: 1, clientX: 108, clientY: 125 };
+  wave.canvas.listeners.pointerdown(tiny);
+  wave.canvas.listeners.pointerup(tiny);
+  assert.equal(wave.events[4].detail.kind, "section");
+  assert.equal(wave.events[4].detail.index, 1, "tiny section keeps its enlarged target in the strip");
 });
 
 test("two-finger zoom follows the midpoint and resumes panning without selecting", () => {
@@ -176,7 +187,8 @@ test("hit testing uses the zoomed and panned window, including nearby boundaries
   assert.deepEqual(selection(wave, 150), { kind: "boundary", index: 1 });
   assert.deepEqual(selection(wave, 200), { kind: "boundary", index: 2 });
   assert.deepEqual(selection(wave, 175), { kind: "section", index: 1 });
-  assert.deepEqual(selection(wave, 170), { kind: "section", index: 1 });
+  assert.deepEqual(selection(wave, 174), { kind: "section", index: 1 });
+  assert.deepEqual(selection(wave, 170), { kind: "boundary", index: 1 });
   assert.deepEqual(selection(wave, 157), { kind: "boundary", index: 1 });
   wave.pan(40);
   assert.deepEqual(selection(wave, 800), { kind: "boundary", index: 3 });

@@ -1,5 +1,5 @@
 // Elm owns selections and edit decisions; this element draws their audio overview.
-const breakpointTargetSize = 44;
+const waveformTargetSize = 44;
 
 customElements.define("editing-waveform", class extends HTMLElement {
   static observedAttributes = ["src", "data-draft", "data-selection", "data-disabled", "data-placing"];
@@ -30,6 +30,7 @@ customElements.define("editing-waveform", class extends HTMLElement {
       if (event.button !== 0 || this.pointers.size >= 2) return;
       this.canvas.focus();
       this.canvas.setPointerCapture(event.pointerId);
+      this.canvas.classList.remove("editor__waveform-canvas--selecting");
       this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (this.pointers.size === 2) {
         const [a, b] = this.pointers.values();
@@ -46,7 +47,13 @@ customElements.define("editing-waveform", class extends HTMLElement {
       }
     });
     this.canvas.addEventListener("pointermove", event => {
-      if (!this.pointers.has(event.pointerId)) return;
+      if (!this.pointers.has(event.pointerId)) {
+        const bounds = this.canvas.getBoundingClientRect();
+        const overSectionStrip = event.clientY - bounds.top >= bounds.height - waveformTargetSize;
+        const overBreakpoint = this.selectionAt(event.clientX - bounds.left, bounds.width)?.kind === "boundary";
+        this.canvas.classList.toggle("editor__waveform-canvas--selecting", this.getAttribute("data-placing") !== "true" && (overSectionStrip || overBreakpoint));
+        return;
+      }
       this.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
       if (this.pinch) {
         const [a, b] = this.pointers.values();
@@ -113,7 +120,7 @@ customElements.define("editing-waveform", class extends HTMLElement {
     if (!cancelled && !moved) {
       const bounds = this.canvas.getBoundingClientRect();
       if (this.getAttribute("data-placing") === "true") this.addAt(event.clientX - bounds.left, bounds.width);
-      else this.select(this.selectionAt(event.clientX - bounds.left, bounds.width, event.clientY - bounds.top < breakpointTargetSize ? "boundary" : "section"));
+      else this.select(this.selectionAt(event.clientX - bounds.left, bounds.width, event.clientY - bounds.top >= bounds.height - waveformTargetSize ? "section" : "auto"));
     }
   }
 
@@ -126,8 +133,10 @@ customElements.define("editing-waveform", class extends HTMLElement {
   attributeChangedCallback(name) {
     if (!this.canvas) return;
     if (name === "src") this.load();
-    else if (name === "data-placing") this.canvas.classList.toggle("editor__waveform-canvas--placing", this.getAttribute("data-placing") === "true");
-    else if (name === "data-selection") this.revealSelection();
+    else if (name === "data-placing") {
+      this.canvas.classList.toggle("editor__waveform-canvas--placing", this.getAttribute("data-placing") === "true");
+      this.canvas.classList.remove("editor__waveform-canvas--selecting");
+    } else if (name === "data-selection") this.revealSelection();
     else this.draw();
   }
 
@@ -195,7 +204,7 @@ customElements.define("editing-waveform", class extends HTMLElement {
     if (!draft || width <= 0) return null;
     const { start, span } = this.view;
     const time = start + Math.max(0, Math.min(1, x / width)) * span;
-    let closest = null, distance = target === "boundary" ? breakpointTargetSize / 2 : 8;
+    let closest = null, distance = waveformTargetSize / 2;
     draft.breakpoints.forEach((boundary, index) => {
       if (index === 0 || index === draft.breakpoints.length - 1) return;
       if (boundary.time < start || boundary.time > start + span) return;
@@ -245,6 +254,7 @@ customElements.define("editing-waveform", class extends HTMLElement {
     const { start: viewStart, span } = this.view;
     const position = time => (time - viewStart) / span * width;
     const selection = this.getAttribute("data-selection");
+    const waveHeight = height - waveformTargetSize;
     draft.sections.forEach((section, index) => {
       const start = position(draft.breakpoints[index].time);
       const end = position(draft.breakpoints[index + 1].time);
@@ -264,12 +274,12 @@ customElements.define("editing-waveform", class extends HTMLElement {
       const from = Math.floor((viewStart + x / width * span) / draft.duration * peaks.length);
       const to = Math.max(from + 1, Math.ceil((viewStart + (x + 1) / width * span) / draft.duration * peaks.length));
       for (let i = from; i < Math.min(to, peaks.length); i++) peak = Math.max(peak, peaks[i]);
-      const amplitude = Math.max(0.5, peak * (height / 2 - 10));
+      const amplitude = Math.max(0.5, peak * (waveHeight / 2 - 10));
       ctx.strokeStyle = color(draft.sections[section].keep ? "--green" : "--red");
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(x + 0.5, height / 2 - amplitude);
-      ctx.lineTo(x + 0.5, height / 2 + amplitude);
+      ctx.moveTo(x + 0.5, waveHeight / 2 - amplitude);
+      ctx.lineTo(x + 0.5, waveHeight / 2 + amplitude);
       ctx.stroke();
     }
     draft.breakpoints.forEach((boundary, index) => {
@@ -279,7 +289,7 @@ customElements.define("editing-waveform", class extends HTMLElement {
       ctx.lineWidth = selection === `boundary:${index}` ? 3 : 1;
       ctx.beginPath();
       ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
+      ctx.lineTo(x, waveHeight);
       ctx.stroke();
       ctx.fillStyle = ctx.strokeStyle;
       ctx.beginPath();
@@ -287,6 +297,30 @@ customElements.define("editing-waveform", class extends HTMLElement {
       ctx.lineTo(x + 4, 0);
       ctx.lineTo(x, 7);
       ctx.fill();
+    });
+    ctx.strokeStyle = color("--line-strong");
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, waveHeight);
+    ctx.lineTo(width, waveHeight);
+    ctx.stroke();
+    ctx.font = `600 ${color("--font-size-compact-action")} ${color("--font-body")}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    draft.sections.forEach((section, index) => {
+      const start = Math.max(0, position(draft.breakpoints[index].time));
+      const end = Math.min(width, position(draft.breakpoints[index + 1].time));
+      if (end <= start) return;
+      ctx.strokeStyle = color("--line-strong");
+      ctx.beginPath();
+      ctx.moveTo(end, waveHeight);
+      ctx.lineTo(end, height);
+      ctx.stroke();
+      const caption = String(index + 1);
+      if (end - start >= ctx.measureText(caption).width + parseFloat(color("--space-xs"))) {
+        ctx.fillStyle = color(section.keep ? "--green" : "--red");
+        ctx.fillText(caption, (start + end) / 2, waveHeight + waveformTargetSize / 2);
+      }
     });
   }
 });

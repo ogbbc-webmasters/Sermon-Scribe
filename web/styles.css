@@ -460,6 +460,10 @@ h2::after {
   cursor: crosshair;
 }
 
+.editor__waveform-canvas--selecting {
+  cursor: pointer;
+}
+
 /* empty-state — placeholder shown when a list has no items */
 
 .empty-state {
