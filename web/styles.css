@@ -79,6 +79,9 @@
   --icon-size: 24px;
   --focus: #1769aa;
   --layer-popover: 10;
+  --editor-width: 760px;
+  --editor-border: 1px;
+  --focus-width: 3px;
 }
 
 /* ------------------------------------------------------------ base/reset */
@@ -252,6 +255,132 @@ h2::after {
   display: flex;
   gap: var(--space-md);
   flex-wrap: wrap;
+}
+
+/* editor — audio-first section list and one open adjustment at a time */
+
+.editor {
+  margin: var(--space-2xl) auto;
+  max-width: var(--editor-width);
+}
+
+.editor__adjustment {
+  background: var(--wash);
+  border: var(--editor-border) solid var(--line);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  padding: var(--space-xl);
+}
+
+.editor__adjustment:focus {
+  outline: var(--focus-width) solid var(--focus);
+}
+
+.editor__audio {
+  display: block;
+  margin-top: var(--space-lg);
+  width: 100%;
+}
+
+.editor__breakpoint {
+  background: var(--paper);
+  border: var(--editor-border) dashed var(--line-strong);
+  border-radius: var(--radius-pill);
+  color: var(--ink-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.95rem;
+  justify-self: center;
+  max-width: 100%;
+  padding: var(--space-sm) var(--space-xl);
+}
+
+.editor__breakpoint:hover {
+  background: var(--wash);
+  border-color: var(--ink-soft);
+}
+
+.editor__breakpoint:focus-visible {
+  outline: var(--focus-width) solid var(--focus);
+  outline-offset: var(--space-xs);
+}
+
+.editor__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-lg);
+}
+
+.editor__choice {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  gap: var(--space-xs);
+  min-height: var(--control-size-small);
+}
+
+.editor__footer {
+  display: grid;
+  gap: var(--space-lg);
+  margin-top: var(--space-2xl);
+}
+
+.editor__list {
+  display: grid;
+  gap: var(--space-md);
+}
+
+.editor__row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  justify-content: space-between;
+}
+
+.editor__section {
+  background: var(--card);
+  border: var(--editor-border) solid var(--line);
+  border-radius: var(--radius-md);
+  color: var(--ink);
+  padding: var(--space-lg);
+}
+
+.editor__section--deleted {
+  background: var(--red-soft);
+  border-color: var(--red-line);
+  color: var(--red-dark);
+}
+
+.editor__section-title {
+  align-items: flex-start;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  font: inherit;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  text-align: left;
+}
+
+.editor__section-title:hover {
+  text-decoration: underline;
+}
+
+.editor__section-title:focus-visible {
+  outline: var(--focus-width) solid var(--focus);
+}
+
+.editor__toolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  justify-content: space-between;
+  margin: var(--space-xl) 0;
 }
 
 /* empty-state — placeholder shown when a list has no items */

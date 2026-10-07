@@ -18,10 +18,10 @@ module Api exposing
 {-| Server API: sermon state, pipeline events, and HTTP requests.
 -}
 
+import Dict
 import File exposing (File)
 import Http
 import Json.Decode as Decode exposing (Decoder)
-import Dict
 import Json.Encode as Encode
 
 
@@ -303,7 +303,14 @@ deleteSermon toMsg id =
 retryProcessing : (Result Http.Error Sermon -> msg) -> String -> String -> Cmd msg
 retryProcessing toMsg id part =
     Http.post
-        { url = "/api/sermons/" ++ id ++ "/retry/" ++ part
+        { url =
+            "/api/sermons/" ++ id ++ "/retry"
+                ++ (if part == "" then
+                        ""
+
+                    else
+                        "/" ++ part
+                   )
         , body = Http.emptyBody
         , expect = Http.expectJson toMsg sermonDecoder
         }

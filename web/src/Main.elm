@@ -4,8 +4,10 @@ import Api
 import Browser
 import Browser.Navigation as Navigation
 import Dict
+import Editing
 import Http
 import Json.Decode as Decode
+import Json.Encode as Encode
 import Set
 import Task
 import Time
@@ -25,6 +27,12 @@ port transcriptCopied : (Bool -> msg) -> Sub msg
 
 
 port scrollTranscriptMatch : Int -> Cmd msg
+
+
+port editingAudio : Encode.Value -> Cmd msg
+
+
+port editingAudioStatus : (String -> msg) -> Sub msg
 
 
 main : Program () Model Msg
@@ -60,6 +68,7 @@ init _ url key =
       , scriptureSaving = Set.empty
       , scriptureSaveErrors = Set.empty
       , zone = Time.utc
+      , editor = Editing.init
       }
     , Cmd.batch [ Api.fetchSermons GotSermons, Task.perform GotZone Time.here ]
     )
@@ -80,6 +89,18 @@ update msg model =
         NoOp ->
             ( model, Cmd.none )
 
+        EditingMsg editorMsg ->
+            let
+                ( editor, cmd, audioEffect ) =
+                    Editing.update editorMsg model.editor
+            in
+            ( { model | editor = editor }
+            , Cmd.batch
+                [ Cmd.map EditingMsg cmd
+                , Maybe.map editingAudio audioEffect |> Maybe.withDefault Cmd.none
+                ]
+            )
+
         UrlRequested request ->
             case request of
                 Browser.Internal url ->
@@ -98,7 +119,7 @@ update msg model =
                 , retryError = Nothing
                 , deleteError = Nothing
               }
-            , Cmd.none
+            , editingAudio (Encode.object [ ( "action", Encode.string "stop" ) ])
             )
 
         GotZone zone ->
@@ -357,6 +378,7 @@ subscriptions model =
     Sub.batch
         [ pipelineEvents PipelineEventReceived
         , transcriptCopied TranscriptCopied
+        , editingAudioStatus (Editing.AudioStatus >> EditingMsg)
         , case model.upload of
             Uploading _ ->
                 Http.track Api.uploadTracker UploadProgress

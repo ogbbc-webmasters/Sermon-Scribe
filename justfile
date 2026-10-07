@@ -13,6 +13,7 @@ run: build
 # Run the test suite (go:embed of web/ needs elm.js to exist).
 test: build-elm
     go test ./...
+    node --test web/editing.test.cjs
 
 # Build and deploy as a systemd service on this VM (data lives in
 # /home/exedev/sermon-scribe-data; binary installed to /usr/local/bin).

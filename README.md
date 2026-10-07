@@ -21,13 +21,14 @@ Run `nix develop` to enter the pinned development shell with all required tools.
 - [Go](https://go.dev/) (version per `go.mod`)
 - [Elm 0.19.2](https://github.com/elm/compiler/releases/tag/0.19.2)
 - [just](https://github.com/casey/just)
-- [FFmpeg](https://ffmpeg.org/) (required for audio normalization)
+- [FFmpeg](https://ffmpeg.org/) (required for normalization, silence detection, and editing)
+- [Node.js](https://nodejs.org/) (18 or newer, for audio playback bridge tests)
 
 ## Quickstart
 
 ```sh
 just build    # compile Elm (web/elm.js) then go build -> ./sermon-scribe
 just run      # build and run locally on :8000
-just test     # go test ./...
+just test     # Go tests and audio playback bridge tests
 just deploy   # build and (re)install the systemd service on this VM
 ```

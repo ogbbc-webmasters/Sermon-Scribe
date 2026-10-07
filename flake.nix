@@ -36,6 +36,7 @@
           pkgs.ffmpeg
           pkgs.go
           pkgs.just
+          pkgs.nodejs
         ];
       };
     };

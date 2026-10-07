@@ -4,6 +4,7 @@ import Api exposing (Sermon)
 import Browser
 import Browser.Navigation as Navigation
 import Dict exposing (Dict)
+import Editing
 import File exposing (File)
 import Http
 import Json.Decode as Decode
@@ -44,11 +45,13 @@ type alias Model =
     , scriptureSaving : Set String
     , scriptureSaveErrors : Set String
     , zone : Time.Zone
+    , editor : Editing.Model
     }
 
 
 type Msg
     = NoOp
+    | EditingMsg Editing.Msg
     | UrlRequested Browser.UrlRequest
     | UrlChanged Url
     | GotZone Time.Zone

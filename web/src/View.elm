@@ -4,6 +4,7 @@ import Api exposing (Sermon)
 import Card
 import DateFormat exposing (formatDate)
 import Dict
+import Editing
 import File
 import Html exposing (Html, a, audio, button, details, div, h2, input, label, mark, p, span, strong, summary, text)
 import Html.Attributes exposing (accept, attribute, checked, class, classList, controls, disabled, download, hidden, href, id, placeholder, src, style, title, type_, value)
@@ -107,23 +108,46 @@ viewSermonDetail model sermon =
                     , viewDeleteConfirmation model sermon
                     ]
                 ]
-            , viewDetailStatus sermon
-            , div
-                [ class
-                    (if hasMetadata then
-                        "sermon-detail__columns"
+            , viewDetailStatus model sermon
+            , if Editing.isOpen sermon.id model.editor then
+                Html.map EditingMsg (Editing.view model.editor)
 
-                     else
-                        "sermon-detail__columns sermon-detail__columns--single"
-                    )
-                ]
-                [ div [ class "sermon-detail__column", hidden (not hasMetadata) ]
-                    [ viewDetailMetadata model sermon ]
-                , div [ class "sermon-detail__column" ]
-                    [ viewDetailAudio sermon
-                    , viewDetailTranscript model sermon
+              else if sermon.stage == "editing" && sermon.status == "done" then
+                div [ Ui.panel ]
+                    [ h2 [ Ui.panelHeading ] [ text "Ready to edit" ]
+                    , p [ Ui.hint ] [ text "Transcription is finished. Review which sections to keep, or continue with the complete recording." ]
+                    , div [ Ui.sermonActions ]
+                        [ button [ Ui.primaryButton, onClick (EditingMsg (Editing.Open sermon.id False)) ] [ text "Edit recording" ]
+                        , button [ Ui.button, onClick (EditingMsg (Editing.Open sermon.id True)) ] [ text "Continue without editing" ]
+                        ]
                     ]
-                ]
+
+              else if sermon.stage == "metadata" && (sermon.status == "done" || sermon.status == "failed") then
+                div [ Ui.sermonActions ]
+                    [ button [ Ui.button, onClick (EditingMsg (Editing.Open sermon.id False)) ] [ text "Reopen editing" ] ]
+
+              else
+                text ""
+            , if Editing.isOpen sermon.id model.editor || sermon.stage == "editing" then
+                text ""
+
+              else
+                div
+                    [ class
+                        (if hasMetadata then
+                            "sermon-detail__columns"
+
+                         else
+                            "sermon-detail__columns sermon-detail__columns--single"
+                        )
+                    ]
+                    [ div [ class "sermon-detail__column", hidden (not hasMetadata) ]
+                        [ viewDetailMetadata model sermon ]
+                    , div [ class "sermon-detail__column" ]
+                        [ viewDetailAudio sermon
+                        , viewDetailTranscript model sermon
+                        ]
+                    ]
             ]
         ]
 
@@ -146,13 +170,14 @@ viewIconDisclosure config body =
         ]
 
 
-viewDetailStatus : Sermon -> Html Msg
-viewDetailStatus sermon =
+viewDetailStatus : Model -> Sermon -> Html Msg
+viewDetailStatus model sermon =
     case sermon.status of
         "failed" ->
             div [ Ui.errorPanel ]
                 [ strong [ Ui.panelTitle ] [ text "Processing failed" ]
-                , p [ Ui.panelText ] [ text "Please regenerate or contact an administrator." ]
+                , p [ Ui.panelText ] [ text (Maybe.withDefault "Please try again or contact an administrator." sermon.error) ]
+                , button [ Ui.button, onClick (RetryProcessing sermon ""), disabled (Set.member sermon.id model.retrying) ] [ text "Retry processing" ]
                 ]
 
         "done" ->
@@ -171,7 +196,6 @@ viewDetailMetadata model sermon =
         selected =
             Dict.get sermon.id model.scriptureDrafts
                 |> Maybe.withDefault (Set.fromList sermon.scriptures)
-
     in
     div [ class "sermon-detail__sections" ]
         [ Card.view (text "Scripture References")
@@ -434,6 +458,7 @@ viewProcessingRetry model sermon part label =
                 || (sermon.status /= "done" && sermon.status /= "failed")
                 || sermon.stage
                 == "upload"
+                || (sermon.stage == "editing" && part /= "transcription")
                 || (part /= "transcription" && sermon.transcript == Nothing)
             )
         ]
@@ -620,6 +645,9 @@ describeStage sermon =
 
         ( "normalization", "failed" ) ->
             "Normalization failed"
+
+        ( "editing", "done" ) ->
+            "Awaiting editing"
 
         ( stage, "done" ) ->
             capitalize stage ++ " finished"
