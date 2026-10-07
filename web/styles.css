@@ -958,12 +958,6 @@ h2::after {
   color: var(--on-accent);
 }
 
-.sermon-detail__scripture-status {
-  font-size: 0.75rem;
-  font-weight: 600;
-  margin-left: var(--space-xs);
-}
-
 .sermon-detail__search {
   align-items: center;
   display: flex;
