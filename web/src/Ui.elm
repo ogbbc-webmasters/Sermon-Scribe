@@ -2,11 +2,11 @@ module Ui exposing
     ( badge
     , badgeFailed
     , cardMeta
-    , confirmBox
-    , confirmBoxButtons
-    , confirmBoxQuestion
     , deletedPanel
     , dialog
+    , dialogActions
+    , dialogBody
+    , dialogHeader
     , emptyState
     , errorPanel
     , errorText
@@ -127,7 +127,7 @@ sermonActions =
 
 
 
--- CONFIRMATION
+-- DIALOGS
 
 
 dialog : Html.Attribute msg
@@ -135,21 +135,19 @@ dialog =
     class "dialog"
 
 
-{-| Inline confirmation panel for destructive actions.
--}
-confirmBox : Html.Attribute msg
-confirmBox =
-    class "confirm-box"
+dialogActions : Html.Attribute msg
+dialogActions =
+    class "dialog__actions"
 
 
-confirmBoxQuestion : Html.Attribute msg
-confirmBoxQuestion =
-    class "confirm-box__question"
+dialogBody : Html.Attribute msg
+dialogBody =
+    class "dialog__body"
 
 
-confirmBoxButtons : Html.Attribute msg
-confirmBoxButtons =
-    class "confirm-box__buttons"
+dialogHeader : Html.Attribute msg
+dialogHeader =
+    class "dialog__header"
 
 
 

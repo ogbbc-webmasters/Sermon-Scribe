@@ -3,8 +3,9 @@ module Editing exposing (Model, Msg(..), init, isOpen, keptDuration, update, vie
 import Browser.Dom
 import Button
 import Card
-import Html exposing (Html, div, h2, input, label, p, text)
-import Html.Attributes exposing (attribute, checked, class, disabled, id, name, type_)
+import Dialog
+import Html exposing (Html, div, input, label, p, text)
+import Html.Attributes exposing (attribute, autofocus, checked, class, disabled, id, name, type_)
 import Html.Events exposing (on, onClick, preventDefaultOn)
 import Http
 import Json.Decode as Decode
@@ -661,17 +662,11 @@ view model =
               else
                 text ""
             , if model.showingDurationDialog then
-                Html.node "app-dialog" []
-                    [ Html.node "dialog"
-                        [ Ui.dialog
-                        , attribute "aria-labelledby" "duration-limit-title"
-                        , preventDefaultOn "cancel" (Decode.succeed ( DismissDurationDialog, True ))
-                        ]
-                        [ h2 [ Ui.panelHeading, id "duration-limit-title" ] [ text "Edit audio to under 90 minutes" ]
-                        , div [ Ui.sermonActions ]
-                            [ Button.action "ph:x" "Close dialog" False [ onClick DismissDurationDialog ] ]
-                        ]
-                    ]
+                Dialog.view
+                    { id = "duration-limit", title = "Audio too long", onClose = DismissDurationDialog }
+                    []
+                    [ p [ Ui.panelText ] [ text "Edit audio to under 90 minutes." ] ]
+                    [ Button.labeled "Edit audio" Button.editAudio False [ onClick DismissDurationDialog, autofocus True ] ]
 
               else
                 text ""
@@ -715,28 +710,22 @@ view model =
 
 regenerationDialog : Model -> Html Msg
 regenerationDialog model =
-    Html.node "app-dialog" []
-        [ Html.node "dialog"
-            [ Ui.dialog
-            , attribute "aria-labelledby" "regenerate-title"
-            , preventDefaultOn "cancel" (Decode.succeed ( CancelRegenerate, True ))
-            ]
-            [ h2 [ Ui.panelHeading, id "regenerate-title" ] [ text "Regenerate breakpoints" ]
-            , div [ class "editor__dialog-options", attribute "role" "radiogroup", attribute "aria-label" "Breakpoints to regenerate" ]
-                (List.map
-                    (\( preserve, caption ) ->
-                        label [ class "editor__choice" ]
-                            [ input [ type_ "radio", name "regenerate-mode", checked (model.preserveEdited == preserve), onClick (ChooseRegenerateMode preserve) ] []
-                            , text caption
-                            ]
-                    )
-                    [ ( False, "All breakpoints" ), ( True, "Only unedited breakpoints" ) ]
+    Dialog.view
+        { id = "regenerate", title = "Regenerate breakpoints", onClose = CancelRegenerate }
+        []
+        [ div [ class "editor__dialog-options", attribute "role" "radiogroup", attribute "aria-label" "Breakpoints to regenerate" ]
+            (List.map
+                (\( preserve, caption ) ->
+                    label [ class "editor__choice" ]
+                        [ input [ type_ "radio", name "regenerate-mode", checked (model.preserveEdited == preserve), onClick (ChooseRegenerateMode preserve) ] []
+                        , text caption
+                        ]
                 )
-            , div [ Ui.sermonActions ]
-                [ Button.primaryAction "ph:check" "Confirm regeneration" False [ onClick ConfirmRegenerate ]
-                , Button.action "ph:x" "Cancel regeneration" False [ onClick CancelRegenerate ]
-                ]
-            ]
+                [ ( False, "All breakpoints" ), ( True, "Only unedited breakpoints" ) ]
+            )
+        ]
+        [ Button.labeled "Cancel" Button.cancelDialog False [ onClick CancelRegenerate, autofocus True ]
+        , Button.labeled "Regenerate" Button.confirmRegeneration False [ onClick ConfirmRegenerate ]
         ]
 
 

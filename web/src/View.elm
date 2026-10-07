@@ -4,11 +4,12 @@ import Api exposing (Sermon)
 import Button
 import Card
 import DateFormat exposing (formatDate)
+import Dialog
 import Dict
 import Editing
 import Html exposing (Html, a, audio, button, div, h2, input, label, mark, p, span, strong, text)
 import Html.Attributes exposing (attribute, autofocus, checked, class, classList, controls, disabled, download, hidden, href, id, placeholder, src, style, title, type_, value)
-import Html.Events exposing (on, onCheck, onClick, onInput, preventDefaultOn, stopPropagationOn)
+import Html.Events exposing (on, onCheck, onClick, onInput, stopPropagationOn)
 import Json.Decode as Decode
 import Set
 import Types exposing (Model, Msg(..), SermonList(..), UploadState(..))
@@ -481,20 +482,12 @@ viewDeleteConfirmation model sermon =
     case model.confirmingDelete of
         Just pending ->
             if pending.id == sermon.id then
-                Html.node "app-dialog" []
-                    [ Html.node "dialog"
-                        [ Ui.dialog
-                        , attribute "role" "alertdialog"
-                        , attribute "aria-labelledby" "delete-sermon-question"
-                        , preventDefaultOn "cancel" (Decode.succeed ( CancelDelete, True ))
-                        ]
-                        [ p [ Ui.confirmBoxQuestion, id "delete-sermon-question" ]
-                            [ strong [] [ text "Delete this sermon and its audio files?" ] ]
-                        , div [ Ui.confirmBoxButtons ]
-                            [ button [ Button.dangerButton, onClick (ConfirmDelete sermon) ] [ text "Yes, Delete" ]
-                            , button [ Button.button, autofocus True, onClick CancelDelete ] [ text "Cancel" ]
-                            ]
-                        ]
+                Dialog.view
+                    { id = "delete-sermon", title = "Delete sermon?", onClose = CancelDelete }
+                    [ attribute "role" "alertdialog" ]
+                    [ p [ Ui.panelText ] [ text "Delete this sermon and its audio files?" ] ]
+                    [ Button.labeled "Cancel" Button.cancelDialog False [ autofocus True, onClick CancelDelete ]
+                    , Button.labeled "Delete" Button.deleteSermon False [ onClick (ConfirmDelete sermon) ]
                     ]
 
             else

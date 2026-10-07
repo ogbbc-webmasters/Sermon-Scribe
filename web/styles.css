@@ -248,26 +248,6 @@ h2::after {
   width: var(--icon-size);
 }
 
-/* confirm-box — inline destructive-action confirmation */
-
-.confirm-box {
-  background: var(--red-soft);
-  border: 1.5px solid var(--red-line-strong);
-  border-radius: var(--radius-md);
-  padding: 16px 18px;
-  flex-basis: 100%;
-}
-
-.confirm-box__question {
-  margin: 0 0 var(--space-lg);
-}
-
-.confirm-box__buttons {
-  display: flex;
-  gap: var(--space-md);
-  flex-wrap: wrap;
-}
-
 /* dialog — shared native modal surface */
 
 .dialog {
@@ -283,6 +263,26 @@ h2::after {
 
 .dialog::backdrop {
   background: var(--dialog-backdrop);
+}
+
+.dialog__actions {
+  border-top: var(--editor-border) solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  justify-content: flex-end;
+  padding-top: var(--space-xl);
+}
+
+.dialog__body {
+  margin: var(--space-xl) 0;
+}
+
+.dialog__header {
+  align-items: center;
+  display: flex;
+  gap: var(--space-xl);
+  justify-content: space-between;
 }
 
 /* editor — audio-first section list and one open adjustment at a time */
@@ -365,7 +365,6 @@ h2::after {
 .editor__dialog-options {
   display: grid;
   gap: var(--space-xs);
-  margin: var(--space-xl) 0;
 }
 
 .editor__finish-actions {

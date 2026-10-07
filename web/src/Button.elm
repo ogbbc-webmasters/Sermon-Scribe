@@ -1,4 +1,4 @@
-module Button exposing (Config, action, applyEdits, back, button, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSection, deleteSermon, disclosure, downloadAudio, editAudio, icon, keepSection, labeled, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, textAction, titleInfo, uploadSermon, view, warning)
+module Button exposing (Config, action, applyEdits, back, button, cancelDialog, confirmRegeneration, copiedTranscript, copyTranscript, dangerAction, dangerButton, deleteSection, deleteSermon, disclosure, downloadAudio, editAudio, icon, keepSection, labeled, nextMatch, openSermon, previousMatch, primaryAction, primaryButton, regenerate, spinner, textAction, titleInfo, uploadSermon, view, warning)
 
 import Html exposing (Html, details, div, p, strong, text)
 import Html.Attributes exposing (attribute, class, title, type_)
@@ -47,6 +47,16 @@ type alias Config =
 back : Config
 back =
     Config "ph:arrow-left" "Back to Sermons" "var(--ink-soft)"
+
+
+cancelDialog : Config
+cancelDialog =
+    Config "ph:x" "Cancel" "var(--ink-soft)"
+
+
+confirmRegeneration : Config
+confirmRegeneration =
+    Config "ph:arrow-clockwise" "Confirm regeneration" "var(--green)"
 
 
 openSermon : Config
