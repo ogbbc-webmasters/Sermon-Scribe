@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -12,6 +13,79 @@ import (
 func editingFixture() Editing {
 	return Editing{Duration: 10, Breakpoints: []Breakpoint{{"start", 0, "start"}, {"middle", 5, "manual"}, {"end", 10, "end"}}, Sections: []Section{{"a", true}, {"b", true}}}
 }
+
+func TestSourceTranscriptVisibleWithoutReplacingAppliedOutput(t *testing.T) {
+	st, err := Open(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	source := TranscriptionMetadata{Duration: 10, Words: []TranscriptWord{{Word: "source", Start: 6, End: 7}}}
+	applied := TranscriptionMetadata{Duration: 4, Words: []TranscriptWord{{Word: "kept", Start: 1, End: 2}}}
+	for _, tc := range []struct {
+		id       string
+		text     string
+		metadata *TranscriptionMetadata
+	}{
+		{"source-only", "source recording", &source},
+		{"applied", "kept output", &applied},
+		{"legacy", "legacy output", nil},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			if err := st.CreateSermon(Sermon{ID: tc.id, Stage: "editing", Status: "done"}); err != nil {
+				t.Fatal(err)
+			}
+			if err := st.SaveSourceTranscription(tc.id, "source recording", source); err != nil {
+				t.Fatal(err)
+			}
+			if tc.id == "applied" {
+				if err := st.SaveTranscription(tc.id, tc.text, applied); err != nil {
+					t.Fatal(err)
+				}
+			} else if tc.id == "legacy" {
+				if err := st.SaveTranscript(tc.id, tc.text); err != nil {
+					t.Fatal(err)
+				}
+			}
+			check := func(sm Sermon) {
+				t.Helper()
+				if sm.Transcript == nil || *sm.Transcript != tc.text || !reflect.DeepEqual(sm.TranscriptionMetadata, tc.metadata) {
+					t.Fatalf("transcript/timing mismatch: %+v", sm)
+				}
+				if sm.Stage != "editing" || sm.Status != "done" {
+					t.Fatal("reading transcript advanced the pipeline")
+				}
+			}
+			sm, err := st.GetSermon(tc.id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			check(sm)
+			list, err := st.ListSermons()
+			if err != nil {
+				t.Fatal(err)
+			}
+			found := false
+			for _, sm := range list {
+				if sm.ID == tc.id {
+					check(sm)
+					found = true
+				}
+			}
+			if !found {
+				t.Fatal("sermon missing from list")
+			}
+			var uncommitted bool
+			if err := st.db.QueryRow(`SELECT transcript IS NULL FROM sermons WHERE id = ?`, tc.id).Scan(&uncommitted); err != nil {
+				t.Fatal(err)
+			}
+			if uncommitted != (tc.id == "source-only") {
+				t.Fatal("reading source transcript changed committed output")
+			}
+		})
+	}
+}
+
 func TestEditingValidation(t *testing.T) {
 	for _, mutate := range []func(*Editing){
 		func(d *Editing) { d.Duration = math.NaN() }, func(d *Editing) { d.Breakpoints[1].Time = math.Inf(1) },

@@ -119,10 +119,13 @@ const sermonViewSQL = `
 	       s.stage, s.status, COALESCE(j.progress, 0), j.last_error,
 	       s.normalization_gate_adjustment, s.normalization_volume_adjustment,
 	       s.normalization_reviewed, s.applied_regions, s.edit_approved,
-	       s.transcript, s.transcription_metadata, s.title, s.title_generated, s.title_reasoning,
+	       COALESCE(s.transcript, t.text),
+	       CASE WHEN s.transcript IS NULL THEN t.metadata ELSE s.transcription_metadata END,
+	       s.title, s.title_generated, s.title_reasoning,
 	       s.speaker, s.old_testament_reading, s.new_testament_reading,
 	       s.scriptures, s.scripture_options, s.topics, s.topic_scores
 	FROM sermons s
+	LEFT JOIN source_transcriptions t ON t.sermon_id = s.id
 	LEFT JOIN jobs j ON j.id = (
 		SELECT id FROM jobs
 		WHERE sermon_id = s.id AND stage = s.stage
