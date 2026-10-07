@@ -50,3 +50,30 @@ func TestSaveScriptureSelection(t *testing.T) {
 		t.Fatalf("invalid selection changed persisted references: %v", sermon.Scriptures)
 	}
 }
+
+func TestSaveScriptureSelectionPreservesLegacyOptionsWhenDeselecting(t *testing.T) {
+	srv, _ := newTestServer(t)
+	if err := srv.Store.CreateSermon(store.Sermon{ID: "legacy-selection", OriginalFilename: "source.mp3", UploadedAt: "2026-10-06T00:00:00Z", Stage: "metadata", Status: "done"}); err != nil {
+		t.Fatal(err)
+	}
+	available := []string{"Genesis 1:1-31", "John 1:1-18", "James 1:5"}
+	if err := srv.Store.SaveMetadataWithScriptureOptions("legacy-selection", "Title", true, "Reason", "Speaker", available[0], available[1], available, nil, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	request := httptest.NewRequest(http.MethodPut, "/api/sermons/legacy-selection/scriptures", strings.NewReader(`{"scriptures":["Genesis 1:1-31","James 1:5"]}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	srv.Routes(nil).ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", response.Code, response.Body.String())
+	}
+
+	var sermon store.Sermon
+	if err := json.NewDecoder(response.Body).Decode(&sermon); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(sermon.Scriptures, []string{"Genesis 1:1-31", "James 1:5"}) || !reflect.DeepEqual(sermon.ScriptureOptions, available) {
+		t.Fatalf("deselecting a passage changed the available options: selected=%v options=%v", sermon.Scriptures, sermon.ScriptureOptions)
+	}
+}

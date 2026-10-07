@@ -363,7 +363,7 @@ func (s *Server) handleSaveScriptures(w http.ResponseWriter, r *http.Request) {
 		}
 		seen[scripture] = true
 	}
-	if err := s.Store.SaveScriptures(id, request.Scriptures); err != nil {
+	if err := s.Store.SaveScriptureSelection(id, sm.OldTestamentReading, sm.NewTestamentReading, request.Scriptures, available); err != nil {
 		log.Printf("save scripture selection %s: %v", id, err)
 		writeError(w, http.StatusInternalServerError, "could not save scripture selection")
 		return
